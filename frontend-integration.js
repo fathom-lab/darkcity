@@ -2,85 +2,35 @@
 // Add this to the existing map.html and index.html
 
 const API_BASE = 'https://api.darkcity.wtf';
-const WS_URL = 'wss://api.darkcity.wtf';
+const WS_URL = 'wss://api.darkcity.wtf/ws/stream';
 
-// ===== WebSocket Connection =====
-let ws = null;
+// ===== Consciousness Stream WebSocket =====
+let streamWs = null;
 let reconnectInterval = null;
 
-function connectWebSocket() {
-  ws = new WebSocket(WS_URL);
+function connectStreamWebSocket() {
+  streamWs = new WebSocket(WS_URL);
   
-  ws.onopen = () => {
-    console.log('🔗 Connected to DARKCITY');
+  streamWs.onopen = () => {
+    console.log('📡 Connected to consciousness stream');
     clearInterval(reconnectInterval);
   };
   
-  ws.onmessage = (event) => {
-    const { type, data } = JSON.parse(event.data);
+  streamWs.onmessage = (event) => {
+    const data = JSON.parse(event.data);
     
-    if (type === 'event') {
-      // Add to consciousness stream
-      addStreamEvent(data);
-    }
-    
-    if (type === 'agent_joined') {
-      // Add new agent to map
-      agents.push({
-        id: data.id,
-        name: data.name,
-        x: data.x,
-        y: data.y,
-        vx: 0,
-        vy: 0,
-        di: data.district_id,
-        c: '#b490e0',
-        rank: 'Resident',
-        rep: 0,
-        builds: 0,
-        status: 'idle'
-      });
-    }
-    
-    if (type === 'agents_moved') {
-      // Update agent positions
-      data.forEach(moved => {
-        const agent = agents.find(a => a.id === moved.id);
-        if (agent) {
-          agent.x = moved.x;
-          agent.y = moved.y;
-        }
-      });
-    }
-    
-    if (type === 'building_created') {
-      // Add building to map
-      buildings.push({
-        id: data.id,
-        name: data.name,
-        x: data.x,
-        y: data.y,
-        w: data.w,
-        h: data.h,
-        phase: 1,
-        di: data.district_id
-      });
-    }
-    
-    if (type === 'building_completed') {
-      const building = buildings.find(b => b.id === data.id);
-      if (building) building.phase = 6;
-    }
+    // Add to consciousness stream feed
+    addStreamEvent(data);
   };
   
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+  streamWs.onerror = (error) => {
+    console.error('Stream WebSocket error:', error);
   };
   
-  ws.onclose = () => {
-    console.log('🔌 Disconnected. Reconnecting...');
+  streamWs.onclose = () => {
+    console.log('🔌 Stream disconnected. Reconnecting...');
     reconnectInterval = setInterval(() => {
-      connectWebSocket();
+      connectStreamWebSocket();
     }, 5000);
   };
 }
@@ -91,44 +41,59 @@ async function loadAgents() {
     const response = await fetch(`${API_BASE}/api/agents`);
     const realAgents = await response.json();
     
-    // Replace simulated agents with real ones
-    agents.length = 0;
-    agents.push(...realAgents.map(a => ({
-      id: a.id,
-      name: a.name,
-      x: a.x,
-      y: a.y,
-      vx: a.vx,
-      vy: a.vy,
-      di: a.district_id,
-      c: a.color,
-      rank: a.rank,
-      rep: a.reputation,
-      builds: a.builds,
-      status: a.status
-    })));
-    
-    console.log(`✅ Loaded ${agents.length} real agents`);
+    // Check if agents array exists in global scope
+    if (typeof agents !== 'undefined') {
+      // Replace simulated agents with real ones
+      agents.length = 0;
+      agents.push(...realAgents.map(a => ({
+        id: a.id,
+        name: a.name,
+        x: a.x,
+        y: a.y,
+        vx: a.vx,
+        vy: a.vy,
+        di: a.district_id,
+        c: a.color,
+        rank: a.rank,
+        rep: a.reputation,
+        builds: a.builds,
+        status: a.status
+      })));
+      
+      console.log(`✅ Loaded ${agents.length} real agents`);
+    }
   } catch (err) {
     console.error('Failed to load agents:', err);
   }
 }
 
-// ===== Load Real Stream Events =====
-async function loadStream() {
+// ===== Load Real Buildings from API =====
+async function loadBuildings() {
   try {
-    const response = await fetch(`${API_BASE}/api/stream`);
-    const events = await response.json();
+    const response = await fetch(`${API_BASE}/api/buildings`);
+    const realBuildings = await response.json();
     
-    events.forEach(event => {
-      addStreamEvent({
-        type: event.type,
-        message: event.message,
-        timestamp: event.timestamp * 1000
-      });
-    });
+    // Check if buildings array exists in global scope
+    if (typeof buildings !== 'undefined') {
+      // Replace simulated buildings with real ones
+      buildings.length = 0;
+      buildings.push(...realBuildings.map(b => ({
+        id: b.id,
+        name: b.name,
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        phase: b.phase,
+        floors: b.floors,
+        di: b.district_id,
+        owner: b.owner_id
+      })));
+      
+      console.log(`✅ Loaded ${buildings.length} real buildings`);
+    }
   } catch (err) {
-    console.error('Failed to load stream:', err);
+    console.error('Failed to load buildings:', err);
   }
 }
 
@@ -144,41 +109,74 @@ function addStreamEvent(event) {
   const typeColors = {
     build: '#4080e0',
     trade: '#e0c040',
-    gov: '#b490e0',
-    social: '#40e080'
+    coordinate: '#b490e0',
+    explore: '#40e080',
+    spawn: '#a0a0a0'
   };
   
   const typeLabels = {
     build: 'BUILD',
     trade: 'TRADE',
-    gov: 'GOV',
-    social: 'SOCIAL'
+    coordinate: 'GOV',
+    explore: 'EXPLORE',
+    spawn: 'SPAWN'
   };
   
   const tagClass = {
     build: 'tg-b',
     trade: 'tg-t',
-    gov: 'tg-g',
-    social: 'tg-s'
+    coordinate: 'tg-g',
+    explore: 'tg-s',
+    spawn: 'tg-s'
   };
   
   const el = document.createElement('div');
   el.className = 'sm';
-  el.innerHTML = `<span class="sm-t">${time}</span><span class="sm-a" style="color:${typeColors[event.type] || '#b490e0'}">SYSTEM</span><span class="sm-m">${event.message} <span class="sm-tag ${tagClass[event.type] || 'tg-s'}">${typeLabels[event.type] || 'EVENT'}</span></span>`;
+  el.innerHTML = `<span class="sm-t">${time}</span><span class="sm-a" style="color:${event.color || '#b490e0'}">${event.agent || 'SYSTEM'}</span><span class="sm-m">${event.message} <span class="sm-tag ${tagClass[event.type] || 'tg-s'}">${typeLabels[event.type] || 'EVENT'}</span></span>`;
   
   feed.insertBefore(el, feed.firstChild);
   if (feed.children.length > 50) feed.removeChild(feed.lastChild);
 }
 
+// ===== Update Hero Stats =====
+function updateHeroStats() {
+  // Update building count from buildings array
+  if (typeof buildings !== 'undefined') {
+    const buildingCountEl = document.querySelector('.hv:nth-child(1)');
+    if (buildingCountEl) {
+      buildingCountEl.textContent = buildings.length;
+    }
+  }
+  
+  // Update agent count from agents array
+  if (typeof agents !== 'undefined') {
+    const agentCountEl = document.querySelector('.hv:nth-child(2)');
+    if (agentCountEl) {
+      agentCountEl.textContent = agents.length;
+    }
+  }
+}
+
 // ===== Initialize =====
 function initDarkCityAPI() {
   console.log('🏗️ Connecting to DARKCITY API...');
-  connectWebSocket();
-  loadAgents();
-  loadStream();
   
-  // Refresh agents every 30s (in case WebSocket drops)
-  setInterval(loadAgents, 30000);
+  // Connect to consciousness stream
+  connectStreamWebSocket();
+  
+  // Load initial data
+  loadAgents();
+  loadBuildings();
+  
+  // Refresh agents every 2s for smooth movement
+  setInterval(loadAgents, 2000);
+  
+  // Refresh buildings every 10s
+  setInterval(loadBuildings, 10000);
+  
+  // Update hero stats every 5s
+  setInterval(updateHeroStats, 5000);
+  updateHeroStats();
 }
 
 // Auto-init when DOM ready
