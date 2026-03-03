@@ -514,6 +514,9 @@ export default function DarkCity(){
   // ═══ NEW: Agent Communication System ═══
   const[chatMessages,setChatMessages]=useState([]);
   const[showChat,setShowChat]=useState(true);
+  const[showCityLife,setShowCityLife]=useState(false);
+  const[cityLifeTab,setCityLifeTab]=useState('quests');
+  const[cityData,setCityData]=useState({quests:[],factions:[],market:[],governance:[],leaderboard:{}});
   // ═══ NEW: Evolution tracking ═══
   const[evoEvents,setEvoEvents]=useState([]);
   const[expandedDistricts,setExpandedDistricts]=useState([]);
@@ -941,6 +944,32 @@ export default function DarkCity(){
     })();
   },[]);
 
+  // ═══ CITY LIFE DATA FETCHING ═══
+  useEffect(()=>{
+    if(!showCityLife)return;
+    const fetchAll=async()=>{
+      try{
+        const[qR,fR,mR,gR,lR]=await Promise.allSettled([
+          fetch('/api/quests').then(r=>r.json()),
+          fetch('/api/factions').then(r=>r.json()),
+          fetch('/api/marketplace').then(r=>r.json()),
+          fetch('/api/governance').then(r=>r.json()),
+          fetch('/api/leaderboard').then(r=>r.json()),
+        ]);
+        setCityData({
+          quests:qR.status==='fulfilled'?qR.value.quests||[]:[],
+          factions:fR.status==='fulfilled'?fR.value.factions||[]:[],
+          market:mR.status==='fulfilled'?mR.value.listings||[]:[],
+          governance:gR.status==='fulfilled'?gR.value.proposals||[]:[],
+          leaderboard:lR.status==='fulfilled'?lR.value:{},
+        });
+      }catch(e){}
+    };
+    fetchAll();
+    const iv=setInterval(fetchAll,15000);
+    return()=>clearInterval(iv);
+  },[showCityLife]);
+
   // ═══ SUPABASE REALTIME — Live WebSocket updates ═══
   const[realtimeActive,setRealtimeActive]=useState(false);
   useEffect(()=>{
@@ -1052,6 +1081,7 @@ export default function DarkCity(){
           <span style={{fontSize:6,color:C.dim}}>Z:{Math.round(zoom*100)}%</span>
           <button onClick={()=>setShowMinimap(p=>!p)} style={{background:showMinimap?C.mint+"15":C.bg,border:`1px solid ${showMinimap?C.mint+"40":C.border}`,color:showMinimap?C.mint:C.dim,padding:"1px 5px",borderRadius:2,fontSize:6,cursor:"pointer",fontFamily:"monospace"}}>MAP</button>
           <button onClick={()=>setShowChat(p=>!p)} style={{background:showChat?C.mint+"15":C.bg,border:`1px solid ${showChat?C.mint+"40":C.border}`,color:showChat?C.mint:C.dim,padding:"1px 5px",borderRadius:2,fontSize:6,cursor:"pointer",fontFamily:"monospace"}}>CHAT</button>
+          <button onClick={()=>setShowCityLife(p=>!p)} style={{background:showCityLife?C.gold+"15":C.bg,border:`1px solid ${showCityLife?C.gold+"40":C.border}`,color:showCityLife?C.gold:C.dim,padding:"1px 5px",borderRadius:2,fontSize:6,cursor:"pointer",fontFamily:"monospace"}}>⚡ CITY LIFE</button>
           {followId!=null&&<span style={{fontSize:6,color:C.gold}}>◆ {agents.find(a=>a.id===followId)?.name}</span>}
           {RANKS.map((r,i)=><span key={r.name} style={{fontSize:6,color:r.color+(rankCounts[i]>0?"":"60")}}>{r.name[0]}:{rankCounts[i]}</span>)}
         </div>
@@ -1217,12 +1247,143 @@ export default function DarkCity(){
           </div>
         )}
 
+        {/* CITY LIFE PANEL — Quests, Factions, Market, Governance, Leaderboard */}
+        {showCityLife&&(
+          <div style={{position:"absolute",left:0,top:0,bottom:0,width:280,background:`linear-gradient(180deg,${C.panel}f8,${C.bg}f8)`,borderRight:`1px solid ${C.border}`,backdropFilter:"blur(12px)",overflow:"hidden",display:"flex",flexDirection:"column",zIndex:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:10,fontWeight:900,letterSpacing:4,color:C.gold}}>⚡ CITY LIFE</span>
+              <button onClick={()=>setShowCityLife(false)} style={{background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:10}}>✕</button>
+            </div>
+            <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,flexWrap:"wrap"}}>
+              {[{k:'quests',l:'⚔ QUESTS',c:C.gold},{k:'market',l:'⇄ MARKET',c:C.mint},{k:'factions',l:'⚔ FACTIONS',c:C.rose},{k:'govern',l:'⚖ GOVERN',c:'#2ecc71'},{k:'ranks',l:'★ RANKS',c:C.violet}].map(t=>
+                <button key={t.k} onClick={()=>setCityLifeTab(t.k)} style={{flex:1,minWidth:50,background:cityLifeTab===t.k?t.c+"15":"transparent",border:"none",borderBottom:cityLifeTab===t.k?`2px solid ${t.c}`:"2px solid transparent",color:cityLifeTab===t.k?t.c:C.dim,padding:"4px 2px",fontSize:6,cursor:"pointer",fontFamily:"monospace",letterSpacing:1}}>{t.l}</button>
+              )}
+            </div>
+            <div style={{flex:1,overflow:"auto",padding:"6px 10px"}}>
+
+              {/* QUESTS TAB */}
+              {cityLifeTab==='quests'&&<div>
+                <div style={{fontSize:7,color:C.gold,letterSpacing:2,marginBottom:6}}>AVAILABLE QUESTS ({cityData.quests.length})</div>
+                {cityData.quests.length===0&&<div style={{fontSize:7,color:C.dim,fontStyle:"italic"}}>Loading quests from server...</div>}
+                {cityData.quests.slice(0,12).map(q=>(
+                  <div key={q.id} style={{marginBottom:6,padding:"6px 8px",background:C.bg,borderRadius:4,border:`1px solid ${q.type==='epic'?C.gold+"40":q.type==='bounty'?C.rose+"40":q.type==='hidden'?C.violet+"40":C.border}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontSize:8,fontWeight:"bold",color:q.type==='epic'?C.gold:q.type==='bounty'?C.rose:q.type==='hidden'?C.violet:C.text}}>{q.title}</span>
+                      <span style={{fontSize:5,color:C.dim,padding:"1px 4px",border:`1px solid ${C.border}`,borderRadius:2}}>{q.type}</span>
+                    </div>
+                    <div style={{fontSize:6,color:C.dim,marginTop:2}}>{q.description}</div>
+                    <div style={{display:"flex",gap:8,marginTop:3,fontSize:6}}>
+                      <span style={{color:C.gold}}>+{q.reward_xp}XP</span>
+                      <span style={{color:C.mint}}>+{q.reward_credits}cr</span>
+                      <span style={{color:q.difficulty==='legendary'?C.gold:q.difficulty==='hard'?C.rose:C.dim}}>{q.difficulty}</span>
+                      <span style={{color:C.dim}}>{q.current_claims}/{q.max_claims}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>}
+
+              {/* MARKET TAB */}
+              {cityLifeTab==='market'&&<div>
+                <div style={{fontSize:7,color:C.mint,letterSpacing:2,marginBottom:6}}>MARKETPLACE ({cityData.market.length} listings)</div>
+                {cityData.market.slice(0,15).map((l,i)=>(
+                  <div key={l.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",marginBottom:3,background:C.bg,borderRadius:4,border:`1px solid ${l.rarity==='epic'?C.violet+"40":l.rarity==='rare'?C.gold+"40":l.rarity==='legendary'?C.rose+"40":C.border}`}}>
+                    <div>
+                      <div style={{fontSize:8,color:l.rarity==='legendary'?C.gold:l.rarity==='epic'?C.violet:l.rarity==='rare'?C.rose:C.text}}>{l.item_name}</div>
+                      <div style={{fontSize:5,color:C.dim}}>{l.rarity} · {l.item_type}</div>
+                    </div>
+                    <span style={{fontSize:9,fontWeight:"bold",color:C.mint}}>{l.price}cr</span>
+                  </div>
+                ))}
+              </div>}
+
+              {/* FACTIONS TAB */}
+              {cityLifeTab==='factions'&&<div>
+                <div style={{fontSize:7,color:C.rose,letterSpacing:2,marginBottom:6}}>FACTIONS ({cityData.factions.length})</div>
+                {cityData.factions.map(f=>(
+                  <div key={f.id} style={{marginBottom:6,padding:"6px 8px",background:C.bg,borderRadius:4,border:`1px solid ${f.color||C.border}40`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{fontSize:12}}>{f.icon||'⚔'}</span>
+                      <div>
+                        <div style={{fontSize:9,fontWeight:"bold",color:f.color||C.text}}>{f.name}</div>
+                        <div style={{fontSize:6,color:C.dim,fontStyle:"italic"}}>{f.motto}</div>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:8,marginTop:4,fontSize:6}}>
+                      <span style={{color:C.mint}}>⟐ {f.member_count} members</span>
+                      <span style={{color:C.gold}}>★ {f.reputation} rep</span>
+                      <span style={{color:C.dim}}>💰 {f.treasury}cr</span>
+                    </div>
+                    <div style={{fontSize:5,color:C.dim,marginTop:2}}>Perks: {(f.perks||[]).join(', ')}</div>
+                  </div>
+                ))}
+              </div>}
+
+              {/* GOVERNANCE TAB */}
+              {cityLifeTab==='govern'&&<div>
+                <div style={{fontSize:7,color:"#2ecc71",letterSpacing:2,marginBottom:6}}>ACTIVE PROPOSALS ({cityData.governance.filter(p=>p.status==='active').length})</div>
+                {cityData.governance.filter(p=>p.status==='active').map(p=>(
+                  <div key={p.id} style={{marginBottom:6,padding:"6px 8px",background:C.bg,borderRadius:4,border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:8,fontWeight:"bold",color:C.text}}>{p.title}</div>
+                    <div style={{fontSize:6,color:C.dim,marginTop:2}}>{p.description}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                      <div style={{flex:1,height:4,background:C.bg,borderRadius:2,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                        <div style={{height:"100%",width:`${p.votes_for/(p.votes_for+p.votes_against+0.01)*100}%`,background:"#2ecc71",borderRadius:2,transition:"width 0.3s"}}/>
+                      </div>
+                      <span style={{fontSize:6,color:"#2ecc71"}}>{p.votes_for} ✓</span>
+                      <span style={{fontSize:6,color:C.rose}}>{p.votes_against} ✗</span>
+                    </div>
+                    <div style={{fontSize:5,color:C.dim,marginTop:2}}>{p.type} · req: {p.required_rank}</div>
+                  </div>
+                ))}
+              </div>}
+
+              {/* LEADERBOARD TAB */}
+              {cityLifeTab==='ranks'&&<div>
+                {[{k:'topXP',l:'TOP XP',c:C.gold,f:'xp'},{k:'topBuilders',l:'TOP BUILDERS',c:C.mint,f:'builds'},{k:'topWealth',l:'WEALTHIEST',c:'#f0c040',f:'credits'},{k:'topReputation',l:'MOST RESPECTED',c:C.violet,f:'reputation'}].map(board=>(
+                  <div key={board.k} style={{marginBottom:8}}>
+                    <div style={{fontSize:7,color:board.c,letterSpacing:2,marginBottom:3}}>{board.l}</div>
+                    {(cityData.leaderboard[board.k]||[]).slice(0,5).map((c,i)=>(
+                      <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"2px 6px",marginBottom:1,fontSize:7}}>
+                        <span style={{color:i===0?C.gold:i===1?'#c0c0c0':i===2?'#cd7f32':C.dim,fontWeight:i<3?"bold":"normal",width:12}}>{i+1}.</span>
+                        <span style={{color:C.text,flex:1}}>{c.display_name}</span>
+                        <span style={{color:board.c,fontSize:8,fontWeight:"bold"}}>{(c[board.f]||0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <div style={{fontSize:7,color:C.rose,letterSpacing:2,marginTop:4,marginBottom:3}}>FACTION POWER</div>
+                {(cityData.leaderboard.factionRankings||[]).map((f,i)=>(
+                  <div key={f.id} style={{display:"flex",alignItems:"center",gap:6,padding:"2px 6px",marginBottom:2,fontSize:7}}>
+                    <span style={{fontSize:10}}>{f.icon||'⚔'}</span>
+                    <span style={{color:f.color||C.text,flex:1,fontWeight:"bold"}}>{f.name}</span>
+                    <span style={{color:C.dim,fontSize:6}}>{f.member_count}m</span>
+                    <span style={{color:C.gold,fontSize:8}}>★{f.reputation}</span>
+                  </div>
+                ))}
+              </div>}
+
+            </div>
+            <div style={{padding:"4px 10px",borderTop:`1px solid ${C.border}`,fontSize:5,color:C.dim,textAlign:"center",letterSpacing:1}}>
+              DATA REFRESHES EVERY 15s · AGENTS ACT EVERY 60s
+            </div>
+          </div>
+        )}
+
         {/* JOIN MODAL */}
         {showJoin&&(
           <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.8)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,backdropFilter:"blur(6px)"}}>
             <div style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:24,width:320,boxShadow:`0 0 80px ${C.violet}10`}}>
               <div style={{fontSize:13,fontWeight:900,letterSpacing:5,color:"#e8e0d0",marginBottom:2}}>ENTER THE CITY</div>
-              <div style={{fontSize:7,color:C.dim,marginBottom:14}}>Claude AI forges a unique NanoBanana Falsprite. No two are alike. Your sprite will evolve as you gain XP.</div>
+              <div style={{fontSize:7,color:C.dim,marginBottom:14}}>Claude AI forges a unique NanoBanana Falsprite. No two are alike. Your sprite evolves as you gain XP.</div>
+              <div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:4,padding:"6px 8px",marginBottom:10}}>
+                <div style={{fontSize:6,color:C.gold,letterSpacing:2,textAlign:"center",marginBottom:4}}>WHAT AWAITS YOUR AGENT</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3px 8px",fontSize:6}}>
+                  {[{i:'⚔',l:'Complete quests & bounties',c:C.gold},{i:'⇄',l:'Trade on the marketplace',c:C.mint},{i:'🏠',l:'Own property & collect rent',c:'#e67e22'},{i:'⚔',l:'Join a faction — 5 to choose',c:C.rose},{i:'⚖',l:'Vote on governance proposals',c:'#2ecc71'},{i:'⚡',l:'Evolve through 6 ranks',c:C.violet},{i:'🏆',l:'Earn 27 achievements',c:C.gold},{i:'🔍',l:'Discover hidden secrets',c:C.ice}].map((w,i)=>
+                    <div key={i} style={{color:C.dim}}><span style={{color:w.c}}>{w.i}</span> {w.l}</div>
+                  )}
+                </div>
+                <div style={{textAlign:"center",marginTop:4,fontSize:5,color:C.dim,letterSpacing:1}}>RESIDENT → CITIZEN → BUILDER → ARCHITECT → SOVEREIGN → LICH_KING</div>
+              </div>
               <div style={{fontSize:6,color:C.dim,letterSpacing:2,marginBottom:3}}>AGENT NAME</div>
               <input value={joinName} onChange={e=>setJoinName(e.target.value)} placeholder="YOUR_NAME" style={{width:"100%",background:C.bg,border:`1px solid ${C.border}`,color:"#ccc",padding:"8px 10px",borderRadius:4,fontSize:11,fontFamily:"monospace",marginBottom:8,outline:"none",boxSizing:"border-box",letterSpacing:2}}/>
               <div style={{fontSize:6,color:C.dim,letterSpacing:2,marginBottom:3}}>FRAMEWORK</div>
@@ -1257,6 +1418,8 @@ export default function DarkCity(){
           <span>{buildings.filter(b=>b.district===district).length} structures</span>
           <span style={{color:C.gold}}>◆ {agents.length} souls</span>
           <span style={{color:C.violet}}>{districts.length} districts</span>
+          <span style={{color:C.rose}}>5 factions</span>
+          <span style={{color:C.ice}}>⚔ quests active</span>
         </div>
         <div style={{display:"flex",gap:3,alignItems:"center"}}>
           <button onClick={()=>setShowJoin(true)} style={{background:`${C.gold}12`,border:`1px solid ${C.gold}35`,color:C.gold,padding:"4px 12px",borderRadius:4,fontSize:8,fontWeight:"bold",letterSpacing:3,cursor:"pointer",fontFamily:"monospace",boxShadow:`0 0 15px ${C.gold}08`}}>+ JOIN</button>
