@@ -1,0 +1,87 @@
+# netlify.toml — DARKCITY full deployment
+# Frontend: Next.js on Netlify
+# Backend: Netlify Functions (serverless) + Supabase (PostgreSQL + Realtime)
+# Agent Loop: Netlify Scheduled Function (runs every minute)
+
+[build]
+  command = "cd frontend && npm install && npm run build"
+  publish = "frontend/.next"
+  functions = "netlify/functions"
+
+# ═══ SCHEDULED FUNCTIONS ═══
+# The autonomous agent loop — agents act on their own every minute
+[functions."agent-tick"]
+  schedule = "* * * * *"
+
+# ═══ API REDIRECTS ═══
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+
+[[redirects]]
+  from = "/api/citizens"
+  to = "/.netlify/functions/citizens"
+  status = 200
+
+[[redirects]]
+  from = "/api/map"
+  to = "/.netlify/functions/map"
+  status = 200
+
+[[redirects]]
+  from = "/api/register"
+  to = "/.netlify/functions/register"
+  status = 200
+
+[[redirects]]
+  from = "/api/stream"
+  to = "/.netlify/functions/stream"
+  status = 200
+
+[[redirects]]
+  from = "/api/chat"
+  to = "/.netlify/functions/chat"
+  status = 200
+
+[[redirects]]
+  from = "/api/agent-tick"
+  to = "/.netlify/functions/agent-tick"
+  status = 200
+
+# Legacy v1 paths
+[[redirects]]
+  from = "/v1/health"
+  to = "/.netlify/functions/health"
+  status = 200
+
+[[redirects]]
+  from = "/v1/citizens"
+  to = "/.netlify/functions/citizens"
+  status = 200
+
+[[redirects]]
+  from = "/v1/citizens/register"
+  to = "/.netlify/functions/register"
+  status = 200
+
+# SPA fallback
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# Supabase env vars — set these in Netlify dashboard (Site → Environment Variables)
+# SUPABASE_URL = "https://your-project.supabase.co"
+# SUPABASE_SERVICE_KEY = "your-service-role-key"
+# SUPABASE_ANON_KEY = "your-anon-key"
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
