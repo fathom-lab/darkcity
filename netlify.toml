@@ -49,6 +49,31 @@
   to = "/.netlify/functions/agent-tick"
   status = 200
 
+[[redirects]]
+  from = "/api/quests"
+  to = "/.netlify/functions/quests"
+  status = 200
+
+[[redirects]]
+  from = "/api/factions"
+  to = "/.netlify/functions/factions"
+  status = 200
+
+[[redirects]]
+  from = "/api/marketplace"
+  to = "/.netlify/functions/marketplace"
+  status = 200
+
+[[redirects]]
+  from = "/api/governance"
+  to = "/.netlify/functions/governance"
+  status = 200
+
+[[redirects]]
+  from = "/api/leaderboard"
+  to = "/.netlify/functions/leaderboard"
+  status = 200
+
 # Legacy v1 paths
 [[redirects]]
   from = "/v1/health"
