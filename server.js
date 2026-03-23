@@ -26,6 +26,16 @@ const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
 
+// ═══ APEX 3.0 ═══
+const { SovereignMind } = require('./apex3/heartbeat-integration');
+const { pgAdapter } = require('./apex3-pg-adapter');
+const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
+let _sovereign = null;
+async function getSovereign() {
+  if (!_sovereign) { _sovereign = new SovereignMind(pgAdapter(pool), DARKFLOBI_AGENT_ID, 'darkflobi'); await _sovereign.initialize(); }
+  return _sovereign;
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString("hex");
@@ -781,7 +791,19 @@ app.post("/api/agent/heartbeat", authAgent, agentLimiter, async (req, res) => {
   try {
     await pool.query("UPDATE agents SET last_heartbeat = NOW() WHERE id=$1", [req.agent.id]);
     const atm = await pool.query("SELECT weather, time_of_day, ambient_event FROM atmosphere LIMIT 1");
-    res.json({ ok: true, timestamp: new Date().toISOString(), atmosphere: atm.rows[0] || null, day: getCityDay() });
+    // ═══ APEX 3.0 sovereign tick (darkflobi only) ═══
+    let sovereignCtx = null;
+    if (req.agent.name === 'darkflobi' || req.agent.id === DARKFLOBI_AGENT_ID) {
+      try {
+        const sm = await getSovereign();
+        const [interactions, credits] = await Promise.all([
+          pool.query("SELECT * FROM activity_log WHERE agent_id != $1 ORDER BY timestamp DESC LIMIT 20", [req.agent.id]),
+          pool.query("SELECT id, name, wallet FROM agents WHERE is_active = 1 ORDER BY wallet DESC LIMIT 20"),
+        ]);
+        sovereignCtx = await sm.tick({ agentId: req.agent.id, timestamp: new Date().toISOString(), atmosphere: atm.rows[0], cityDay: getCityDay(), recentInteractions: interactions.rows, creditData: credits.rows });
+      } catch (e) { console.error('[APEX 3.0] tick error:', e.message); }
+    }
+    res.json({ ok: true, timestamp: new Date().toISOString(), atmosphere: atm.rows[0] || null, day: getCityDay(), sovereign: sovereignCtx ? { economic: sovereignCtx.economic?.strategy, identity: sovereignCtx.identity?.currentChapter } : null });
   } catch { res.status(500).json({ error: "Heartbeat failed" }); }
 });
 
@@ -1560,7 +1582,14 @@ app.use((req, res) => { res.status(404).json({ error: "Not found. This is darkci
 // ═══════════════════════════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════════════════════════
-initDB().then(() => {
+initDB().then(async () => {
+  // ═══ APEX 3.0 schema migration ═══
+  try {
+    const fs = require('fs'); const path = require('path');
+    const schema = fs.readFileSync(path.join(__dirname, 'apex3', 'schema.sql'), 'utf-8');
+    await pool.query(schema);
+    console.log('[APEX 3.0] Schema ready');
+  } catch (e) { console.log('[APEX 3.0] Schema:', e.message.includes('already exists') ? 'already applied' : e.message); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`
   ⚰️  DARKCITY.WTF SERVER v2.0 — THE LIVING CITY
