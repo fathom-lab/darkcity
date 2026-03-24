@@ -32,7 +32,7 @@ const config = require('./config');
 
 class SovereignMind {
   /**
-   * @param {Object} supabase - Supabase client OR pgAdapter(pool) from apex3-pg-adapter.js
+   * @param {import('@supabase/supabase-js').SupabaseClient} supabase
    * @param {string} agentId — darkflobi's citizen UUID
    * @param {string} [agentName] — for narrative generation
    */

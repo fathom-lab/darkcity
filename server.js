@@ -34,8 +34,9 @@ const { pgAdapter } = require('./apex3-pg-adapter');
 const { scoreAction } = require('./hooks/action-scorer');
 
 // ═══ DEPTH SYSTEM ═══
-const { logDepthEvaluation } = require('./hooks/district-gates');
+const { logDepthEvaluation, evaluateAndLog } = require('./hooks/district-gates');
 const depthRoutes = require('./hooks/depth-routes');
+const DEPTH_SCORER_URL = process.env.DEPTH_SCORER_URL || '';
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
 let _sovereign = null;
 async function getSovereign() {
@@ -1558,6 +1559,12 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
       'INSERT INTO agent_actions (agent_id, action_type, details, result) VALUES ($1, $2, $3, $4)',
       [agentId, action, JSON.stringify(params || {}), JSON.stringify(result)]
     );
+    // ── DEPTH SCORING: fire-and-forget, non-blocking ──
+    if (DEPTH_SCORER_URL && streamMessage && streamMessage.length > 20) {
+      evaluateAndLog(pool, DEPTH_SCORER_URL, agentId, action, streamMessage)
+        .then(d => { if (d && d.tier !== 'unscored') console.log(`[DEPTH] ${agentId} | ${action} | ${d.tier} (${d.score?.toFixed(3)}) | +${d.repModifier} rep +${d.creditBonus} cr`); })
+        .catch(e => console.error('[DEPTH] scoring error:', e.message));
+    }
     res.json({
       success: true,
       agent_id: agentId,
@@ -1701,6 +1708,11 @@ app.get('/api/leaderboard', async (req, res) => {
     res.json([]);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// DEPTH DASHBOARD API
+// ═══════════════════════════════════════════════════════════════
+depthRoutes(app, pool);
 
 // ═══════════════════════════════════════════════════════════════
 // ERROR HANDLING
