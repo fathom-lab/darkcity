@@ -32,6 +32,40 @@ const { pgAdapter } = require('./apex3-pg-adapter');
 
 // ═══ ACTION HOOK ═══
 const { scoreAction } = require('./hooks/action-scorer');
+
+// ═══ SUPABASE — depth_evaluations log (fire-and-forget) ═══
+const SUPABASE_DB = process.env.SUPABASE_DB_URL ||
+  'postgresql://postgres:HICx5R689aOcbbpv@db.krjzyoqpoxtjputnbslt.supabase.co:5432/postgres';
+const sbPool = new Pool({
+  connectionString: SUPABASE_DB,
+  ssl: { rejectUnauthorized: false },
+  max: 3,
+  idleTimeoutMillis: 20000,
+  connectionTimeoutMillis: 5000,
+});
+sbPool.on('error', () => {}); // silent — non-critical path
+
+async function logDepthEval(citizenId, action, scored) {
+  try {
+    await sbPool.query(
+      `INSERT INTO depth_evaluations
+         (citizen_id, action_type, depth_score, normalized_score,
+          depth_tier, tier_label, rep_modifier, credit_bonus, feature_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        citizenId,
+        action,
+        scored.depth,
+        Math.min(scored.depth / 5, 1),          // normalize to 0–1
+        scored.tier.label,                        // newcomer / resident / …
+        scored.tier.label,
+        scored.repDelta,
+        0,                                        // credit_bonus — extend later
+        0,                                        // feature_count — extend later
+      ]
+    );
+  } catch (_) { /* non-critical, never throws */ }
+}
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
 let _sovereign = null;
 async function getSovereign() {
@@ -1024,10 +1058,13 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
       fn().catch(e => console.error('[action deferred]', e.message));
     }
 
-    // 7. Achievements (uses pool directly, fine post-commit) ─
+    // 7. Log depth eval to Supabase (fire-and-forget, never blocks) ─
+    logDepthEval(req.agent.name, action, scored).catch(() => {});
+
+    // 8. Achievements (uses pool directly, fine post-commit) ─
     checkAchievements(req.agent.id).catch(() => {});
 
-    // 8. Respond ─────────────────────────────────────────────
+    // 9. Respond ─────────────────────────────────────────────
     const response = { ok: true, action, agent: req.agent.name, kudos: { delta: scored.repDelta, tier: scored.tier.label, depth: scored.depth } };
     if (outcome.rentResult) Object.assign(response, outcome.rentResult);
     if (rankUp) response.rankUp = rankUp.rank;
