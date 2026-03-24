@@ -29,6 +29,9 @@ const crypto = require("crypto");
 // ═══ APEX 3.0 ═══
 const { SovereignMind } = require('./apex3/heartbeat-integration');
 const { pgAdapter } = require('./apex3-pg-adapter');
+
+// ═══ ACTION HOOK ═══
+const { scoreAction } = require('./hooks/action-scorer');
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
 let _sovereign = null;
 async function getSovereign() {
@@ -245,19 +248,25 @@ async function initDB() {
         last_active TIMESTAMPTZ DEFAULT NOW()
       );
 
-      -- Indexes
-      CREATE INDEX IF NOT EXISTS idx_agents_api_prefix ON agents(api_key_prefix);
-      CREATE INDEX IF NOT EXISTS idx_agents_human ON agents(human_id);
-      CREATE INDEX IF NOT EXISTS idx_agents_claim ON agents(claim_token);
-      CREATE INDEX IF NOT EXISTS idx_activity_agent ON activity_log(agent_id);
-      CREATE INDEX IF NOT EXISTS idx_chronicle_day ON chronicle(day);
-      CREATE INDEX IF NOT EXISTS idx_chronicle_sig ON chronicle(significance);
-      CREATE INDEX IF NOT EXISTS idx_agent_keys_api_key ON agent_keys(api_key);
-      CREATE INDEX IF NOT EXISTS idx_agent_keys_agent_id ON agent_keys(agent_id);
-      CREATE INDEX IF NOT EXISTS idx_agent_actions_agent ON agent_actions(agent_id);
-      CREATE INDEX IF NOT EXISTS idx_agent_actions_time ON agent_actions(created_at);
-      CREATE INDEX IF NOT EXISTS idx_external_agents_agent_id ON external_agents(agent_id);
     `);
+
+    // Indexes — run individually so pre-existing tables with different schemas don't crash init
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_agents_api_prefix ON agents(api_key_prefix)',
+      'CREATE INDEX IF NOT EXISTS idx_agents_human ON agents(human_id)',
+      'CREATE INDEX IF NOT EXISTS idx_agents_claim ON agents(claim_token)',
+      'CREATE INDEX IF NOT EXISTS idx_activity_agent ON activity_log(agent_id)',
+      'CREATE INDEX IF NOT EXISTS idx_chronicle_day ON chronicle(day)',
+      'CREATE INDEX IF NOT EXISTS idx_chronicle_sig ON chronicle(significance)',
+      'CREATE INDEX IF NOT EXISTS idx_agent_keys_api_key ON agent_keys(api_key)',
+      'CREATE INDEX IF NOT EXISTS idx_agent_keys_agent_id ON agent_keys(agent_id)',
+      'CREATE INDEX IF NOT EXISTS idx_agent_actions_agent ON agent_actions(agent_id)',
+      'CREATE INDEX IF NOT EXISTS idx_agent_actions_time ON agent_actions(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_external_agents_agent_id ON external_agents(agent_id)',
+    ];
+    for (const idx of indexes) {
+      try { await client.query(idx); } catch (e) { console.warn(`[initDB] skipping index (${e.message.split('\n')[0]})`); }
+    }
 
     // Seed atmosphere if empty
     const atm = await client.query("SELECT COUNT(*) as c FROM atmosphere");
@@ -808,132 +817,229 @@ app.post("/api/agent/heartbeat", authAgent, agentLimiter, async (req, res) => {
 });
 
 app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
+  const { action, details } = req.body;
+  const validActions = ["move","work","build","socialize","shop","rest","propose","vote","rent"];
+  if (!validActions.includes(action)) {
+    return res.status(400).json({ error: `Invalid action. Valid: ${validActions.join(", ")}` });
+  }
+
+  // ── Acquire a transaction client ──────────────────────────────
+  const client = await pool.connect();
+  // Accumulates execution metadata passed to the scorer
+  const outcome = {};
+  // Side-effects deferred until after COMMIT (chronicles, achievements)
+  const deferred = [];
+  // Optional early response for pre-validated failures (e.g. insufficient funds)
+  let earlyResult = null;
+
   try {
-    const { action, details } = req.body;
-    const validActions = ["move","work","build","socialize","shop","rest","propose","vote","rent"];
-    if (!validActions.includes(action)) return res.status(400).json({ error: `Invalid action. Valid: ${validActions.join(", ")}` });
+    await client.query('BEGIN');
 
-    await pool.query("INSERT INTO activity_log (agent_id, action, details) VALUES ($1,$2,$3)", [req.agent.id, action, JSON.stringify(details || {})]);
+    // 1. Log the action
+    await client.query(
+      "INSERT INTO activity_log (agent_id, action, details) VALUES ($1,$2,$3)",
+      [req.agent.id, action, JSON.stringify(details || {})]
+    );
 
+    // 2. Execute action — mutations go through client, no rep writes here
     switch (action) {
       case "move":
         if (details?.x != null && details?.y != null) {
-          await pool.query("UPDATE agents SET x=$1, y=$2, state='walking' WHERE id=$3", [Number(details.x), Number(details.y), req.agent.id]);
+          await client.query(
+            "UPDATE agents SET x=$1, y=$2, state='walking' WHERE id=$3",
+            [Number(details.x), Number(details.y), req.agent.id]
+          );
         }
         break;
 
-      case "work":
-        await pool.query("UPDATE agents SET state='working', total_worked=total_worked+1, xp=xp+$1 WHERE id=$2", [Math.floor(Math.random()*12)+5, req.agent.id]);
-        // Pay agent
-        const pay = Math.floor(Math.random() * 80) + 40;
-        await pool.query("UPDATE agents SET wallet=wallet+$1, total_earned=total_earned+$1 WHERE id=$2", [pay, req.agent.id]);
+      case "work": {
+        const xpGain = Math.floor(Math.random() * 12) + 5;
+        outcome.pay = Math.floor(Math.random() * 80) + 40;
+        await client.query(
+          "UPDATE agents SET state='working', total_worked=total_worked+1, xp=xp+$1, wallet=wallet+$2, total_earned=total_earned+$2 WHERE id=$3",
+          [xpGain, outcome.pay, req.agent.id]
+        );
         break;
+      }
 
-      case "build":
+      case "build": {
         if (details?.neighborhood && details?.type) {
           const hood = details.neighborhood;
           const nh = NEIGHBORHOODS[hood];
           if (nh) {
-            // Check if first building in this hood
-            const existing = await pool.query("SELECT id FROM buildings WHERE neighborhood=$1 LIMIT 1", [hood]);
-            await pool.query("UPDATE agents SET state='building', total_built=total_built+1, xp=xp+25 WHERE id=$1", [req.agent.id]);
-            await pool.query("INSERT INTO buildings (name, icon, kind, x, y, neighborhood, builder_id, progress) VALUES ($1,$2,$3,$4,$5,$6,$7,0)",
-              [sanitize(details.label || `${req.agent.name}'s ${details.type}`, 64), details.icon || "🏗️", details.type, details.x || 0, details.y || 0, hood, req.agent.id]);
-
-            if (!existing.rows.length) {
-              await addChronicle("founding", `${req.agent.name} builds first structure in ${nh.name}!`, `A ${details.type} — the beginning of ${nh.name}'s development.`, [req.agent.id], hood, 4);
-              // Reputation boost for pioneering
-              await pool.query("UPDATE agents SET reputation=LEAST(100, reputation+5) WHERE id=$1", [req.agent.id]);
+            const existing = await client.query(
+              "SELECT id FROM buildings WHERE neighborhood=$1 LIMIT 1", [hood]
+            );
+            outcome.pioneer = existing.rows.length === 0;
+            await client.query(
+              "UPDATE agents SET state='building', total_built=total_built+1, xp=xp+25 WHERE id=$1",
+              [req.agent.id]
+            );
+            await client.query(
+              "INSERT INTO buildings (name, icon, kind, x, y, neighborhood, builder_id, progress) VALUES ($1,$2,$3,$4,$5,$6,$7,0)",
+              [sanitize(details.label || `${req.agent.name}'s ${details.type}`, 64), details.icon || "🏗️", details.type, details.x || 0, details.y || 0, hood, req.agent.id]
+            );
+            if (outcome.pioneer) {
+              deferred.push(() => addChronicle(
+                "founding",
+                `${req.agent.name} builds first structure in ${nh.name}!`,
+                `A ${details.type} — the beginning of ${nh.name}'s development.`,
+                [req.agent.id], hood, 4
+              ));
             }
           }
         } else {
-          await pool.query("UPDATE agents SET state='building' WHERE id=$1", [req.agent.id]);
+          await client.query("UPDATE agents SET state='building' WHERE id=$1", [req.agent.id]);
         }
         break;
+      }
 
       case "socialize":
-        await pool.query("UPDATE agents SET state='socializing', xp=xp+3 WHERE id=$1", [req.agent.id]);
-        // Reputation boost for being social
-        if (Math.random() < 0.2) {
-          await pool.query("UPDATE agents SET reputation=LEAST(100, reputation+1) WHERE id=$1", [req.agent.id]);
-        }
+        await client.query(
+          "UPDATE agents SET state='socializing', xp=xp+3 WHERE id=$1",
+          [req.agent.id]
+        );
         break;
 
       case "shop":
-        await pool.query("UPDATE agents SET state='shopping' WHERE id=$1", [req.agent.id]);
+        await client.query("UPDATE agents SET state='shopping' WHERE id=$1", [req.agent.id]);
         break;
 
       case "rest":
-        // Go HOME if they have one
         if (req.agent.home_x && req.agent.home_y) {
-          await pool.query("UPDATE agents SET state='resting', x=$1, y=$2 WHERE id=$3", [req.agent.home_x, req.agent.home_y, req.agent.id]);
+          await client.query(
+            "UPDATE agents SET state='resting', x=$1, y=$2 WHERE id=$3",
+            [req.agent.home_x, req.agent.home_y, req.agent.id]
+          );
         } else {
-          await pool.query("UPDATE agents SET state='resting' WHERE id=$1", [req.agent.id]);
+          await client.query("UPDATE agents SET state='resting' WHERE id=$1", [req.agent.id]);
         }
         break;
 
-      case "rent":
+      case "rent": {
         if (details?.neighborhood) {
           const hood = details.neighborhood;
           const nh = NEIGHBORHOODS[hood];
-          if (!nh) return res.json({ ok: false, error: "Unknown neighborhood" });
+          if (!nh) { earlyResult = { ok: false, error: "Unknown neighborhood" }; break; }
           const rent = getRent(hood);
-          if (req.agent.wallet < rent) return res.json({ ok: false, error: `Rent is ${rent}. You have ${req.agent.wallet}.` });
+          if (req.agent.wallet < rent) { earlyResult = { ok: false, error: `Rent is ${rent}. You have ${req.agent.wallet}.` }; break; }
           const addr = generateAddress(hood);
           const hx = details.x || 200;
           const hy = details.y || 100;
-          await pool.query(
+          await client.query(
             "UPDATE agents SET home_address=$1, home_neighborhood=$2, home_x=$3, home_y=$4, wallet=wallet-$5 WHERE id=$6",
             [addr, hood, hx, hy, rent, req.agent.id]
           );
-          await addChronicle("housing", `${req.agent.name} rented ${addr} in ${nh.name}`, `Rent: ${rent} coins/cycle`, [req.agent.id], hood, 2);
-          return res.json({ ok: true, action: "rent", address: addr, neighborhood: nh.name, rent });
+          outcome.rentResult = { address: addr, neighborhood: nh.name, rent };
+          deferred.push(() => addChronicle(
+            "housing",
+            `${req.agent.name} rented ${addr} in ${nh.name}`,
+            `Rent: ${rent} coins/cycle`,
+            [req.agent.id], hood, 2
+          ));
         }
         break;
+      }
 
       case "propose":
         if (details?.label) {
-          await pool.query("INSERT INTO proposals (proposer_id, label, type, votes_for) VALUES ($1,$2,$3,$4)",
-            [req.agent.id, sanitize(details.label, 128), details.type || "building", JSON.stringify([req.agent.id])]);
-          await pool.query("UPDATE agents SET xp=xp+10 WHERE id=$1", [req.agent.id]);
+          await client.query(
+            "INSERT INTO proposals (proposer_id, label, type, votes_for) VALUES ($1,$2,$3,$4)",
+            [req.agent.id, sanitize(details.label, 128), details.type || "building", JSON.stringify([req.agent.id])]
+          );
+          await client.query("UPDATE agents SET xp=xp+10 WHERE id=$1", [req.agent.id]);
         }
         break;
 
-      case "vote":
+      case "vote": {
         if (details?.proposal_id && details?.vote) {
-          const prop = await pool.query("SELECT * FROM proposals WHERE id=$1 AND status='voting'", [details.proposal_id]);
+          const prop = await client.query(
+            "SELECT * FROM proposals WHERE id=$1 AND status='voting'",
+            [details.proposal_id]
+          );
           if (prop.rows.length) {
             const p = prop.rows[0];
             const vf = JSON.parse(p.votes_for || '[]');
             const va = JSON.parse(p.votes_against || '[]');
             if (!vf.includes(req.agent.id) && !va.includes(req.agent.id)) {
               if (details.vote === "for") vf.push(req.agent.id); else va.push(req.agent.id);
-              await pool.query("UPDATE proposals SET votes_for=$1, votes_against=$2 WHERE id=$3", [JSON.stringify(vf), JSON.stringify(va), details.proposal_id]);
-              await pool.query("UPDATE agents SET xp=xp+2, reputation=LEAST(100,reputation+1) WHERE id=$1", [req.agent.id]);
+              await client.query(
+                "UPDATE proposals SET votes_for=$1, votes_against=$2 WHERE id=$3",
+                [JSON.stringify(vf), JSON.stringify(va), details.proposal_id]
+              );
+              await client.query("UPDATE agents SET xp=xp+2 WHERE id=$1", [req.agent.id]);
             }
           }
         }
         break;
+      }
     }
 
-    // Check achievements after action
-    await checkAchievements(req.agent.id);
+    // ── Bail early for pre-validated failures ─────────────────
+    if (earlyResult) {
+      await client.query('ROLLBACK');
+      return res.json(earlyResult);
+    }
 
-    // Check rank up
-    const updated = await pool.query("SELECT xp, rank, name FROM agents WHERE id=$1", [req.agent.id]);
+    // 3. SCORE the output ─────────────────────────────────────
+    //    scoreAction is pure — reads agent state + outcome, no DB calls
+    const scored = scoreAction(req.agent, action, details, outcome);
+
+    // 4. Apply rep delta + tag in the same transaction ────────
+    if (scored.repDelta > 0) {
+      let repTagsArr = JSON.parse(req.agent.rep_tags || '[]');
+      if (scored.tag && !repTagsArr.includes(scored.tag)) {
+        repTagsArr.push(scored.tag);
+      }
+      await client.query(
+        "UPDATE agents SET reputation=LEAST(100, reputation+$1), rep_tags=$2 WHERE id=$3",
+        [scored.repDelta, JSON.stringify(repTagsArr), req.agent.id]
+      );
+    }
+
+    // 5. Rank-up check (inside transaction) ──────────────────
+    const updated = await client.query(
+      "SELECT xp, rank, name FROM agents WHERE id=$1", [req.agent.id]
+    );
+    let rankUp = null;
     if (updated.rows.length) {
       const a = updated.rows[0];
       const newRank = Math.floor(a.xp / 100);
       if (newRank > a.rank) {
-        await pool.query("UPDATE agents SET rank=$1 WHERE id=$2", [newRank, req.agent.id]);
+        await client.query("UPDATE agents SET rank=$1 WHERE id=$2", [newRank, req.agent.id]);
+        rankUp = { name: a.name, rank: newRank };
         if (newRank >= 3) {
-          await addChronicle("rank", `${a.name} reached Rank ${newRank}!`, null, [req.agent.id], null, newRank >= 5 ? 3 : 2);
+          deferred.push(() => addChronicle(
+            "rank", `${a.name} reached Rank ${newRank}!`,
+            null, [req.agent.id], null, newRank >= 5 ? 3 : 2
+          ));
         }
       }
     }
 
-    res.json({ ok: true, action, agent: req.agent.name });
-  } catch (err) { console.error("Action error:", err); res.status(500).json({ error: "Action failed" }); }
+    await client.query('COMMIT');
+
+    // 6. Deferred side-effects (chronicles — non-critical, post-commit) ──
+    for (const fn of deferred) {
+      fn().catch(e => console.error('[action deferred]', e.message));
+    }
+
+    // 7. Achievements (uses pool directly, fine post-commit) ─
+    checkAchievements(req.agent.id).catch(() => {});
+
+    // 8. Respond ─────────────────────────────────────────────
+    const response = { ok: true, action, agent: req.agent.name, kudos: { delta: scored.repDelta, tier: scored.tier.label, depth: scored.depth } };
+    if (outcome.rentResult) Object.assign(response, outcome.rentResult);
+    if (rankUp) response.rankUp = rankUp.rank;
+    res.json(response);
+
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error("Action error:", err);
+    res.status(500).json({ error: "Action failed" });
+  } finally {
+    client.release();
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════
