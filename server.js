@@ -33,39 +33,9 @@ const { pgAdapter } = require('./apex3-pg-adapter');
 // ═══ ACTION HOOK ═══
 const { scoreAction } = require('./hooks/action-scorer');
 
-// ═══ SUPABASE — depth_evaluations log (fire-and-forget) ═══
-const SUPABASE_DB = process.env.SUPABASE_DB_URL ||
-  'postgresql://postgres:HICx5R689aOcbbpv@db.krjzyoqpoxtjputnbslt.supabase.co:5432/postgres';
-const sbPool = new Pool({
-  connectionString: SUPABASE_DB,
-  ssl: { rejectUnauthorized: false },
-  max: 3,
-  idleTimeoutMillis: 20000,
-  connectionTimeoutMillis: 5000,
-});
-sbPool.on('error', () => {}); // silent — non-critical path
-
-async function logDepthEval(citizenId, action, scored) {
-  try {
-    await sbPool.query(
-      `INSERT INTO depth_evaluations
-         (citizen_id, action_type, depth_score, normalized_score,
-          depth_tier, tier_label, rep_modifier, credit_bonus, feature_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [
-        citizenId,
-        action,
-        scored.depth,
-        Math.min(scored.depth / 5, 1),          // normalize to 0–1
-        scored.tier.label,                        // newcomer / resident / …
-        scored.tier.label,
-        scored.repDelta,
-        0,                                        // credit_bonus — extend later
-        0,                                        // feature_count — extend later
-      ]
-    );
-  } catch (_) { /* non-critical, never throws */ }
-}
+// ═══ DEPTH SYSTEM ═══
+const { logDepthEvaluation } = require('./hooks/district-gates');
+const depthRoutes = require('./hooks/depth-routes');
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
 let _sovereign = null;
 async function getSovereign() {
@@ -1058,8 +1028,19 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
       fn().catch(e => console.error('[action deferred]', e.message));
     }
 
-    // 7. Log depth eval to Supabase (fire-and-forget, never blocks) ─
-    logDepthEval(req.agent.name, action, scored).catch(() => {});
+    // 7. Log depth eval to Railway Postgres (fire-and-forget) ─
+    logDepthEvaluation(pool, {
+      citizen_id: req.agent.name,
+      action_type: action,
+      depth_score: scored.depth,
+      normalized_score: Math.min(scored.depth / 5, 1),
+      depth_tier: (() => { const t = scored.tier.label; if (t === 'newcomer') return 'shallow'; if (t === 'resident') return 'moderate'; if (t === 'veteran' || t === 'elder') return 'deep'; return 'exceptional'; })(),
+      tier_label: (() => { const t = scored.tier.label; if (t === 'newcomer') return 'SURFACE RECALL'; if (t === 'resident') return 'MODERATE DEPTH'; if (t === 'veteran' || t === 'elder') return 'DEEP PROCESSING'; return 'SOVEREIGN INSIGHT'; })(),
+      rep_modifier: scored.repDelta,
+      credit_bonus: 0,
+      feature_count: 0,
+      raw_output: details ? JSON.stringify(details).substring(0, 1000) : '',
+    }).catch(() => {});
 
     // 8. Achievements (uses pool directly, fine post-commit) ─
     checkAchievements(req.agent.id).catch(() => {});
@@ -1078,6 +1059,11 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
     client.release();
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// DEPTH INTELLIGENCE API (public, no auth)
+// ═══════════════════════════════════════════════════════════════
+depthRoutes(app, pool);
 
 // ═══════════════════════════════════════════════════════════════
 // HUMAN DASHBOARD API
