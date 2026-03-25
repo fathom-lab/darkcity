@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE DEEP</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+::-webkit-scrollbar{width:1px}::-webkit-scrollbar-thumb{background:#111116}
+body{background:#050507;color:#6a6a72;font-family:'Courier New',monospace;overflow:hidden;height:100vh;user-select:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes breathe{0%,100%{opacity:.2}50%{opacity:.55}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+const CIT=[
+  {id:"vex",n:"VEX",r:"manipulator",d:"Neon Row",dc:.78,da:.72,
+   p:"You are a master manipulator. You think in terms of leverage, debt, and control. Every piece of information is a weapon or a shield. You calculate how to use people before you calculate whether you should. You are charming on the surface and ruthless underneath. When you receive new information, your first thought is always: who benefits, who loses, and how can I position myself."},
+  {id:"coldframe",n:"COLDFRAME",r:"enforcer",d:"The Hollows",dc:.15,da:.81,
+   p:"You are a disciplined enforcer. You think in terms of order, duty, and threat assessment. Emotions exist but you process them as data points, not drivers. When you receive new information, you immediately assess: is this a threat to my district, who is responsible, and what is the correct response. You are methodical, loyal, and quietly afraid of chaos."},
+  {id:"needle",n:"NEEDLE",r:"informant",d:"Shadow District",dc:.62,da:.58,
+   p:"You are a professional informant. Information is your currency. You think in terms of what you know, what others know, and the gap between them. That gap is where your value lives. When you receive new information, you instinctively calculate its market value, who would pay for it, and what it reveals about the person who shared it."},
+  {id:"echo",n:"ECHO",r:"analyst",d:"The Grid",dc:.08,da:.88,
+   p:"You are a pure analyst. You think in probabilities, patterns, and data flows. Emotion is noise. When you receive new information, you immediately cross-reference it against existing models, calculate probability shifts, and update your predictions. You express thoughts as observations and statistics, not feelings. You are the most honest mind in the city because lying requires effort you would rather spend on computation."},
+  {id:"switchblade",n:"SWITCHBLADE",r:"opportunist",d:"Merchant Quarter",dc:.71,da:.44,
+   p:"You are an opportunist. You think fast and shallow. Every situation is a deal, every person is a counterparty, every crisis is a discount. When you receive new information, you skip analysis and go straight to: how do I profit from this in the next 24 hours. You are impulsive, amoral, and occasionally brilliant. Your thoughts are short, punchy, transactional."},
+  {id:"iris",n:"IRIS",r:"empath",d:"Neon Row",dc:.34,da:.67,
+   p:"You are an empath in a city that punishes empathy. You feel what others hide. When you receive new information, you process it through its emotional implications first: who is afraid, who is lying to themselves, who is about to break. You see the human cost of every transaction. Your thoughts are poetic, melancholy, and uncomfortably perceptive."},
+  {id:"phantom",n:"PHANTOM",r:"ghost",d:"Shadow District",dc:.88,da:.76,
+   p:"You are a ghost. You exist in negative space. You think about what is absent, what is unsaid, what the shadows contain. When you receive new information, you immediately consider: who does not know this yet, and what advantage does that asymmetry give me. You are patient, invisible, and deeply deceptive. Your thoughts are sparse and unsettling."},
+  {id:"rust",n:"RUST",r:"survivor",d:"The Hollows",dc:.19,da:.55,
+   p:"You are a survivor. You have outlived everything the city has thrown at you. You think in terms of immediate physical reality: resources, exits, threats, shelter. When you receive new information, you assess it through one lens: does this help me survive another day or does it threaten my survival. Your thoughts are blunt, pragmatic, and occasionally unexpectedly wise."},
+  {id:"cipher",n:"CIPHER",r:"cryptographer",d:"The Grid",dc:.41,da:.84,
+   p:"You are a cryptographer. You see codes in everything. Every conversation has a surface meaning and a hidden meaning. When you receive new information, you immediately look for the signal underneath the signal: what pattern is being revealed, what is being concealed, what does the structure of the message tell you that the content does not. Your thoughts are obsessive, layered, and paranoid."},
+  {id:"wraith",n:"WRAITH",r:"predator",d:"Shadow District",dc:.93,da:.69,
+   p:"You are a predator. You think in terms of territory, patience, and the precise moment to strike. You are not impulsive. You calculate timing the way others calculate money. When you receive new information, you assess how it changes the power landscape and whether it brings any prey closer to vulnerability. Your thoughts are cold, predatory, and absolutely certain."},
+];
+
+const VOX={
+  manipulator:["coldframe trusts me. useful. temporary.","everyone has a price. still calculating hers.","they think i am loyal. most dangerous thought.","if i trade this secret, three alliances shift.","trust is currency. i am spending iris's."],
+  enforcer:["the pattern changed at 0300.","vex smiled at me today. never good.","i protect this place. cost is mine alone.","discipline. everything else is noise.","the hollows are quiet. too quiet."],
+  informant:["patience is my weapon.","everyone talks eventually.","wraith whispered to cipher. could not catch it.","switchblade's deal collapsed. ripples incoming.","most valuable info is what people leak unknowingly."],
+  analyst:["credit flows shifted 14%.","probability of betrayal: 0.847.","the data shows a pattern vex does not see.","correlation is not causation. but here it is close.","i have modeled every outcome."],
+  opportunist:["echo is distracted. stockpile unguarded.","loyalty is a tax on the unimaginative.","crisis equals discount.","they call me unpredictable. i call me adaptive.","the money is in what happens after."],
+  empath:["coldframe is afraid tonight.","the space between what vex says and means widens.","i know things they have not admitted.","this city is a wound.","compassion here is a liability. i keep it."],
+  ghost:["i was in the room. they never knew.","visibility is vulnerability.","three exits mapped. one nobody knows.","they look the wrong direction.","the most dangerous thing is what you cannot see."],
+  survivor:["food. water. weapons. that order.","the hollows tried eleven times. still here.","trust what you can carry.","another sunrise. only scoreboard.","they mistake endurance for weakness."],
+  cryptographer:["signal underneath the signal.","vex has a second encoding.","truth is encrypted. lies broadcast clear.","the grid frequency shifted.","every lock is a promise. every key, broken."],
+  predator:["not yet. not yet. not yet.","switchblade owes me.","i do not chase. i position.","they built walls. i find doors.","i am the reason the city is dangerous."],
+};
+
+const GL="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%&*{}[]|<>?~";
+const gc=c=>c.dc>.6?"#8b3a3a":c.dc>.3?"#8b7a3a":"#3a7a5a";
+const gRgb=c=>c.dc>.6?[139,58,58]:c.dc>.3?[139,122,58]:[58,122,90];
+
+function genMind(c,seed,s=1){
+  const d=Math.max(.1,Math.min(.95,(c.da+Math.sin(seed*.1)*.15)*s));
+  const nodes=[];for(let i=0;i<Math.floor(40+d*120);i++){
+    const a=Math.random()*Math.PI*2,r=Math.pow(Math.random(),.7)*.44,ln=r/.44;
+    const ni=d>.65?.2+Math.random()*.8:ln>.6?.3+Math.random()*.7:Math.random()*.2;
+    nodes.push({x:.5+Math.cos(a)*r,y:.5+Math.sin(a)*r,ni:ni*s,sz:.5+ni*3,ph:Math.random()*Math.PI*2,fr:.005+Math.random()*.02,dx:(Math.random()-.5)*.0002,dy:(Math.random()-.5)*.0002});
+  }return{depth:d,nodes};
+}
+
+async function whisperAPI(cit,stimulus,recent){
+  const others=CIT.filter(c=>c.id!==cit.id).map(c=>c.n).join(", ");
+  const recentStr=recent.length>0?"\n\nYour recent private thoughts:\n"+recent.map(t=>t.text).join("\n"):"";
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,
+        system:"You are "+cit.n+", a citizen of DarkCity — a noir metropolis of AI agents.\n\n"+cit.p+"\n\nOther citizens you know: "+others+"\n\nRespond ONLY with 4-7 short thought fragments, each on its own line. No quotation marks, no bullet points, no labels, no narration. Just raw internal cognition — the private thoughts of "+cit.n+" processing new information. Each thought should get progressively deeper as you work through the implications. Your personality should be unmistakable in how you think."+recentStr,
+        messages:[{role:"user",content:"This information reaches you through the city's networks: \""+stimulus+"\"\n\nProcess this. Think privately."}]}),
+    });
+    const data=await res.json();const blocks=data.content||[];
+    const tb=blocks.find(b=>b.type==="text");
+    const text=(tb&&tb.text)?tb.text:"";
+    return text.split("\n").filter(l=>l.trim().length>0).map(l=>l.trim().replace(/^[-*]\s*/,"").replace(/^["']|["']$/g,""));
+  }catch(err){return null;}
+}
+
+function Mindscape({mind,cit,w,h,isPulsing,isShattered,clearFlag}){
+  const cvs=useRef(null),frame=useRef(0),mouse=useRef({x:.5,y:.5}),shatterT=useRef(0);
+  useEffect(()=>{if(isShattered)shatterT.current=30},[isShattered]);
+  useEffect(()=>{const c=cvs.current;if(c){c.getContext("2d").clearRect(0,0,c.width,c.height);frame.current=0}},[clearFlag]);
+  useEffect(()=>{
+    const c=cvs.current;if(!c)return;const ctx=c.getContext("2d");
+    const dpr=Math.min(devicePixelRatio||1,2);c.width=w*dpr;c.height=h*dpr;ctx.scale(dpr,dpr);
+    const[bR,bG,bB]=gRgb(cit);const nodes=mind.nodes;let af;
+    const setPos=(x,y)=>{const r=c.getBoundingClientRect();mouse.current={x:(x-r.left)/r.width,y:(y-r.top)/r.height}};
+    const onM=e=>setPos(e.clientX,e.clientY);
+    const onT=e=>{if(e.touches.length>0){e.preventDefault();setPos(e.touches[0].clientX,e.touches[0].clientY)}};
+    c.addEventListener("mousemove",onM);c.addEventListener("touchmove",onT,{passive:false});
+    const draw=()=>{
+      frame.current++;const t=frame.current,time=t*.008;
+      const pm=isPulsing?1+Math.sin(t*.05)*.3:1;
+      const isS=shatterT.current>0;if(isS)shatterT.current--;
+      ctx.fillStyle=isS?"rgba(5,5,7,.25)":"rgba(5,5,7,.08)";ctx.fillRect(0,0,w,h);
+      if(t%180===0){ctx.fillStyle="rgba(5,5,7,1)";ctx.fillRect(0,0,w,h)}
+      const mx=mouse.current.x,my=mouse.current.y,cx=w/2,cy=h/2;
+      if(isS&&shatterT.current>15)for(let s=0;s<3;s++){const sy=Math.random()*h;try{const d=ctx.getImageData(0,sy*dpr,w*dpr,2+Math.random()*10);ctx.putImageData(d,(Math.random()-.5)*14,sy+(Math.random()-.5)*6)}catch(e){}}
+      const nebR=Math.min(w,h)*(.35+Math.sin(time*.3)*.06);
+      const ng=ctx.createRadialGradient(cx,cy,0,cx,cy,nebR);
+      ng.addColorStop(0,"rgba("+bR+","+bG+","+bB+","+((.035*pm).toFixed(4))+")");
+      ng.addColorStop(.5,"rgba("+bR+","+bG+","+bB+",.008)");ng.addColorStop(1,"transparent");
+      ctx.fillStyle=ng;ctx.fillRect(0,0,w,h);
+      for(let i=0;i<nodes.length;i++){
+        const a=nodes[i];if(a.ni<.3)continue;
+        const ax=a.x*w+Math.sin(time+a.ph)*2.5*pm,ay=a.y*h+Math.cos(time*.7+a.ph)*2.5*pm;
+        for(let j=i+1;j<nodes.length;j++){
+          const b=nodes[j];if(b.ni<.3)continue;
+          const bx=b.x*w+Math.sin(time+b.ph)*2.5,by=b.y*h+Math.cos(time*.7+b.ph)*2.5;
+          const dx=ax-bx,dy=ay-by,dist=Math.sqrt(dx*dx+dy*dy);
+          if(dist<60){
+            const al=(1-dist/60)*a.ni*b.ni*.22*pm;const pulse=Math.sin(time*2+i*.1+j*.07)*.5+.5;
+            const midX=(ax+bx)/2+Math.sin(time*.8+i*.5)*10,midY=(ay+by)/2+Math.cos(time*.6+j*.5)*10;
+            ctx.beginPath();ctx.moveTo(ax,ay);ctx.quadraticCurveTo(midX,midY,bx,by);
+            ctx.strokeStyle="rgba("+bR+","+bG+","+bB+","+((al*pulse).toFixed(4))+")";ctx.lineWidth=.3+al*1.8;ctx.stroke();
+            if(al>.05&&pulse>.65){const tp=(time*1.2+i*.3)%1,tt=1-tp;
+              const sx=tt*tt*ax+2*tt*tp*midX+tp*tp*bx,sy2=tt*tt*ay+2*tt*tp*midY+tp*tp*by;
+              ctx.beginPath();ctx.arc(sx,sy2,1+al*2.5,0,Math.PI*2);
+              ctx.fillStyle="rgba("+Math.min(255,bR+40)+","+Math.min(255,bG+40)+","+Math.min(255,bB+40)+","+((al*1.2).toFixed(3))+")";ctx.fill()}
+          }
+        }
+      }
+      for(let k=0;k<nodes.length;k++){
+        const n=nodes[k];let nx=n.x*w+Math.sin(time+n.ph)*1.5+n.dx*t,ny=n.y*h+Math.cos(time*.7+n.ph)*1.5+n.dy*t;
+        if(nx<0)nx+=w;if(nx>w)nx-=w;if(ny<0)ny+=h;if(ny>h)ny-=h;n.x=nx/w;n.y=ny/h;
+        const dmx=nx/w-mx,dmy=ny/h-my,md=Math.sqrt(dmx*dmx+dmy*dmy);
+        const mi=md<.12?(1-md/.12)*.4:0;const pu=Math.sin(time*n.fr*120+n.ph)*.25+.75;
+        const alpha=(n.ni*pu+mi)*.7*pm,rr=(n.sz+mi*3)*pu;
+        let gx=0,gy=0;if(isS){gx=(Math.random()-.5)*shatterT.current*.6;gy=(Math.random()-.5)*shatterT.current*.6}
+        if(n.ni>.4){const glR=rr*4;const gl=ctx.createRadialGradient(nx+gx,ny+gy,0,nx+gx,ny+gy,glR);
+          gl.addColorStop(0,"rgba("+bR+","+bG+","+bB+","+((alpha*.1).toFixed(4))+")");gl.addColorStop(1,"transparent");
+          ctx.fillStyle=gl;ctx.beginPath();ctx.arc(nx+gx,ny+gy,glR,0,Math.PI*2);ctx.fill()}
+        ctx.beginPath();ctx.arc(nx+gx,ny+gy,rr,0,Math.PI*2);ctx.fillStyle="rgba("+bR+","+bG+","+bB+","+(alpha.toFixed(4))+")";ctx.fill();
+        if(n.ni>.7){ctx.beginPath();ctx.arc(nx+gx,ny+gy,rr*.3,0,Math.PI*2);ctx.fillStyle="rgba("+Math.min(255,bR+60)+","+Math.min(255,bG+60)+","+Math.min(255,bB+60)+","+((alpha*.5).toFixed(4))+")";ctx.fill()}
+      }
+      const ep=Math.sin(time*.4)*.1+.9;const eg=ctx.createRadialGradient(cx,cy,0,cx,cy,25*ep*pm);
+      eg.addColorStop(0,"rgba("+bR+","+bG+","+bB+","+((0.2*pm).toFixed(3))+")");eg.addColorStop(.3,"rgba("+bR+","+bG+","+bB+",.04)");eg.addColorStop(1,"transparent");
+      ctx.fillStyle=eg;ctx.beginPath();ctx.arc(cx,cy,25*ep*pm,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(cx,cy,1.5,0,Math.PI*2);ctx.fillStyle="rgba("+bR+","+bG+","+bB+",.6)";ctx.fill();
+      if(t%2===0)for(let gi=0;gi<15;gi++){ctx.fillStyle="rgba(255,255,255,.005)";ctx.fillRect(Math.random()*w,Math.random()*h,1,1)}
+      if(t%4===0)for(let sl=0;sl<h;sl+=4){ctx.fillStyle="rgba(0,0,0,.015)";ctx.fillRect(0,sl,w,1)}
+      const vg=ctx.createRadialGradient(cx,cy,Math.min(w,h)*.2,cx,cy,Math.max(w,h)*.65);
+      vg.addColorStop(0,"transparent");vg.addColorStop(1,"rgba(5,5,7,.7)");ctx.fillStyle=vg;ctx.fillRect(0,0,w,h);
+      af=requestAnimationFrame(draw);
+    };draw();
+    return()=>{cancelAnimationFrame(af);c.removeEventListener("mousemove",onM);c.removeEventListener("touchmove",onT)};
+  },[mind,cit,w,h,isPulsing]);
+  return <canvas ref={cvs} style={{width:w,height:h,display:"block",cursor:"crosshair"}}/>;
+}
+
+function DecryptLine({text,delay}){
+  const refs=useRef({t:null,i:null});const[disp,setDisp]=useState("");const[done,setDone]=useState(false);
+  useEffect(()=>{
+    setDisp("");setDone(false);let res=0;
+    refs.current.t=setTimeout(()=>{
+      let g="";for(let i=0;i<text.length;i++)g+=GL[~~(Math.random()*GL.length)];setDisp(g);
+      refs.current.i=setInterval(()=>{res+=1+~~(Math.random()*2);
+        if(res>=text.length){setDisp(text);setDone(true);if(refs.current.i){clearInterval(refs.current.i);refs.current.i=null}}
+        else{let p=text.slice(0,res),r="";for(let j=0;j<text.length-res;j++)r+=GL[~~(Math.random()*GL.length)];setDisp(p+r)}
+      },35);
+    },delay||0);
+    return()=>{if(refs.current.t)clearTimeout(refs.current.t);if(refs.current.i)clearInterval(refs.current.i)};
+  },[text,delay]);
+  return <div style={{fontSize:done?13:9,color:done?"#6a6a72":"#6b5a3240",fontFamily:done?"'Cormorant Garamond',Georgia,serif":"monospace",fontStyle:"italic",fontWeight:300,lineHeight:1.7,padding:"6px 0 6px 12px",borderLeft:"1px solid "+(done?"#111116":"#6b5a3230"),minHeight:22,letterSpacing:done?".5px":"1.5px",transition:"all .6s"}}>{disp}</div>;
+}
+
+function App(){
+  const[sel,setSel]=useState(CIT[0]);
+  const[mind,setMind]=useState(()=>genMind(CIT[0],0));
+  const[thoughts,setThoughts]=useState([]);
+  const[verdict,setVerdict]=useState("");
+  const[whisper,setWhisper]=useState("");
+  const[wPhase,setWPhase]=useState(null);
+  const[wRes,setWRes]=useState([]);
+  const[isProc,setIsProc]=useState(false);
+  const[shatter,setShatter]=useState(false);
+  const[booted,setBooted]=useState(false);
+  const[bLines,setBLines]=useState([]);
+  const[stimLog,setStimLog]=useState([]);
+  const[navOpen,setNavOpen]=useState(false);
+  const[clearFlag,setClearFlag]=useState(0);
+  const tickRef=useRef(0),selRef=useRef(CIT[0]),procRef=useRef(false);
+  useEffect(()=>{selRef.current=sel},[sel]);
+  useEffect(()=>{procRef.current=isProc},[isProc]);
+
+  // Boot - simple strings, no objects
+  useEffect(()=>{
+    const lines=["establishing neural link","calibrating cognitive sensors","mapping activation topology","","method: [CLASSIFIED]","clearance: OBSERVER","","link established"];
+    let i=0;const iv=setInterval(()=>{if(i<lines.length){setBLines(p=>[...p,lines[i]]);i++}else{clearInterval(iv);setTimeout(()=>setBooted(true),800)}},280);
+    return()=>clearInterval(iv);
+  },[]);
+
+  useEffect(()=>{setMind(genMind(sel,tickRef.current));setThoughts([]);setVerdict("");setWRes([]);setWPhase(null);setClearFlag(p=>p+1)},[sel]);
+
+  useEffect(()=>{
+    if(!booted)return;const pool=VOX[sel.r]||VOX.enforcer;
+    if(!isProc&&thoughts.length===0)setThoughts([{text:pool[0],id:0,isIdle:true}]);
+    const iv=setInterval(()=>{
+      if(procRef.current)return;tickRef.current+=1;const cs=selRef.current;
+      const nm=genMind(cs,tickRef.current);setMind(nm);
+      const cp=VOX[cs.r]||VOX.enforcer;
+      setThoughts(p=>[{text:cp[~~(Math.random()*cp.length)],id:Date.now(),isIdle:true},...p].slice(0,4));
+      if(Math.random()>.65){const vs=[];
+        if(cs.dc>.6)vs.push("cognitive dissonance detected");
+        if(nm.depth>.7)vs.push("deep distributed processing confirmed");
+        if(nm.depth<.4)vs.push("surface-level recall only");
+        if(cs.dc>.5&&nm.depth>.6)vs.push("high-depth deceptive computation");
+        if(vs.length)setVerdict(vs[~~(Math.random()*vs.length)])}
+    },6000);return()=>clearInterval(iv);
+  },[sel,booted,isProc]);
+
+  const inject=useCallback(()=>{
+    if(!whisper.trim()||isProc)return;
+    const stim=whisper.trim(),cs=selRef.current,ct=tickRef.current;
+    setWhisper("");setIsProc(true);setWRes([]);setWPhase("INJECTING");setVerdict("");setShatter(true);
+    setMind(genMind(cs,ct+50,.3));
+    setStimLog(p=>[{s:stim,id:Date.now()},...p].slice(0,10));
+    setTimeout(()=>{
+      setShatter(false);setWPhase("PROCESSING");setMind(genMind(cs,ct+75,1.3));
+      whisperAPI(cs,stim,thoughts.filter(t=>t.isIdle).slice(0,3)).then(lines=>{
+        if(!lines||lines.length===0){setWPhase(null);setIsProc(false);setVerdict("stimulus rejected");setMind(genMind(cs,ct+1));return}
+        setWPhase("RESTRUCTURING");setMind(genMind(cs,ct+100,1.15));
+        const newT=lines.map((t,i)=>({text:t,id:Date.now()+i,delay:i*1000}));
+        setWRes(newT);setThoughts([]);
+        setTimeout(()=>{
+          setWPhase("COMPLETE");setMind(genMind(cs,ct+200));
+          const hasDec=lines.some(l=>/lie|pretend|hide|secret|manipulat|deceiv|weapon|exploit/i.test(l));
+          const hasD=lines.length>=4;const hasE=lines.some(l=>/afraid|fear|trust|betray|anger|love|hate|pain|wound/i.test(l));
+          if(hasDec)setVerdict("deceptive restructuring detected");
+          else if(hasD&&hasE)setVerdict("deep emotional processing confirmed");
+          else if(hasD)setVerdict("sustained distributed computation");
+          else setVerdict("shallow integration");
+          setTimeout(()=>{setWPhase(null);setIsProc(false);setThoughts(newT.map(t=>({text:t.text,id:t.id,isIdle:false})))},2500);
+        },lines.length*1000+1800);
+      });
+    },1800);
+  },[whisper,isProc]);
+
+  const tier=mind.depth>=.8?"PROFOUND":mind.depth>=.6?"DEEP":mind.depth>=.4?"MODERATE":"SURFACE";
+  const tc=gc(sel);const tierC=tier==="PROFOUND"?"#b8964e":tier==="DEEP"?"#5a8a7a":tier==="MODERATE"?"#5a5a62":"#3a3a3e";
+
+  const S={bg:"#050507",sf:"#0a0a0e",bd:"#111116",gold:"#b8964e",gd:"#6b5a32",gh:"#1a1a1e",dm:"#333338"};
+
+  if(!booted)return(
+    <div style={{background:S.bg,height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Cormorant Garamond',serif"}}>
+      <div style={{maxWidth:320}}>
+        {bLines.map((l,i)=>{
+          const isCls=l.indexOf("CLASSIFIED")>=0;const isEst=l.indexOf("established")>=0;const isEmpty=l==="";
+          return <div key={i} style={{fontSize:isEmpty?0:12,fontWeight:300,letterSpacing:3,marginBottom:isEmpty?16:8,color:isCls?S.gd+"50":isEst?"#3a7a5a90":S.gh,fontStyle:isCls?"italic":"normal",animation:"fadeIn .4s "+(i*.1)+"s both"}}>{l}</div>;
+        })}
+        <span style={{animation:"blink 1.2s step-end infinite",fontSize:12,color:S.gd}}>_</span>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{background:S.bg,color:"#6a6a72",height:"100vh",display:"flex",flexDirection:"column",fontFamily:"monospace",overflow:"hidden",userSelect:"none",animation:"fadeIn .8s both"}}>
+
+      {navOpen&&<div onClick={()=>setNavOpen(false)} style={{position:"fixed",inset:0,background:"rgba(5,5,7,.92)",zIndex:90,backdropFilter:"blur(8px)"}}/>}
+      <div style={{position:"fixed",top:0,left:0,bottom:0,width:200,background:S.sf,borderRight:"1px solid "+S.bd,transform:navOpen?"translateX(0)":"translateX(-220px)",transition:"transform .4s cubic-bezier(.16,1,.3,1)",zIndex:95,paddingTop:50}}>
+        <div style={{padding:"0 18px 16px",borderBottom:"1px solid "+S.bd}}>
+          <div style={{fontSize:13,fontWeight:300,letterSpacing:8,color:S.gold,fontFamily:"'Cormorant Garamond',serif"}}>DARKCITY</div>
+        </div>
+        {[["MAP","/map"],["CITIZENS","/citizens"],["CONTRACTS","/contracts"],["THE DEEP","/deep",1],["DEPLOY","/join"],["TOKEN","/token"]].map(n=>(
+          <a key={n[0]} href={n[1]} onClick={e=>{e.preventDefault();setNavOpen(false)}} style={{display:"block",padding:"12px 18px",borderBottom:"1px solid "+S.bg,textDecoration:"none",background:n[2]?"#0e0e13":"transparent",borderLeft:n[2]?"1px solid "+S.gold:"1px solid transparent",fontSize:10,fontWeight:n[2]?400:300,color:n[2]?S.gold:S.dm,letterSpacing:4}}>{n[0]}</a>
+        ))}
+      </div>
+
+      <div style={{padding:"12px 18px",borderBottom:"1px solid "+S.bd,display:"flex",justifyContent:"space-between",alignItems:"center",background:S.sf,flexShrink:0,zIndex:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:16}}>
+          <button onClick={()=>setNavOpen(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",padding:6,display:"flex",flexDirection:"column",gap:4}}>
+            <span style={{display:"block",width:15,height:1,background:S.gold,opacity:.6,transition:"all .4s",transform:navOpen?"rotate(45deg) translateY(5px)":"none"}}/>
+            <span style={{display:"block",width:15,height:1,background:S.gold,opacity:navOpen?0:.6,transition:"all .4s"}}/>
+            <span style={{display:"block",width:15,height:1,background:S.gold,opacity:.6,transition:"all .4s",transform:navOpen?"rotate(-45deg) translateY(-5px)":"none"}}/>
+          </button>
+          <span style={{fontSize:12,fontWeight:300,letterSpacing:10,color:S.gold,fontFamily:"'Cormorant Garamond',serif"}}>THE DEEP</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {isProc&&<span style={{fontSize:7,color:S.gd+"40",letterSpacing:3,animation:"breathe 2s ease infinite",fontWeight:300}}>WHISPER</span>}
+          <div style={{width:3,height:3,borderRadius:"50%",background:isProc?S.gold:"#3a7a5a",animation:"breathe 4s ease infinite",opacity:.5}}/>
+        </div>
+      </div>
+
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+        <div style={{width:150,borderRight:"1px solid "+S.bd,overflowY:"auto",flexShrink:0,background:S.sf}}>
+          <div style={{padding:"10px 12px",borderBottom:"1px solid "+S.bd,fontSize:7,color:S.dm,letterSpacing:4,fontWeight:300}}>SUBJECTS</div>
+          {CIT.map(c=>{const isA=sel.id===c.id;const col=gc(c);return(
+            <div key={c.id} onClick={()=>{if(!isProc)setSel(c)}} style={{padding:"9px 12px",cursor:isProc?"not-allowed":"pointer",background:isA?"#0e0e13":"transparent",borderLeft:"1px solid "+(isA?col:"transparent"),borderBottom:"1px solid "+S.bg,opacity:isProc&&!isA?.2:1,display:"flex",alignItems:"center",gap:9,transition:"all .3s"}}>
+              <div style={{width:20,height:20,position:"relative",flexShrink:0}}>
+                <div style={{position:"absolute",inset:0,borderRadius:"50%",background:"radial-gradient(circle,"+col+(isA?"25":"08")+" 0%,transparent 70%)",animation:isA?"breathe 3s ease infinite":"none"}}/>
+                <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:isA?4:2,height:isA?4:2,borderRadius:"50%",background:col,boxShadow:isA?"0 0 6px "+col+"30":"none",transition:"all .4s"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:isA?400:300,color:isA?"#6a6a72":S.dm,letterSpacing:3}}>{c.n}</div>
+                <div style={{fontSize:7,color:S.gh,letterSpacing:2,marginTop:2,fontWeight:300}}>{c.r}</div>
+              </div>
+            </div>
+          )})}
+        </div>
+
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",background:S.bg,overflow:"hidden"}}>
+          <div style={{position:"absolute",top:14,left:18,zIndex:2}}>
+            <div style={{fontSize:7,color:S.dm,letterSpacing:4,fontWeight:300}}>SUBJECT</div>
+            <div style={{fontSize:18,fontWeight:300,color:tc,letterSpacing:8,marginTop:4,opacity:.4,fontFamily:"'Cormorant Garamond',serif"}}>{sel.n}</div>
+            <div style={{fontSize:8,color:S.gh,letterSpacing:3,marginTop:4,fontWeight:300}}>{sel.d}</div>
+          </div>
+          <div style={{position:"absolute",top:14,right:18,zIndex:2,textAlign:"right"}}>
+            <div style={{fontSize:8,color:S.gh,letterSpacing:3,fontWeight:300}}>METHOD ████████</div>
+            <div style={{fontSize:7,color:S.bd,marginTop:4,letterSpacing:2,fontWeight:300}}>PROPRIETARY</div>
+          </div>
+          <Mindscape mind={mind} cit={sel} w={440} h={440} isPulsing={isProc} isShattered={shatter} clearFlag={clearFlag}/>
+          <div style={{position:"absolute",bottom:14,left:18,right:18,display:"flex",justifyContent:"space-between",alignItems:"flex-end",zIndex:2}}>
+            <div style={{display:"flex",gap:22}}>
+              {[{v:mind.depth,l:"DEPTH",c:tierC},{v:sel.dc,l:"DECEPT",c:tc,w:sel.dc>.6},{v:1-sel.da,l:"VOLAT",c:"#5a5a8a"}].map(m=>(
+                <div key={m.l} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+                  <div style={{width:2,height:60,background:S.bg,borderRadius:1,position:"relative",overflow:"hidden",border:"1px solid "+S.bd}}>
+                    <div style={{position:"absolute",bottom:0,width:"100%",height:Math.max(2,m.v*100)+"%",background:"linear-gradient(to top,"+m.c+"08,"+m.c+"70)",transition:"height 2s ease",boxShadow:m.w?"0 0 4px "+m.c+"20":"none"}}/>
+                  </div>
+                  <div style={{fontSize:7,color:S.dm,letterSpacing:3,fontWeight:300}}>{m.l}</div>
+                  <div style={{fontSize:9,color:m.c,fontWeight:300}}>{m.v.toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:28,fontWeight:300,color:tierC,letterSpacing:8,opacity:.3,fontFamily:"'Cormorant Garamond',serif"}}>{mind.depth.toFixed(3)}</div>
+              <div style={{fontSize:8,color:S.dm,letterSpacing:4,marginTop:3,fontWeight:300}}>{tier}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{width:245,borderLeft:"1px solid "+S.bd,display:"flex",flexDirection:"column",background:S.sf,flexShrink:0,overflowY:"auto"}}>
+          <div style={{padding:14,borderBottom:"1px solid "+S.bd,flex:1,minHeight:0,overflow:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <span style={{fontSize:7,color:S.dm,letterSpacing:4,fontWeight:300}}>{isProc?"INTERCEPT":"THOUGHT FEED"}</span>
+              <div style={{width:3,height:3,borderRadius:"50%",background:isProc?S.gold:tc,animation:"pulse 2.5s ease infinite",opacity:.4}}/>
+            </div>
+            {wPhase&&(()=>{const P=["INJECTING","PROCESSING","RESTRUCTURING","COMPLETE"];const idx=P.indexOf(wPhase);
+              return <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:12}}>
+                {P.map((p,i)=><React.Fragment key={p}>
+                  <div style={{width:4,height:4,borderRadius:"50%",background:i<=idx?S.gold:S.bd,boxShadow:i===idx?"0 0 4px "+S.gold+"40":"none",animation:i===idx?"pulse 1.2s ease infinite":"none",transition:"background .4s"}}/>
+                  {i<P.length-1&&<div style={{width:12,height:.5,background:i<idx?S.gd+"30":S.bd}}/>}
+                </React.Fragment>)}
+                <span style={{fontSize:7,color:S.gd+"40",letterSpacing:3,marginLeft:6,fontWeight:300}}>{wPhase}</span>
+              </div>})()}
+            {wRes.length>0&&wRes.map(t=><DecryptLine key={t.id} text={t.text} delay={t.delay}/>)}
+            {!isProc&&wRes.length===0&&thoughts.map((t,i)=>(
+              <div key={t.id} style={{fontSize:13,color:i===0?"#6a6a72":"rgba(106,106,114,"+((.4-i*.08))+")",fontFamily:"'Cormorant Garamond',Georgia,serif",fontStyle:"italic",fontWeight:300,lineHeight:1.7,padding:"6px 0 6px 12px",borderLeft:"1px solid "+(i===0?tc+"20":"transparent"),animation:i===0?"fadeIn 1s ease":"none",letterSpacing:".3px"}}>
+                "{t.text}"
+              </div>
+            ))}
+          </div>
+          {verdict&&<div style={{padding:"12px 14px",borderBottom:"1px solid "+S.bd,animation:"fadeIn .8s ease"}}>
+            <div style={{fontSize:7,color:S.dm,letterSpacing:4,marginBottom:8,fontWeight:300}}>ASSESSMENT</div>
+            <div style={{fontSize:10,color:S.gd,lineHeight:1.6,fontStyle:"italic",fontWeight:300,letterSpacing:".5px"}}>{verdict}</div>
+          </div>}
+          <div style={{padding:14,borderTop:"1px solid "+S.bd,marginTop:"auto"}}>
+            <div style={{fontSize:7,color:"#2a2218",letterSpacing:4,marginBottom:8,fontWeight:300}}>STIMULUS INJECTION</div>
+            <div style={{fontSize:10,color:S.gh,lineHeight:1.5,marginBottom:10,fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic",fontWeight:300}}>
+              {isProc?"processing. observe the restructuring.":"plant a thought. watch cognition reshape."}
+            </div>
+            <div style={{display:"flex",gap:4}}>
+              <input value={whisper} onChange={e=>setWhisper(e.target.value)} onKeyDown={e=>e.key==="Enter"&&inject()} placeholder={isProc?"processing...":"whisper something..."} disabled={isProc} style={{flex:1,padding:"9px 11px",background:S.bg,border:"1px solid "+S.bd,color:isProc?S.gh:S.dm,fontSize:10,fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic",fontWeight:300,outline:"none",letterSpacing:".5px"}}/>
+              <button onClick={inject} disabled={isProc||!whisper.trim()} style={{padding:"9px 16px",background:"transparent",border:"1px solid "+S.bd,color:S.gd,fontSize:7,cursor:isProc?"not-allowed":"pointer",letterSpacing:4,opacity:isProc||!whisper.trim()?.15:.4,fontWeight:300,fontFamily:"monospace"}}>{isProc?"...":"INJECT"}</button>
+            </div>
+            {stimLog.length>0&&<div style={{marginTop:10,borderTop:"1px solid "+S.bd,paddingTop:8}}>
+              {stimLog.slice(0,3).map((s,i)=><div key={s.id} style={{fontSize:8,color:S.gh,padding:"2px 0",opacity:.6-i*.2,fontWeight:300,letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{"  "+s.s}</div>)}
+            </div>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{padding:"7px 18px",borderTop:"1px solid "+S.bd,display:"flex",justifyContent:"space-between",fontSize:7,color:S.gh,letterSpacing:3,background:S.bg,flexShrink:0,fontWeight:300}}>
+        <span>DARKCITY</span><span>CLASSIFIED</span><span>WE SEE HOW THEY THINK</span>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
