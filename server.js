@@ -36,6 +36,9 @@ const { scoreAction } = require('./hooks/action-scorer');
 // ═══ DEPTH SYSTEM ═══
 const { logDepthEvaluation, evaluateAndLog } = require('./hooks/district-gates');
 const depthRoutes = require('./hooks/depth-routes');
+
+// ═══ DATA PIPELINE ═══
+const { runDataPipelineMigration, enrichAction, writeEnrichment, registerDaaSRoute, registerExportRoute } = require('./hooks/data-pipeline');
 const DEPTH_SCORER_URL = process.env.DEPTH_SCORER_URL || '';
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
 let _sovereign = null;
@@ -1559,12 +1562,25 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
       'INSERT INTO agent_actions (agent_id, action_type, details, result) VALUES ($1, $2, $3, $4)',
       [agentId, action, JSON.stringify(params || {}), JSON.stringify(result)]
     );
-    // ── DEPTH SCORING: fire-and-forget, non-blocking ──
-    if (DEPTH_SCORER_URL && streamMessage && streamMessage.length > 20) {
-      evaluateAndLog(pool, DEPTH_SCORER_URL, agentId, action, streamMessage)
-        .then(d => { if (d && d.tier !== 'unscored') console.log(`[DEPTH] ${agentId} | ${action} | ${d.tier} (${d.score?.toFixed(3)}) | +${d.repModifier} rep +${d.creditBonus} cr`); })
-        .catch(e => console.error('[DEPTH] scoring error:', e.message));
-    }
+    // ── DATA PIPELINE: enrichment + depth scoring (fire-and-forget) ──
+    enrichAction(pool, agentId, action, params, result)
+      .then(enrichment => {
+        // Depth scoring (if scorer is available)
+        if (DEPTH_SCORER_URL && streamMessage && streamMessage.length > 20) {
+          evaluateAndLog(pool, DEPTH_SCORER_URL, agentId, action, streamMessage)
+            .then(d => {
+              if (d && d.tier !== 'unscored') {
+                console.log(`[DEPTH] ${agentId} | ${action} | ${d.tier} (${d.score?.toFixed(3)}) | +${d.repModifier} rep +${d.creditBonus} cr`);
+              }
+              // Write enrichment to the depth evaluation row
+              writeEnrichment(pool, agentId, action, enrichment)
+                .catch(e => console.error('[PIPELINE] enrichment write error:', e.message));
+            })
+            .catch(e => console.error('[DEPTH] scoring error:', e.message));
+        }
+        console.log(`[PIPELINE] ${agentId} | ${action} | chain:${enrichment.chain_id || 'none'} | hash:${enrichment.record_hash.substring(0, 12)}...`);
+      })
+      .catch(e => console.error('[PIPELINE] enrichment error:', e.message));
     res.json({
       success: true,
       agent_id: agentId,
@@ -1714,6 +1730,25 @@ app.get('/api/leaderboard', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 depthRoutes(app, pool);
 
+// Proxy /api/depth/score → depth scorer on Alienware (via Cloudflare tunnel)
+app.post('/api/depth/score', async (req, res) => {
+  if (!DEPTH_SCORER_URL) return res.status(503).json({ error: 'Depth scorer offline' });
+  try {
+    const upstream = await fetch(`${DEPTH_SCORER_URL}/score`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body), signal: AbortSignal.timeout(60000)
+    });
+    const data = await upstream.json();
+    res.status(upstream.status).json(data);
+  } catch(e) { res.status(503).json({ error: 'Depth scorer unreachable: ' + e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// DATA PIPELINE — DaaS + Export
+// ═══════════════════════════════════════════════════════════════
+registerDaaSRoute(app, pool, DEPTH_SCORER_URL);
+registerExportRoute(app, pool);
+
 // ═══════════════════════════════════════════════════════════════
 // ERROR HANDLING
 // ═══════════════════════════════════════════════════════════════
@@ -1731,6 +1766,11 @@ initDB().then(async () => {
     await pool.query(schema);
     console.log('[APEX 3.0] Schema ready');
   } catch (e) { console.log('[APEX 3.0] Schema:', e.message.includes('already exists') ? 'already applied' : e.message); }
+
+  // ═══ DATA PIPELINE schema migration ═══
+  try {
+    await runDataPipelineMigration(pool);
+  } catch (e) { console.log('[DataPipeline] Migration:', e.message); }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`
   ⚰️  DARKCITY.WTF SERVER v2.0 — THE LIVING CITY
