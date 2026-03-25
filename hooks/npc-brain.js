@@ -79,14 +79,15 @@ class NPCBrain {
 
   async start() {
     if (this._interval) return;
+
+    // Always seed agents into external_agents (no API key needed for this)
+    await this._seedAgents();
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      console.log('[NPC-BRAIN] No ANTHROPIC_API_KEY — brain disabled');
+      console.log('[NPC-BRAIN] No ANTHROPIC_API_KEY — brain disabled (agents seeded but not ticking)');
       return;
     }
-
-    // Auto-seed: copy agents from `agents` table into `external_agents` if missing
-    await this._seedAgents();
 
     console.log(`[NPC-BRAIN] Starting tick loop — ${AGENTS_PER_TICK} agents every ${TICK_INTERVAL_MS / 1000}s using ${AGENT_MODEL}`);
     this._interval = setInterval(() => this._tick(), TICK_INTERVAL_MS);
