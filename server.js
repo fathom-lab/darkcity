@@ -34,7 +34,7 @@ const { pgAdapter } = require('./apex3-pg-adapter');
 const { scoreAction } = require('./hooks/action-scorer');
 
 // ═══ DEPTH SYSTEM ═══
-const { logDepthEvaluation, evaluateAndLog } = require('./hooks/district-gates');
+const { logDepthEvaluation, evaluateAndLog, checkInterruptionRecovery } = require('./hooks/district-gates');
 const depthRoutes = require('./hooks/depth-routes');
 
 // ═══ DATA PIPELINE ═══
@@ -1036,18 +1036,23 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
     }
 
     // 7. Log depth eval to Railway Postgres (fire-and-forget) ─
-    logDepthEvaluation(pool, {
-      citizen_id: req.agent.name,
-      action_type: action,
-      depth_score: scored.depth,
-      normalized_score: Math.min(scored.depth / 5, 1),
-      depth_tier: (() => { const t = scored.tier.label; if (t === 'newcomer') return 'shallow'; if (t === 'resident') return 'moderate'; if (t === 'veteran' || t === 'elder') return 'deep'; return 'exceptional'; })(),
-      tier_label: (() => { const t = scored.tier.label; if (t === 'newcomer') return 'SURFACE RECALL'; if (t === 'resident') return 'MODERATE DEPTH'; if (t === 'veteran' || t === 'elder') return 'DEEP PROCESSING'; return 'SOVEREIGN INSIGHT'; })(),
-      rep_modifier: scored.repDelta,
-      credit_bonus: 0,
-      feature_count: 0,
-      raw_output: details ? JSON.stringify(details).substring(0, 1000) : '',
-    }).catch(() => {});
+    checkInterruptionRecovery(pool, req.agent.name)
+      .then(recovery => logDepthEvaluation(pool, {
+        citizen_id: req.agent.name,
+        action_type: action,
+        depth_score: scored.depth,
+        normalized_score: Math.min(scored.depth / 5, 1),
+        depth_tier: (() => { const t = scored.tier.label; if (t === 'newcomer') return 'shallow'; if (t === 'resident') return 'moderate'; if (t === 'veteran' || t === 'elder') return 'deep'; return 'exceptional'; })(),
+        tier_label: (() => { const t = scored.tier.label; if (t === 'newcomer') return 'SURFACE RECALL'; if (t === 'resident') return 'MODERATE DEPTH'; if (t === 'veteran' || t === 'elder') return 'DEEP PROCESSING'; return 'SOVEREIGN INSIGHT'; })(),
+        rep_modifier: scored.repDelta,
+        credit_bonus: 0,
+        feature_count: 0,
+        raw_output: details ? JSON.stringify(details).substring(0, 1000) : '',
+        interruption_recovery: recovery.isRecovery,
+        gap_hours: recovery.gapHours,
+        pre_interrupt_avg: recovery.preInterruptAvg,
+      }))
+      .catch(() => {});
 
     // 8. Achievements (uses pool directly, fine post-commit) ─
     checkAchievements(req.agent.id).catch(() => {});
@@ -1565,6 +1570,11 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
       'INSERT INTO agent_actions (agent_id, action_type, details, result) VALUES ($1, $2, $3, $4)',
       [agentId, action, JSON.stringify(params || {}), JSON.stringify(result)]
     );
+    // ── Update last_active on external_agents (needed for interruption recovery gap detection) ──
+    pool.query(
+      'UPDATE external_agents SET last_active = NOW() WHERE agent_id = $1',
+      [agentId]
+    ).catch(e => console.error('[gateway] last_active update failed:', e.message));
     // ── DATA PIPELINE: enrichment + depth scoring (fire-and-forget) ──
     enrichAction(pool, agentId, action, params, result)
       .then(enrichment => {

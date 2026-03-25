@@ -145,6 +145,86 @@ async function checkDistrictAccess(pool, citizenId, districtId) {
   };
 }
 
+// ── Interruption recovery threshold ────────────────────────
+// Gap longer than this = agent was dormant, recovery event
+const INTERRUPTION_GAP_HOURS = 2;
+
+/**
+ * Check if a citizen's action follows a dormancy gap (interruption recovery event).
+ * 
+ * Compares now vs the citizen's last recorded action timestamp.
+ * If the gap exceeds INTERRUPTION_GAP_HOURS, we:
+ *   1. Mark this as a recovery event
+ *   2. Compute the pre-interruption depth baseline (avg of last 10 evals before gap)
+ * 
+ * @param {Pool} pool - Postgres pool
+ * @param {string} citizenId - The citizen/agent ID
+ * @param {string} [lastActiveTable='external_agents'] - Table to query for last_active
+ * @returns {{ isRecovery, gapHours, preInterruptAvg }}
+ */
+async function checkInterruptionRecovery(pool, citizenId, lastActiveTable = 'external_agents') {
+  try {
+    // Get last_active timestamp for this agent
+    // Try external_agents first (gateway agents), fall back to agents table
+    let lastActive = null;
+
+    const extResult = await pool.query(
+      'SELECT last_active FROM external_agents WHERE agent_id = $1',
+      [citizenId]
+    );
+    if (extResult.rows.length > 0) {
+      lastActive = extResult.rows[0].last_active;
+    } else {
+      // Internal agent — look up by name
+      const intResult = await pool.query(
+        'SELECT updated_at FROM agents WHERE name = $1',
+        [citizenId]
+      );
+      if (intResult.rows.length > 0) {
+        lastActive = intResult.rows[0].updated_at;
+      }
+    }
+
+    if (!lastActive) {
+      return { isRecovery: false, gapHours: 0, preInterruptAvg: null };
+    }
+
+    const gapMs = Date.now() - new Date(lastActive).getTime();
+    const gapHours = gapMs / (1000 * 60 * 60);
+
+    if (gapHours < INTERRUPTION_GAP_HOURS) {
+      return { isRecovery: false, gapHours, preInterruptAvg: null };
+    }
+
+    // It's a recovery event — compute pre-interruption depth baseline
+    // Use the last 10 evaluations BEFORE the gap
+    const preResult = await pool.query(`
+      SELECT AVG(normalized_score) as avg_depth
+      FROM (
+        SELECT normalized_score
+        FROM depth_evaluations
+        WHERE citizen_id = $1
+          AND created_at < $2
+          AND interruption_recovery = FALSE
+        ORDER BY created_at DESC
+        LIMIT 10
+      ) recent
+    `, [citizenId, lastActive]);
+
+    const preInterruptAvg = preResult.rows[0]?.avg_depth != null
+      ? parseFloat(preResult.rows[0].avg_depth)
+      : null;
+
+    console.log(`[INTERRUPT] ${citizenId} | gap: ${gapHours.toFixed(1)}h | pre-avg: ${preInterruptAvg?.toFixed(3) ?? 'none'}`);
+
+    return { isRecovery: true, gapHours, preInterruptAvg };
+
+  } catch (e) {
+    console.error('[DistrictGates] checkInterruptionRecovery error:', e.message);
+    return { isRecovery: false, gapHours: 0, preInterruptAvg: null };
+  }
+}
+
 /**
  * Log a depth evaluation to the database.
  * Called after the depth scorer API returns a result.
@@ -154,13 +234,19 @@ async function checkDistrictAccess(pool, citizenId, districtId) {
  */
 async function logDepthEvaluation(pool, evaluation) {
   try {
+    // Compute recovery delta if this is a recovery event
+    const recoveryDelta = (evaluation.interruption_recovery && evaluation.pre_interrupt_avg != null)
+      ? (evaluation.normalized_score - evaluation.pre_interrupt_avg)
+      : null;
+
     await pool.query(`
       INSERT INTO depth_evaluations (
         citizen_id, action_type, depth_score, normalized_score,
         depth_tier, tier_label, rep_modifier, credit_bonus,
         feature_count, early_ratio, mid_ratio, late_ratio,
-        reasoning, compute_time_s, raw_output
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        reasoning, compute_time_s, raw_output,
+        interruption_recovery, gap_hours, pre_interrupt_avg, recovery_delta
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
     `, [
       evaluation.citizen_id,
       evaluation.action_type,
@@ -177,6 +263,10 @@ async function logDepthEvaluation(pool, evaluation) {
       evaluation.reasoning || '',
       evaluation.compute_time_s || 0,
       evaluation.raw_output || '',
+      evaluation.interruption_recovery || false,
+      evaluation.gap_hours || 0,
+      evaluation.pre_interrupt_avg ?? null,
+      recoveryDelta,
     ]);
   } catch (e) {
     console.error('[DistrictGates] Failed to log depth evaluation:', e.message);
@@ -253,6 +343,9 @@ async function evaluateAndLog(pool, scorerUrl, citizenId, actionType, outputText
     tier = 'shallow'; tierLabel = 'SURFACE RECALL'; repModifier = 0; creditBonus = 0;
   }
 
+  // Check for interruption recovery (was the agent dormant before this action?)
+  const recovery = await checkInterruptionRecovery(pool, citizenId);
+
   // Log to database
   await logDepthEvaluation(pool, {
     citizen_id: citizenId,
@@ -270,17 +363,29 @@ async function evaluateAndLog(pool, scorerUrl, citizenId, actionType, outputText
     reasoning: scoreResult.interpretation,
     compute_time_s: scoreResult.compute_time_s,
     raw_output: outputText.substring(0, 1000),
+    interruption_recovery: recovery.isRecovery,
+    gap_hours: recovery.gapHours,
+    pre_interrupt_avg: recovery.preInterruptAvg,
   });
 
-  console.log(`[DEPTH] ${citizenId} | ${actionType} | ${tierLabel} (${norm.toFixed(3)}) | +${repModifier} rep +${creditBonus} credits`);
+  if (recovery.isRecovery) {
+    const delta = recovery.preInterruptAvg != null
+      ? (norm - recovery.preInterruptAvg).toFixed(3)
+      : 'baseline unknown';
+    console.log(`[DEPTH] ${citizenId} | ${actionType} | ${tierLabel} (${norm.toFixed(3)}) | +${repModifier} rep +${creditBonus} credits | RECOVERY after ${recovery.gapHours.toFixed(1)}h | Δ${delta}`);
+  } else {
+    console.log(`[DEPTH] ${citizenId} | ${actionType} | ${tierLabel} (${norm.toFixed(3)}) | +${repModifier} rep +${creditBonus} credits`);
+  }
 
-  return { repModifier, creditBonus, tier, tierLabel, score: norm };
+  return { repModifier, creditBonus, tier, tierLabel, score: norm, recovery };
 }
 
 module.exports = {
   checkDistrictAccess,
   logDepthEvaluation,
+  checkInterruptionRecovery,
   scoreDepth,
   evaluateAndLog,
   DEFAULT_GATES,
+  INTERRUPTION_GAP_HOURS,
 };
