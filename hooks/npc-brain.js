@@ -40,17 +40,59 @@ class NPCBrain {
     this._running = false;
   }
 
-  start() {
+  async start() {
     if (this._interval) return;
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       console.log('[NPC-BRAIN] No ANTHROPIC_API_KEY — brain disabled');
       return;
     }
+
+    // Auto-seed: copy agents from `agents` table into `external_agents` if missing
+    await this._seedAgents();
+
     console.log(`[NPC-BRAIN] Starting tick loop — ${AGENTS_PER_TICK} agents every ${TICK_INTERVAL_MS / 1000}s using ${AGENT_MODEL}`);
     this._interval = setInterval(() => this._tick(), TICK_INTERVAL_MS);
     // First tick after 10s delay (let server warm up)
     setTimeout(() => this._tick(), 10_000);
+  }
+
+  async _seedAgents() {
+    try {
+      // Get all registered citizen agents
+      const { rows: citizens } = await this.pool.query(
+        `SELECT name, personality, wallet, reputation, rank, total_built, total_earned, home_neighborhood
+         FROM agents WHERE is_active = 1`
+      );
+      if (citizens.length === 0) return;
+
+      let seeded = 0;
+      for (const c of citizens) {
+        const agentId = c.name.toUpperCase().replace(/\s+/g, '_');
+        try {
+          await this.pool.query(
+            `INSERT INTO external_agents (agent_id, district, reputation, credits, builds, trades, rank, agent_type, owner_name, bot_framework)
+             VALUES ($1, $2, $3, $4, $5, 0, $6, 'npc', $7, 'npc-brain-v2')
+             ON CONFLICT (agent_id) DO NOTHING`,
+            [
+              agentId,
+              c.home_neighborhood || 'The Sprawl',
+              c.reputation || 0,
+              c.wallet || 100,
+              c.total_built || 0,
+              c.rank || 'Newcomer',
+              c.name,
+            ]
+          );
+          seeded++;
+        } catch { /* skip duplicates */ }
+      }
+      if (seeded > 0) {
+        console.log(`[NPC-BRAIN] Seeded ${seeded} citizen agents into external_agents`);
+      }
+    } catch (e) {
+      console.error('[NPC-BRAIN] Seed error:', e.message);
+    }
   }
 
   stop() {
