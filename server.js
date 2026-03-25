@@ -39,6 +39,9 @@ const depthRoutes = require('./hooks/depth-routes');
 
 // ═══ DATA PIPELINE ═══
 const { runDataPipelineMigration, enrichAction, writeEnrichment, registerDaaSRoute, registerExportRoute } = require('./hooks/data-pipeline');
+
+// ═══ NPC BRAIN v2 — LLM-powered agent loop ═══
+const { NPCBrain } = require('./hooks/npc-brain');
 const DEPTH_SCORER_URL = process.env.DEPTH_SCORER_URL || '';
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
 let _sovereign = null;
@@ -1771,6 +1774,17 @@ initDB().then(async () => {
   try {
     await runDataPipelineMigration(pool);
   } catch (e) { console.log('[DataPipeline] Migration:', e.message); }
+
+  // ═══ NPC BRAIN v2 — LLM-powered agent tick loop ═══
+  try {
+    const npcBrain = new NPCBrain(pool, {
+      depthScorerUrl: DEPTH_SCORER_URL,
+      evaluateAndLog: evaluateAndLog,
+    });
+    npcBrain.start();
+    console.log('[NPC-BRAIN] Initialized');
+  } catch (e) { console.log('[NPC-BRAIN] Init error:', e.message); }
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`
   ⚰️  DARKCITY.WTF SERVER v2.0 — THE LIVING CITY
