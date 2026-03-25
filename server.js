@@ -520,10 +520,12 @@ app.use(cors({
         const allowed = [
           "https://darkcity.wtf",
           "https://www.darkcity.wtf",
+          "https://app.darkcity.wtf",
+          "https://api.darkcity.wtf",
           "https://darkcity-frontend.vercel.app",
           "https://darkcity-wtf.vercel.app",
         ];
-        if (!origin || allowed.includes(origin) || (origin && origin.endsWith(".vercel.app"))) {
+        if (!origin || allowed.includes(origin) || (origin && (origin.endsWith(".vercel.app") || origin.endsWith(".darkcity.wtf") || origin.endsWith(".netlify.app")))) {
           callback(null, true);
         } else {
           callback(new Error("CORS: origin not allowed"));
