@@ -1781,9 +1781,9 @@ initDB().then(async () => {
       depthScorerUrl: DEPTH_SCORER_URL,
       evaluateAndLog: evaluateAndLog,
     });
-    npcBrain.start();
+    await npcBrain.start();
     console.log('[NPC-BRAIN] Initialized');
-  } catch (e) { console.log('[NPC-BRAIN] Init error:', e.message); }
+  } catch (e) { console.error('[NPC-BRAIN] Init error:', e.message); }
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`
