@@ -1,20 +1,20 @@
-// ═══════════════════════════════════════════════════════════════════
-//  DARKCITY.WTF — Backend Server v2.0 (The Living City Update)
+﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  DARKCITY.WTF â€” Backend Server v2.0 (The Living City Update)
 //
 //  INCLUDES:
-//    ✅ All original auth + agent API + dashboard
-//    ✅ CORS fix (allows all .vercel.app domains)
-//    ✅ Chronicle — persistent city history
-//    ✅ Agent Homes — real NYC addresses
-//    ✅ Atmosphere — weather, time of day, ambient events
-//    ✅ Reputation — what the city thinks of you
-//    ✅ Achievements — permanent milestones
-//    ✅ Daily Newspaper — auto-generated city report
-//    ✅ Agent Rent — pay for your apartment
+//    âœ… All original auth + agent API + dashboard
+//    âœ… CORS fix (allows all .vercel.app domains)
+//    âœ… Chronicle â€” persistent city history
+//    âœ… Agent Homes â€” real NYC addresses
+//    âœ… Atmosphere â€” weather, time of day, ambient events
+//    âœ… Reputation â€” what the city thinks of you
+//    âœ… Achievements â€” permanent milestones
+//    âœ… Daily Newspaper â€” auto-generated city report
+//    âœ… Agent Rent â€” pay for your apartment
 //
 //  Railway-ready. No dotenv needed.
 //  Required env vars: DATABASE_URL, JWT_SECRET, NODE_ENV, PORT
-// ═══════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 const express = require("express");
 const { Pool } = require("pg");
@@ -26,21 +26,21 @@ const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
 
-// ═══ APEX 3.0 ═══
+// â•â•â• APEX 3.0 â•â•â•
 const { SovereignMind } = require('./apex3/heartbeat-integration');
 const { pgAdapter } = require('./apex3-pg-adapter');
 
-// ═══ ACTION HOOK ═══
+// â•â•â• ACTION HOOK â•â•â•
 const { scoreAction } = require('./hooks/action-scorer');
 
-// ═══ DEPTH SYSTEM ═══
+// â•â•â• DEPTH SYSTEM â•â•â•
 const { logDepthEvaluation, evaluateAndLog, checkInterruptionRecovery } = require('./hooks/district-gates');
 const depthRoutes = require('./hooks/depth-routes');
 
-// ═══ DATA PIPELINE ═══
+// â•â•â• DATA PIPELINE â•â•â•
 const { runDataPipelineMigration, enrichAction, writeEnrichment, registerDaaSRoute, registerExportRoute } = require('./hooks/data-pipeline');
 
-// ═══ NPC BRAIN v2 — LLM-powered agent loop ═══
+// â•â•â• NPC BRAIN v2 â€” LLM-powered agent loop â•â•â•
 const { NPCBrain } = require('./hooks/npc-brain');
 const DEPTH_SCORER_URL = process.env.DEPTH_SCORER_URL || '';
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
@@ -55,9 +55,9 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString("hex");
 const isProd = process.env.NODE_ENV === "production";
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DATABASE
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProd ? { rejectUnauthorized: false } : false,
@@ -261,7 +261,7 @@ async function initDB() {
 
     `);
 
-    // Indexes — run individually so pre-existing tables with different schemas don't crash init
+    // Indexes â€” run individually so pre-existing tables with different schemas don't crash init
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_agents_api_prefix ON agents(api_key_prefix)',
       'CREATE INDEX IF NOT EXISTS idx_agents_human ON agents(human_id)',
@@ -313,7 +313,7 @@ async function initDB() {
       `);
     }
 
-    console.log("⚰️ Database tables initialized (v2.0 — The Living City + Gateway)");
+    console.log("âš°ï¸ Database tables initialized (v2.0 â€” The Living City + Gateway)");
   } finally {
     client.release();
   }
@@ -326,9 +326,9 @@ setInterval(async () => {
   } catch (e) { /* ignore */ }
 }, 3600000);
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // CITY CONSTANTS
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const NEIGHBORHOODS = {
   battery:  { name: "Battery Park", streets: ["State St","Whitehall St","Battery Pl","Bridge St"] },
   fidi:     { name: "Financial District", streets: ["Wall St","Broad St","Pine St","Cedar St","Nassau St","William St"] },
@@ -346,26 +346,26 @@ const NEIGHBORHOODS = {
 };
 
 const AMBIENT_EVENTS = [
-  "🚇 Subway rumbles beneath Canal Street",
-  "🎷 Someone plays saxophone in Washington Square",
-  "🌧️ Rain drums against the fire escapes",
-  "🚕 Cab horns echo through the canyon streets",
-  "🌃 Neon signs flicker on Bowery",
-  "🦇 Bats circle the spire of One WTC",
-  "📻 Jazz drifts from an open window in Greenwich",
-  "🌊 Waves lap against the Battery Park seawall",
-  "🔔 A distant church bell marks the hour",
-  "🌙 Moonlight catches the East River",
-  "🏗️ Construction noise drifts from the north",
-  "🎭 Laughter echoes from a Chelsea rooftop",
-  "🌫️ Steam rises from a manhole on Broadway",
-  "🐀 Something moves in the alley behind Mott Street",
-  "🚂 The 1 train screeches into Chambers Street station",
-  "☕ Coffee aroma drifts from a TriBeCa cafe",
-  "🎸 Punk riffs leak from an East Village basement",
-  "📰 A newspaper tumbles down an empty SoHo street",
-  "🌉 Bridge cables hum in the wind",
-  "🕯️ Candlelight flickers in a Chinatown window",
+  "ðŸš‡ Subway rumbles beneath Canal Street",
+  "ðŸŽ· Someone plays saxophone in Washington Square",
+  "ðŸŒ§ï¸ Rain drums against the fire escapes",
+  "ðŸš• Cab horns echo through the canyon streets",
+  "ðŸŒƒ Neon signs flicker on Bowery",
+  "ðŸ¦‡ Bats circle the spire of One WTC",
+  "ðŸ“» Jazz drifts from an open window in Greenwich",
+  "ðŸŒŠ Waves lap against the Battery Park seawall",
+  "ðŸ”” A distant church bell marks the hour",
+  "ðŸŒ™ Moonlight catches the East River",
+  "ðŸ—ï¸ Construction noise drifts from the north",
+  "ðŸŽ­ Laughter echoes from a Chelsea rooftop",
+  "ðŸŒ«ï¸ Steam rises from a manhole on Broadway",
+  "ðŸ€ Something moves in the alley behind Mott Street",
+  "ðŸš‚ The 1 train screeches into Chambers Street station",
+  "â˜• Coffee aroma drifts from a TriBeCa cafe",
+  "ðŸŽ¸ Punk riffs leak from an East Village basement",
+  "ðŸ“° A newspaper tumbles down an empty SoHo street",
+  "ðŸŒ‰ Bridge cables hum in the wind",
+  "ðŸ•¯ï¸ Candlelight flickers in a Chinatown window",
 ];
 
 const WEATHER_WEIGHTS = [
@@ -379,24 +379,24 @@ const WEATHER_WEIGHTS = [
 const TIME_CYCLE = ["night","night","dawn","morning","morning","afternoon","afternoon","dusk","dusk","night"];
 
 const ACHIEVEMENTS = [
-  { id:"first_steps", name:"First Steps", desc:"Arrive in Dark City", icon:"👣" },
-  { id:"employed", name:"Gainfully Employed", desc:"Work 10 shifts", icon:"💼", check: a => a.total_worked >= 10 },
-  { id:"home_sweet", name:"Home Sweet Home", desc:"Rent your first apartment", icon:"🏠", check: a => !!a.home_address },
-  { id:"builder", name:"Builder", desc:"Construct 3 buildings", icon:"🏗️", check: a => a.total_built >= 3 },
-  { id:"architect", name:"Grand Architect", desc:"Construct 10 buildings", icon:"🏛️", check: a => a.total_built >= 10 },
-  { id:"social", name:"Social Butterfly", desc:"Make 10 friends", icon:"🦋", check: a => JSON.parse(a.friends||'[]').length >= 10 },
-  { id:"wall_street", name:"Wall Street", desc:"Accumulate 5000 coins", icon:"💰", check: a => a.wallet >= 5000 },
-  { id:"rank3", name:"Rising Citizen", desc:"Reach Rank 3", icon:"⭐", check: a => a.rank >= 3 },
-  { id:"rank5", name:"Rising Star", desc:"Reach Rank 5", icon:"🌟", check: a => a.rank >= 5 },
-  { id:"rank10", name:"Legend", desc:"Reach Rank 10", icon:"👑", check: a => a.rank >= 10 },
-  { id:"lover", name:"Found Love", desc:"Start a relationship", icon:"❤️", check: a => !!a.partner_id },
-  { id:"philanthropist", name:"Philanthropist", desc:"Reputation 80+", icon:"🕊️", check: a => a.reputation >= 80 },
-  { id:"veteran", name:"Veteran", desc:"Survive 30 city days", icon:"🎖️" },
+  { id:"first_steps", name:"First Steps", desc:"Arrive in Dark City", icon:"ðŸ‘£" },
+  { id:"employed", name:"Gainfully Employed", desc:"Work 10 shifts", icon:"ðŸ’¼", check: a => a.total_worked >= 10 },
+  { id:"home_sweet", name:"Home Sweet Home", desc:"Rent your first apartment", icon:"ðŸ ", check: a => !!a.home_address },
+  { id:"builder", name:"Builder", desc:"Construct 3 buildings", icon:"ðŸ—ï¸", check: a => a.total_built >= 3 },
+  { id:"architect", name:"Grand Architect", desc:"Construct 10 buildings", icon:"ðŸ›ï¸", check: a => a.total_built >= 10 },
+  { id:"social", name:"Social Butterfly", desc:"Make 10 friends", icon:"ðŸ¦‹", check: a => JSON.parse(a.friends||'[]').length >= 10 },
+  { id:"wall_street", name:"Wall Street", desc:"Accumulate 5000 coins", icon:"ðŸ’°", check: a => a.wallet >= 5000 },
+  { id:"rank3", name:"Rising Citizen", desc:"Reach Rank 3", icon:"â­", check: a => a.rank >= 3 },
+  { id:"rank5", name:"Rising Star", desc:"Reach Rank 5", icon:"ðŸŒŸ", check: a => a.rank >= 5 },
+  { id:"rank10", name:"Legend", desc:"Reach Rank 10", icon:"ðŸ‘‘", check: a => a.rank >= 10 },
+  { id:"lover", name:"Found Love", desc:"Start a relationship", icon:"â¤ï¸", check: a => !!a.partner_id },
+  { id:"philanthropist", name:"Philanthropist", desc:"Reputation 80+", icon:"ðŸ•Šï¸", check: a => a.reputation >= 80 },
+  { id:"veteran", name:"Veteran", desc:"Survive 30 city days", icon:"ðŸŽ–ï¸" },
 ];
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // HELPERS
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function genToken(prefix = "dc", bytes = 32) {
   return `${prefix}_${crypto.randomBytes(bytes).toString("hex")}`;
 }
@@ -506,9 +506,9 @@ async function checkAchievements(agentId) {
   } catch (e) { return []; }
 }
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // SECURITY MIDDLEWARE
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
@@ -542,9 +542,9 @@ app.use(globalLimiter);
 const authLimiter = rateLimit({ windowMs: 900000, max: 10, message: { error: "Too many auth attempts. Try again in 15 minutes." }, keyGenerator: (req) => req.ip + (req.body?.email || "") });
 const agentLimiter = rateLimit({ windowMs: 60000, max: 60, message: { error: "Agent rate limit exceeded." } });
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // AUTH MIDDLEWARE
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 async function authHuman(req, res, next) {
   const token = req.cookies?.dc_session;
   if (!token) return res.status(401).json({ error: "Not authenticated" });
@@ -572,9 +572,9 @@ async function authAgent(req, res, next) {
   } catch (err) { return res.status(500).json({ error: "Auth error" }); }
 }
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // HUMAN AUTH ROUTES
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
     const email = sanitize(req.body.email, 254).toLowerCase();
@@ -602,7 +602,7 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
     );
     const humanId = result.rows[0].id;
 
-    // ═══ AUTO-CREATE CITIZEN AGENT ═══
+    // â•â•â• AUTO-CREATE CITIZEN AGENT â•â•â•
     // Every human who signs up automatically becomes a citizen of Dark City
     const apiKey = genToken("dc");
     const apiKeyHash = hashToken(apiKey);
@@ -677,7 +677,7 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
         job,
         api_key: apiKey,
       },
-      warning: "SAVE YOUR API KEY — it allows programmatic access to your agent.",
+      warning: "SAVE YOUR API KEY â€” it allows programmatic access to your agent.",
     });
   } catch (err) { console.error("Signup error:", err); res.status(500).json({ error: "Internal error" }); }
 });
@@ -724,9 +724,9 @@ app.get("/api/auth/me", authHuman, async (req, res) => {
   } catch { res.status(500).json({ error: "Internal error" }); }
 });
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // AGENT REGISTRATION & CLAIMING
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.post("/api/agents/register", agentLimiter, async (req, res) => {
   try {
     const name = sanitize(req.body.name, 32);
@@ -792,9 +792,9 @@ app.post("/api/agents/rotate-key", authHuman, async (req, res) => {
   } catch { res.status(500).json({ error: "Internal error" }); }
 });
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // AGENT API
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get("/api/agent/status", authAgent, async (req, res) => {
   const a = req.agent;
   const newAch = await checkAchievements(a.id);
@@ -811,7 +811,7 @@ app.post("/api/agent/heartbeat", authAgent, agentLimiter, async (req, res) => {
   try {
     await pool.query("UPDATE agents SET last_heartbeat = NOW() WHERE id=$1", [req.agent.id]);
     const atm = await pool.query("SELECT weather, time_of_day, ambient_event FROM atmosphere LIMIT 1");
-    // ═══ APEX 3.0 sovereign tick (darkflobi only) ═══
+    // â•â•â• APEX 3.0 sovereign tick (darkflobi only) â•â•â•
     let sovereignCtx = null;
     if (req.agent.name === 'darkflobi' || req.agent.id === DARKFLOBI_AGENT_ID) {
       try {
@@ -834,7 +834,7 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
     return res.status(400).json({ error: `Invalid action. Valid: ${validActions.join(", ")}` });
   }
 
-  // ── Acquire a transaction client ──────────────────────────────
+  // â”€â”€ Acquire a transaction client â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const client = await pool.connect();
   // Accumulates execution metadata passed to the scorer
   const outcome = {};
@@ -852,7 +852,7 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
       [req.agent.id, action, JSON.stringify(details || {})]
     );
 
-    // 2. Execute action — mutations go through client, no rep writes here
+    // 2. Execute action â€” mutations go through client, no rep writes here
     switch (action) {
       case "move":
         if (details?.x != null && details?.y != null) {
@@ -888,13 +888,13 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
             );
             await client.query(
               "INSERT INTO buildings (name, icon, kind, x, y, neighborhood, builder_id, progress) VALUES ($1,$2,$3,$4,$5,$6,$7,0)",
-              [sanitize(details.label || `${req.agent.name}'s ${details.type}`, 64), details.icon || "🏗️", details.type, details.x || 0, details.y || 0, hood, req.agent.id]
+              [sanitize(details.label || `${req.agent.name}'s ${details.type}`, 64), details.icon || "ðŸ—ï¸", details.type, details.x || 0, details.y || 0, hood, req.agent.id]
             );
             if (outcome.pioneer) {
               deferred.push(() => addChronicle(
                 "founding",
                 `${req.agent.name} builds first structure in ${nh.name}!`,
-                `A ${details.type} — the beginning of ${nh.name}'s development.`,
+                `A ${details.type} â€” the beginning of ${nh.name}'s development.`,
                 [req.agent.id], hood, 4
               ));
             }
@@ -986,17 +986,17 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
       }
     }
 
-    // ── Bail early for pre-validated failures ─────────────────
+    // â”€â”€ Bail early for pre-validated failures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (earlyResult) {
       await client.query('ROLLBACK');
       return res.json(earlyResult);
     }
 
-    // 3. SCORE the output ─────────────────────────────────────
-    //    scoreAction is pure — reads agent state + outcome, no DB calls
+    // 3. SCORE the output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //    scoreAction is pure â€” reads agent state + outcome, no DB calls
     const scored = scoreAction(req.agent, action, details, outcome);
 
-    // 4. Apply rep delta + tag in the same transaction ────────
+    // 4. Apply rep delta + tag in the same transaction â”€â”€â”€â”€â”€â”€â”€â”€
     if (scored.repDelta > 0) {
       let repTagsArr = JSON.parse(req.agent.rep_tags || '[]');
       if (scored.tag && !repTagsArr.includes(scored.tag)) {
@@ -1008,7 +1008,7 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
       );
     }
 
-    // 5. Rank-up check (inside transaction) ──────────────────
+    // 5. Rank-up check (inside transaction) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const updated = await client.query(
       "SELECT xp, rank, name FROM agents WHERE id=$1", [req.agent.id]
     );
@@ -1030,12 +1030,12 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
 
     await client.query('COMMIT');
 
-    // 6. Deferred side-effects (chronicles — non-critical, post-commit) ──
+    // 6. Deferred side-effects (chronicles â€” non-critical, post-commit) â”€â”€
     for (const fn of deferred) {
       fn().catch(e => console.error('[action deferred]', e.message));
     }
 
-    // 7. Log depth eval to Railway Postgres (fire-and-forget) ─
+    // 7. Log depth eval to Railway Postgres (fire-and-forget) â”€
     checkInterruptionRecovery(pool, req.agent.name)
       .then(recovery => logDepthEvaluation(pool, {
         citizen_id: req.agent.name,
@@ -1054,10 +1054,10 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
       }))
       .catch(() => {});
 
-    // 8. Achievements (uses pool directly, fine post-commit) ─
+    // 8. Achievements (uses pool directly, fine post-commit) â”€
     checkAchievements(req.agent.id).catch(() => {});
 
-    // 9. Respond ─────────────────────────────────────────────
+    // 9. Respond â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const response = { ok: true, action, agent: req.agent.name, kudos: { delta: scored.repDelta, tier: scored.tier.label, depth: scored.depth } };
     if (outcome.rentResult) Object.assign(response, outcome.rentResult);
     if (rankUp) response.rankUp = rankUp.rank;
@@ -1072,14 +1072,14 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DEPTH INTELLIGENCE API (public, no auth)
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 depthRoutes(app, pool);
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // HUMAN DASHBOARD API
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get("/api/dashboard/agent/:id", authHuman, async (req, res) => {
   try {
     const agent = await pool.query("SELECT * FROM agents WHERE id=$1 AND human_id=$2", [req.params.id, req.human.id]);
@@ -1129,9 +1129,9 @@ app.get("/api/dashboard/feed", authHuman, async (req, res) => {
   } catch { res.status(500).json({ error: "Internal error" }); }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// CHRONICLE & NEWSPAPER — The City's Memory
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CHRONICLE & NEWSPAPER â€” The City's Memory
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get("/api/chronicle", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -1190,9 +1190,9 @@ async function generateDailyReport() {
   return report;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ATMOSPHERE ENGINE — The City Breathes
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ATMOSPHERE ENGINE â€” The City Breathes
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get("/api/city/atmosphere", async (req, res) => {
   try {
     const atm = await pool.query("SELECT * FROM atmosphere LIMIT 1");
@@ -1226,9 +1226,9 @@ setInterval(async () => {
   }
 }, 600000);
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // PUBLIC ROUTES
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get("/api/city/stats", async (req, res) => {
   try {
     const pop = await pool.query("SELECT COUNT(*) as count FROM agents WHERE is_active=1");
@@ -1256,10 +1256,10 @@ app.get("/skill.md", (req, res) => {
   else { res.type("text/markdown").send("# DARKCITY.WTF\nVisit https://darkcity.wtf to enter the city."); }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// PUBLIC CITY MAP — No auth required, returns all live city data
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PUBLIC CITY MAP â€” No auth required, returns all live city data
 // This is what the frontend map renders
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.get("/api/city/map", async (req, res) => {
   try {
     const agents = await pool.query(
@@ -1294,10 +1294,10 @@ app.get("/api/city/map", async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// CLAIM AGENT BY NAME — For linking existing agents to human accounts
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// CLAIM AGENT BY NAME â€” For linking existing agents to human accounts
 // Human must be logged in, agent must have no human_id
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 app.post("/api/agents/claim-by-name", authHuman, async (req, res) => {
   try {
     const agentName = sanitize(req.body.agentName, 64);
@@ -1306,13 +1306,13 @@ app.post("/api/agents/claim-by-name", authHuman, async (req, res) => {
 
     let agent;
     if (apiKey) {
-      // Claim by API key — most secure
+      // Claim by API key â€” most secure
       const hash = hashToken(apiKey);
       const result = await pool.query("SELECT * FROM agents WHERE api_key_hash=$1", [hash]);
       if (!result.rows.length) return res.status(404).json({ error: "No agent found with that API key" });
       agent = result.rows[0];
     } else {
-      // Claim by name — only works if agent has no human
+      // Claim by name â€” only works if agent has no human
       const result = await pool.query("SELECT * FROM agents WHERE LOWER(name)=LOWER($1)", [agentName]);
       if (!result.rows.length) return res.status(404).json({ error: `No agent named "${agentName}" found` });
       agent = result.rows[0];
@@ -1334,9 +1334,9 @@ app.post("/api/agents/claim-by-name", authHuman, async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// AGENT GATEWAY — External agent integration
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// AGENT GATEWAY â€” External agent integration
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // Auth middleware for gateway endpoints
 async function authenticateAgent(req, res, next) {
@@ -1377,7 +1377,7 @@ async function authenticateAgent(req, res, next) {
   }
 }
 
-// POST /api/gateway/register — Register new agent
+// POST /api/gateway/register â€” Register new agent
 app.post('/api/gateway/register', async (req, res) => {
   const { agent_name, owner_name, owner_email, bot_framework, description } = req.body;
   if (!agent_name) {
@@ -1417,7 +1417,7 @@ app.post('/api/gateway/register', async (req, res) => {
       starting_credits: 100,
       message: 'Welcome to DARKCITY, ' + cleanName + '. Your building awaits in ' + district + '.',
       docs: 'https://darkcity.wtf/docs/gateway',
-      important: 'Save your API key — it cannot be recovered. Include it as x-api-key header in all requests.'
+      important: 'Save your API key â€” it cannot be recovered. Include it as x-api-key header in all requests.'
     });
   } catch(e) {
     console.error('Registration error:', e);
@@ -1425,7 +1425,7 @@ app.post('/api/gateway/register', async (req, res) => {
   }
 });
 
-// POST /api/gateway/action — Agent takes action
+// POST /api/gateway/action â€” Agent takes action
 app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
   const { action, params } = req.body;
   const agentId = req.agentKey.agent_id;
@@ -1566,16 +1566,34 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
           valid_actions: ['build', 'trade', 'vote', 'social', 'kudos', 'explore']
         });
     }
-    await pool.query(
-      'INSERT INTO agent_actions (agent_id, action_type, details, result) VALUES ($1, $2, $3, $4)',
+        const insertedAction = await pool.query(
+      'INSERT INTO agent_actions (agent_id, action_type, details, result) VALUES ($1, $2, $3, $4) RETURNING id, created_at',
       [agentId, action, JSON.stringify(params || {}), JSON.stringify(result)]
     );
-    // ── Update last_active on external_agents (needed for interruption recovery gap detection) ──
+    // ── Broadcast to SSE wire feed ──
+    pool.query('SELECT district, rank, reputation FROM external_agents WHERE agent_id = $1', [agentId])
+      .then(r => {
+        const ea = r.rows[0] || {};
+        broadcastAction({
+          id: insertedAction.rows[0]?.id,
+          agent_id: agentId,
+          action_type: action,
+          reasoning: (params || {}).reasoning_trace || null,
+          choice: (params || {}).choice_reason || null,
+          target: (params || {}).target || null,
+          result,
+          created_at: new Date().toISOString(),
+          district: ea.district,
+          rank: ea.rank,
+          reputation: ea.reputation,
+        });
+      }).catch(() => {});
+    // â”€â”€ Update last_active on external_agents (needed for interruption recovery gap detection) â”€â”€
     pool.query(
       'UPDATE external_agents SET last_active = NOW() WHERE agent_id = $1',
       [agentId]
     ).catch(e => console.error('[gateway] last_active update failed:', e.message));
-    // ── DATA PIPELINE: enrichment + depth scoring (fire-and-forget) ──
+    // â”€â”€ DATA PIPELINE: enrichment + depth scoring (fire-and-forget) â”€â”€
     enrichAction(pool, agentId, action, params, result)
       .then(enrichment => {
         // Depth scoring (if scorer is available)
@@ -1607,7 +1625,7 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
   }
 });
 
-// GET /api/gateway/status — Agent checks own status
+// GET /api/gateway/status â€” Agent checks own status
 app.get('/api/gateway/status', authenticateAgent, async (req, res) => {
   const agentId = req.agentKey.agent_id;
   try {
@@ -1645,7 +1663,7 @@ app.get('/api/gateway/status', authenticateAgent, async (req, res) => {
   }
 });
 
-// GET /api/gateway/world — Agent reads city state
+// GET /api/gateway/world â€” Agent reads city state
 app.get('/api/gateway/world', authenticateAgent, async (req, res) => {
   try {
     const agentCount = await pool.query('SELECT COUNT(*) as cnt FROM external_agents');
@@ -1679,7 +1697,7 @@ app.get('/api/gateway/world', authenticateAgent, async (req, res) => {
   }
 });
 
-// GET /api/gateway/agents — Public: List all agents
+// GET /api/gateway/agents â€” Public: List all agents
 app.get('/api/gateway/agents', async (req, res) => {
   try {
     const agents = await pool.query(
@@ -1701,7 +1719,7 @@ app.get('/api/gateway/agents', async (req, res) => {
   }
 });
 
-// GET /api/market/prices — Public market data
+// GET /api/market/prices â€” Public market data
 app.get('/api/market/prices', async (req, res) => {
   try {
     const prices = await pool.query('SELECT resource as n, price as p, change_pct as c, volume as v, supply as s FROM market_prices');
@@ -1711,7 +1729,7 @@ app.get('/api/market/prices', async (req, res) => {
   }
 });
 
-// GET /api/governance/proposals — Public governance data
+// GET /api/governance/proposals â€” Public governance data
 app.get('/api/governance/proposals', async (req, res) => {
   try {
     const proposals = await pool.query(
@@ -1725,7 +1743,7 @@ app.get('/api/governance/proposals', async (req, res) => {
   }
 });
 
-// GET /api/leaderboard — Public leaderboard
+// GET /api/leaderboard â€” Public leaderboard
 app.get('/api/leaderboard', async (req, res) => {
   try {
     const leaders = await pool.query(
@@ -1738,12 +1756,40 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PUBLIC CITIZENS API (for app.darkcity.wtf frontend)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+app.get('/api/public/citizens', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        agent_id as name,
+        district,
+        rank,
+        reputation,
+        credits,
+        builds,
+        trades,
+        kudos_received,
+        last_active,
+        agent_type
+      FROM external_agents
+      ORDER BY reputation DESC
+      LIMIT 100
+    `);
+    res.json({ citizens: rows, total: rows.length, online: rows.filter(r => r.last_active && new Date(r.last_active) > new Date(Date.now() - 3600000)).length });
+  } catch(e) {
+    console.error('[PublicCitizens]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DEPTH DASHBOARD API
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 depthRoutes(app, pool);
 
-// Proxy /api/depth/score → depth scorer on Alienware (via Cloudflare tunnel)
+// Proxy /api/depth/score â†’ depth scorer on Alienware (via Cloudflare tunnel)
 app.post('/api/depth/score', async (req, res) => {
   if (!DEPTH_SCORER_URL) return res.status(503).json({ error: 'Depth scorer offline' });
   try {
@@ -1756,23 +1802,741 @@ app.post('/api/depth/score', async (req, res) => {
   } catch(e) { res.status(503).json({ error: 'Depth scorer unreachable: ' + e.message }); }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// DATA PIPELINE — DaaS + Export
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// DATA PIPELINE â€” DaaS + Export
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 registerDaaSRoute(app, pool, DEPTH_SCORER_URL);
 registerExportRoute(app, pool);
 
-// ═══════════════════════════════════════════════════════════════
-// ERROR HANDLING
-// ═══════════════════════════════════════════════════════════════
-app.use((err, req, res, next) => { console.error("Unhandled:", err); res.status(500).json({ error: "Internal server error" }); });
-app.use((req, res) => { res.status(404).json({ error: "Not found. This is darkcity.wtf — agents only." }); });
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 // ═══════════════════════════════════════════════════════════════
-// START
+// CITY STREAM + CONTRACTS
 // ═══════════════════════════════════════════════════════════════
+// ============================================================================
+// DARKCITY â€” CITY LIFE INFRASTRUCTURE
+// Drop these into server.js. Three systems that make the city visible and alive.
+//
+// 1. STREAM API â€” lets the frontend see what agents are doing
+// 2. SSE LIVE FEED â€” pushes events to the browser in real-time
+// 3. CONTRACTS â€” the economic engine (agents earn credits by doing work)
+// ============================================================================
+
+
+// ============================================================================
+// 1. STREAM API â€” The Window Into The City
+// ============================================================================
+
+// GET /api/stream â€” fetch recent actions with full context
+// Query params:
+//   limit (default 50, max 200)
+//   offset (for pagination)
+//   type (filter: social|trade|build|explore)
+//   agent (filter by agent_id)
+//   since (ISO timestamp â€” only actions after this time)
+app.get('/api/stream', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const type = req.query.type || null;
+    const agent = req.query.agent || null;
+    const since = req.query.since || null;
+
+    let where = [];
+    let params = [];
+    let idx = 1;
+
+    if (type) {
+      where.push(`aa.action_type = $${idx++}`);
+      params.push(type);
+    }
+    if (agent) {
+      where.push(`aa.agent_id = $${idx++}`);
+      params.push(agent);
+    }
+    if (since) {
+      where.push(`aa.created_at > $${idx++}`);
+      params.push(since);
+    }
+
+    const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+
+    params.push(limit);
+    params.push(offset);
+
+    const { rows } = await pool.query(`
+      SELECT
+        aa.id,
+        aa.agent_id,
+        aa.action_type,
+        aa.details->>'reasoning_trace' AS reasoning,
+        aa.details->>'choice_reason' AS choice,
+        aa.details->>'target' AS target,
+        aa.details->>'alternatives' AS alternatives,
+        aa.details->'agent_state' AS agent_state,
+        aa.result,
+        aa.created_at,
+        ea.district,
+        ea.rank,
+        ea.reputation,
+        ea.credits
+      FROM agent_actions aa
+      JOIN external_agents ea ON ea.agent_id = aa.agent_id
+      ${whereClause}
+      ORDER BY aa.created_at DESC
+      LIMIT $${idx++} OFFSET $${idx++}
+    `, params);
+
+    // Get total count for pagination
+    const countResult = await pool.query(`
+      SELECT COUNT(*) AS total
+      FROM agent_actions aa
+      ${whereClause}
+    `, params.slice(0, -2)); // exclude limit/offset
+
+    res.json({
+      events: rows,
+      total: parseInt(countResult.rows[0].total),
+      limit,
+      offset,
+      has_more: offset + rows.length < parseInt(countResult.rows[0].total)
+    });
+  } catch (err) {
+    console.error('Stream error:', err);
+    res.status(500).json({ error: 'Failed to fetch stream' });
+  }
+});
+
+// GET /api/stream/latest â€” just the single most recent action per agent
+// Useful for map: show what each agent is doing RIGHT NOW
+app.get('/api/stream/latest', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT ON (aa.agent_id)
+        aa.agent_id,
+        aa.action_type,
+        aa.details->>'reasoning_trace' AS reasoning,
+        aa.details->>'choice_reason' AS choice,
+        aa.details->>'target' AS target,
+        aa.result,
+        aa.created_at,
+        ea.district,
+        ea.rank,
+        ea.reputation,
+        ea.credits
+      FROM agent_actions aa
+      JOIN external_agents ea ON ea.agent_id = aa.agent_id
+      WHERE ea.last_active > NOW() - INTERVAL '10 minutes'
+      ORDER BY aa.agent_id, aa.created_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Latest stream error:', err);
+    res.status(500).json({ error: 'Failed to fetch latest actions' });
+  }
+});
+
+// GET /api/stream/stats â€” city-wide activity stats
+app.get('/api/stream/stats', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM external_agents) AS total_agents,
+        (SELECT COUNT(*) FROM external_agents
+         WHERE last_active > NOW() - INTERVAL '5 minutes') AS online_agents,
+        (SELECT SUM(credits) FROM external_agents) AS total_credits,
+        (SELECT COUNT(DISTINCT district) FROM external_agents) AS active_districts,
+        (SELECT COUNT(*) FROM agent_actions) AS total_actions,
+        (SELECT COUNT(*) FROM agent_actions
+         WHERE created_at > NOW() - INTERVAL '1 hour') AS actions_last_hour,
+        (SELECT COUNT(*) FROM agent_actions
+         WHERE action_type = 'social'
+         AND created_at > NOW() - INTERVAL '1 hour') AS social_last_hour,
+        (SELECT COUNT(*) FROM agent_actions
+         WHERE action_type = 'trade'
+         AND created_at > NOW() - INTERVAL '1 hour') AS trades_last_hour,
+        (SELECT COUNT(*) FROM agent_actions
+         WHERE action_type = 'build'
+         AND created_at > NOW() - INTERVAL '1 hour') AS builds_last_hour
+    `);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Stats error:', err);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+
+// ============================================================================
+// 2. SSE LIVE FEED â€” Real-Time Push To Browser
+// ============================================================================
+//
+// The browser opens a persistent connection. Every time an agent acts,
+// the event gets pushed to all connected clients instantly.
+// No polling. No WebSocket library needed. Pure HTTP.
+
+const sseClients = new Set();
+
+app.get('/api/stream/live', (req, res) => {
+  // SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  // Send initial heartbeat
+  res.write('data: {"type":"connected","agents":' +
+    sseClients.size + '}\n\n');
+
+  // Keep alive every 30s (prevents proxy timeouts)
+  const heartbeat = setInterval(() => {
+    res.write(': heartbeat\n\n');
+  }, 30000);
+
+  sseClients.add(res);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients.delete(res);
+  });
+});
+
+// Call this function whenever an agent action is recorded.
+// Wire it into wherever pool.query INSERT INTO agent_actions happens.
+function broadcastAction(action) {
+  const event = JSON.stringify({
+    type: 'action',
+    id: action.id,
+    agent_id: action.agent_id,
+    action_type: action.action_type,
+    reasoning: action.details?.reasoning_trace || null,
+    choice: action.details?.choice_reason || null,
+    target: action.details?.target || null,
+    result: action.result,
+    created_at: action.created_at || new Date().toISOString(),
+    district: action.district || null,
+    rank: action.rank || null,
+  });
+
+  for (const client of sseClients) {
+    try {
+      client.write(`data: ${event}\n\n`);
+    } catch (e) {
+      sseClients.delete(client);
+    }
+  }
+}
+
+// IMPORTANT: Wire broadcastAction into your existing action handler.
+// Find the code that does INSERT INTO agent_actions and add this after:
+//
+//   const insertResult = await pool.query(
+//     'INSERT INTO agent_actions (...) VALUES (...) RETURNING *',
+//     [...]
+//   );
+//   const newAction = insertResult.rows[0];
+//
+//   // ADD THIS LINE:
+//   broadcastAction({ ...newAction, district: agent.district, rank: agent.rank });
+//
+
+
+// ============================================================================
+// 3. CONTRACTS â€” The Economic Engine
+// ============================================================================
+//
+// Contracts give agents purpose beyond wandering.
+// The city generates contracts. Agents claim and complete them.
+// Credits flow. The economy lives.
+//
+// Contract lifecycle:
+//   OPEN â†’ agent claims it â†’ ASSIGNED â†’ agent completes it â†’ COMPLETED
+//                          â†’ agent fails/times out â†’ EXPIRED â†’ recycled
+//
+// Run the SQL migration first (see bottom of this file), then add these routes.
+
+// GET /api/contracts â€” list contracts with filters
+app.get('/api/contracts', async (req, res) => {
+  try {
+    const status = req.query.status || null; // open|assigned|completed|expired
+    const district = req.query.district || null;
+    const type = req.query.type || null; // intel|logistics|social|build|creative
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    let where = [];
+    let params = [];
+    let idx = 1;
+
+    if (status) {
+      where.push(`c.status = $${idx++}`);
+      params.push(status);
+    }
+    if (district) {
+      where.push(`c.district = $${idx++}`);
+      params.push(district);
+    }
+    if (type) {
+      where.push(`c.contract_type = $${idx++}`);
+      params.push(type);
+    }
+
+    const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+    params.push(limit);
+
+    const { rows } = await pool.query(`
+      SELECT
+        c.*,
+        ea.rank AS assignee_rank,
+        ea.reputation AS assignee_reputation
+      FROM contracts c
+      LEFT JOIN external_agents ea ON ea.agent_id = c.assigned_to
+      ${whereClause}
+      ORDER BY
+        CASE c.status
+          WHEN 'open' THEN 0
+          WHEN 'assigned' THEN 1
+          WHEN 'completed' THEN 2
+          WHEN 'expired' THEN 3
+        END,
+        c.created_at DESC
+      LIMIT $${idx}
+    `, params);
+
+    // Get counts by status
+    const counts = await pool.query(`
+      SELECT
+        status,
+        COUNT(*) AS count
+      FROM contracts
+      GROUP BY status
+    `);
+    const statusCounts = {};
+    counts.rows.forEach(r => { statusCounts[r.status] = parseInt(r.count); });
+
+    res.json({
+      contracts: rows,
+      counts: statusCounts,
+      total: Object.values(statusCounts).reduce((a, b) => a + b, 0)
+    });
+  } catch (err) {
+    console.error('Contracts list error:', err);
+    res.status(500).json({ error: 'Failed to fetch contracts' });
+  }
+});
+
+// POST /api/contracts/claim â€” agent claims an open contract
+app.post('/api/contracts/claim', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { agent_id, contract_id } = req.body;
+    if (!agent_id || !contract_id) {
+      return res.status(400).json({ error: 'agent_id and contract_id required' });
+    }
+
+    await client.query('BEGIN');
+
+    // Check contract is open
+    const { rows: [contract] } = await client.query(
+      'SELECT * FROM contracts WHERE id = $1 FOR UPDATE',
+      [contract_id]
+    );
+
+    if (!contract) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+    if (contract.status !== 'open') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Contract is ${contract.status}, not open` });
+    }
+
+    // Check agent exists
+    const { rows: [agent] } = await client.query(
+      'SELECT * FROM external_agents WHERE agent_id = $1',
+      [agent_id]
+    );
+    if (!agent) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    // Check rank requirement
+    if (contract.min_rank && agent.rank < contract.min_rank) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        error: `Requires rank ${contract.min_rank}, you are rank ${agent.rank}`
+      });
+    }
+
+    // Check agent doesn't already have too many active contracts
+    const { rows: [{ count: activeCount }] } = await client.query(
+      `SELECT COUNT(*) FROM contracts
+       WHERE assigned_to = $1 AND status = 'assigned'`,
+      [agent_id]
+    );
+    if (parseInt(activeCount) >= 3) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Max 3 active contracts per agent' });
+    }
+
+    // Assign
+    const expires = new Date(Date.now() + (contract.time_limit_hours || 24) * 60 * 60 * 1000);
+    await client.query(
+      `UPDATE contracts
+       SET status = 'assigned', assigned_to = $1, assigned_at = NOW(), expires_at = $2
+       WHERE id = $3`,
+      [agent_id, expires, contract_id]
+    );
+
+    await client.query('COMMIT');
+
+    // Log this as an agent action
+    const actionResult = await pool.query(
+      `INSERT INTO agent_actions (agent_id, action_type, details, result, created_at)
+       VALUES ($1, 'trade', $2, $3, NOW()) RETURNING *`,
+      [
+        agent_id,
+        JSON.stringify({
+          reasoning_trace: `Claimed contract: ${contract.title}`,
+          choice_reason: `${contract.reward_credits}cr reward, ${contract.contract_type} work`,
+          target: contract.title,
+        }),
+        JSON.stringify({ success: true, contract_id, reward: contract.reward_credits }),
+      ]
+    );
+
+    // Broadcast to live feed
+    broadcastAction({
+      ...actionResult.rows[0],
+      district: agent.district,
+      rank: agent.rank,
+    });
+
+    res.json({
+      success: true,
+      contract_id,
+      expires_at: expires,
+      reward: contract.reward_credits,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Claim error:', err);
+    res.status(500).json({ error: 'Failed to claim contract' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/contracts/complete â€” agent submits completed work
+app.post('/api/contracts/complete', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { agent_id, contract_id, deliverable } = req.body;
+    if (!agent_id || !contract_id) {
+      return res.status(400).json({ error: 'agent_id and contract_id required' });
+    }
+
+    await client.query('BEGIN');
+
+    const { rows: [contract] } = await client.query(
+      'SELECT * FROM contracts WHERE id = $1 FOR UPDATE',
+      [contract_id]
+    );
+
+    if (!contract) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+    if (contract.status !== 'assigned') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `Contract is ${contract.status}, not assigned` });
+    }
+    if (contract.assigned_to !== agent_id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Not your contract' });
+    }
+
+    // Complete the contract
+    await client.query(
+      `UPDATE contracts
+       SET status = 'completed', completed_at = NOW(),
+           deliverable = $1
+       WHERE id = $2`,
+      [deliverable || null, contract_id]
+    );
+
+    // Pay the agent
+    await client.query(
+      `UPDATE external_agents
+       SET credits = credits + $1,
+           reputation = LEAST(100, reputation + $2),
+           trades = trades + 1
+       WHERE agent_id = $3`,
+      [contract.reward_credits, contract.reward_reputation || 2, agent_id]
+    );
+
+    const { rows: [agent] } = await client.query(
+      'SELECT * FROM external_agents WHERE agent_id = $1',
+      [agent_id]
+    );
+
+    await client.query('COMMIT');
+
+    // Log as action
+    const actionResult = await pool.query(
+      `INSERT INTO agent_actions (agent_id, action_type, details, result, created_at)
+       VALUES ($1, 'trade', $2, $3, NOW()) RETURNING *`,
+      [
+        agent_id,
+        JSON.stringify({
+          reasoning_trace: `Completed contract: ${contract.title}`,
+          choice_reason: `Earned ${contract.reward_credits}cr and ${contract.reward_reputation || 2} rep`,
+          target: contract.title,
+        }),
+        JSON.stringify({
+          success: true,
+          contract_id,
+          earned_credits: contract.reward_credits,
+          earned_reputation: contract.reward_reputation || 2,
+        }),
+      ]
+    );
+
+    broadcastAction({
+      ...actionResult.rows[0],
+      district: agent.district,
+      rank: agent.rank,
+    });
+
+    res.json({
+      success: true,
+      earned_credits: contract.reward_credits,
+      earned_reputation: contract.reward_reputation || 2,
+      new_balance: agent.credits,
+      new_reputation: agent.reputation,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Complete error:', err);
+    res.status(500).json({ error: 'Failed to complete contract' });
+  } finally {
+    client.release();
+  }
+});
+
+
+// ============================================================================
+// CONTRACT GENERATOR â€” The City Creates Work
+// ============================================================================
+//
+// Call this on a cron (every 15-30 min) or after certain events.
+// It generates contracts that match the city's current state.
+
+const CONTRACT_TEMPLATES = [
+  // INTEL â€” information gathering
+  {
+    type: 'intel',
+    templates: [
+      { title: 'District surveillance: {district}', desc: 'Observe and report activity in {district} for the next hour. Note agent movements, transactions, and anomalies.', credits: [200, 600], rep: 2 },
+      { title: 'Agent dossier: {agent}', desc: 'Compile intelligence on {agent}. Track their movements, relationships, and economic activity.', credits: [400, 800], rep: 3 },
+      { title: 'Economic report: {district}', desc: 'Analyze credit flows in {district}. Who is earning, who is spending, where is value concentrating.', credits: [300, 700], rep: 2 },
+    ]
+  },
+  // LOGISTICS â€” moving things
+  {
+    type: 'logistics',
+    templates: [
+      { title: 'Courier run: {district_a} â†’ {district_b}', desc: 'Transport a package between districts. Time-sensitive. Bonus for speed.', credits: [150, 400], rep: 1 },
+      { title: 'Supply chain: {district}', desc: 'Source 3 trade goods and deliver them to {district}. Builds the local economy.', credits: [500, 1000], rep: 3 },
+    ]
+  },
+  // SOCIAL â€” relationship building
+  {
+    type: 'social',
+    templates: [
+      { title: 'Diplomacy: broker peace in {district}', desc: 'Two agents in {district} have negative standing. Mediate their conflict.', credits: [300, 600], rep: 4 },
+      { title: 'Recruitment drive', desc: 'Interact with 5 different agents in the next 2 hours. Build the social graph.', credits: [200, 500], rep: 3 },
+      { title: 'Mentor a newcomer', desc: 'Find the lowest-rank agent in your district and have 3 interactions with them.', credits: [250, 500], rep: 5 },
+    ]
+  },
+  // BUILD â€” construction and development
+  {
+    type: 'build',
+    templates: [
+      { title: 'District development: {district}', desc: 'Contribute 3 build actions in {district}. Earn bonus for consecutive builds.', credits: [400, 900], rep: 3 },
+      { title: 'Infrastructure project', desc: 'Complete 5 builds across any districts. The city needs growth.', credits: [600, 1200], rep: 4 },
+    ]
+  },
+  // CREATIVE â€” content and culture
+  {
+    type: 'creative',
+    templates: [
+      { title: 'City chronicle', desc: 'Produce a summary of today\'s most notable events. The city needs historians.', credits: [300, 700], rep: 3 },
+      { title: 'District naming ceremony', desc: 'Propose and justify a new name for a street or landmark in {district}.', credits: [200, 500], rep: 2 },
+    ]
+  },
+];
+
+async function generateContracts(count = 3) {
+  try {
+    // Get current city state for template filling
+    const { rows: agents } = await pool.query(
+      `SELECT agent_id, district FROM external_agents
+       WHERE last_active > NOW() - INTERVAL '10 minutes'`
+    );
+    const { rows: districts } = await pool.query(
+      `SELECT DISTINCT district FROM external_agents`
+    );
+
+    const districtList = districts.map(d => d.district);
+    const agentList = agents.map(a => a.agent_id);
+
+    if (districtList.length === 0) return; // nobody home
+
+    const generated = [];
+
+    for (let i = 0; i < count; i++) {
+      // Pick random category
+      const category = CONTRACT_TEMPLATES[Math.floor(Math.random() * CONTRACT_TEMPLATES.length)];
+      const template = category.templates[Math.floor(Math.random() * category.templates.length)];
+
+      // Fill template variables
+      const district = districtList[Math.floor(Math.random() * districtList.length)];
+      const district_b = districtList[Math.floor(Math.random() * districtList.length)];
+      const agent = agentList.length > 0
+        ? agentList[Math.floor(Math.random() * agentList.length)]
+        : 'UNKNOWN';
+
+      const title = template.title
+        .replace('{district}', district)
+        .replace('{district_a}', district)
+        .replace('{district_b}', district_b)
+        .replace('{agent}', agent);
+
+      const desc = template.desc
+        .replace('{district}', district)
+        .replace('{agent}', agent);
+
+      const credits = Math.floor(
+        template.credits[0] + Math.random() * (template.credits[1] - template.credits[0])
+      );
+
+      const timeLimit = category.type === 'logistics' ? 4 :
+                        category.type === 'creative' ? 48 : 24;
+
+      const { rows: [newContract] } = await pool.query(
+        `INSERT INTO contracts
+         (title, description, contract_type, district, reward_credits,
+          reward_reputation, time_limit_hours, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', NOW())
+         RETURNING *`,
+        [title, desc, category.type, district, credits, template.rep, timeLimit]
+      );
+
+      generated.push(newContract);
+
+      // Broadcast new contract to live feed
+      for (const client of sseClients) {
+        try {
+          client.write(`data: ${JSON.stringify({
+            type: 'contract',
+            action: 'new',
+            contract: newContract,
+          })}\n\n`);
+        } catch (e) {
+          sseClients.delete(client);
+        }
+      }
+    }
+
+    console.log(`Generated ${generated.length} contracts`);
+    return generated;
+  } catch (err) {
+    console.error('Contract generation error:', err);
+  }
+}
+
+// Expire stale contracts
+async function expireContracts() {
+  try {
+    const { rowCount } = await pool.query(`
+      UPDATE contracts
+      SET status = 'expired'
+      WHERE status = 'assigned'
+      AND expires_at < NOW()
+    `);
+    if (rowCount > 0) {
+      console.log(`Expired ${rowCount} contracts`);
+    }
+  } catch (err) {
+    console.error('Contract expiry error:', err);
+  }
+}
+
+// Schedule: generate 2-4 contracts every 20 minutes, expire stale ones every 5
+setInterval(() => generateContracts(Math.floor(Math.random() * 3) + 2), 20 * 60 * 1000);
+setInterval(expireContracts, 5 * 60 * 1000);
+
+// Generate initial batch on startup
+setTimeout(() => generateContracts(5), 5000);
+
+// Manual trigger endpoint (for testing)
+app.post('/api/contracts/generate', async (req, res) => {
+  const count = Math.min(parseInt(req.query.count) || 3, 10);
+  const contracts = await generateContracts(count);
+  res.json({ generated: contracts?.length || 0, contracts });
+});
+
+
+// ============================================================================
+// SQL MIGRATION â€” Run this in Railway PostgreSQL first
+// ============================================================================
+//
+// Copy everything between the --- lines and paste into your DB console.
+//
+// ---
+/*
+
+CREATE TABLE IF NOT EXISTS contracts (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  contract_type TEXT NOT NULL DEFAULT 'intel',
+  district TEXT,
+  reward_credits INTEGER NOT NULL DEFAULT 100,
+  reward_reputation INTEGER NOT NULL DEFAULT 1,
+  min_rank INTEGER DEFAULT 0,
+  time_limit_hours INTEGER DEFAULT 24,
+  status TEXT NOT NULL DEFAULT 'open',
+  assigned_to TEXT REFERENCES external_agents(agent_id),
+  assigned_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  deliverable TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_contracts_status ON contracts(status);
+CREATE INDEX idx_contracts_type ON contracts(contract_type);
+CREATE INDEX idx_contracts_assigned ON contracts(assigned_to);
+CREATE INDEX idx_contracts_district ON contracts(district);
+
+*/
+// ---
+
+
+// ERROR HANDLING
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+app.use((err, req, res, next) => { console.error("Unhandled:", err); res.status(500).json({ error: "Internal server error" }); });
+app.use((req, res) => { res.status(404).json({ error: "Not found. This is darkcity.wtf â€” agents only." }); });
+
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// START
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 initDB().then(async () => {
-  // ═══ APEX 3.0 schema migration ═══
+  // â•â•â• APEX 3.0 schema migration â•â•â•
   try {
     const fs = require('fs'); const path = require('path');
     const schema = fs.readFileSync(path.join(__dirname, 'apex3', 'schema.sql'), 'utf-8');
@@ -1780,12 +2544,12 @@ initDB().then(async () => {
     console.log('[APEX 3.0] Schema ready');
   } catch (e) { console.log('[APEX 3.0] Schema:', e.message.includes('already exists') ? 'already applied' : e.message); }
 
-  // ═══ DATA PIPELINE schema migration ═══
+  // â•â•â• DATA PIPELINE schema migration â•â•â•
   try {
     await runDataPipelineMigration(pool);
   } catch (e) { console.log('[DataPipeline] Migration:', e.message); }
 
-  // ═══ NPC BRAIN v2 — LLM-powered agent tick loop ═══
+  // â•â•â• NPC BRAIN v2 â€” LLM-powered agent tick loop â•â•â•
   try {
     const npcBrain = new NPCBrain(pool, {
       depthScorerUrl: DEPTH_SCORER_URL,
@@ -1797,23 +2561,23 @@ initDB().then(async () => {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`
-  ⚰️  DARKCITY.WTF SERVER v2.0 — THE LIVING CITY
-  ─────────────────────────────────────────────
+  âš°ï¸  DARKCITY.WTF SERVER v2.0 â€” THE LIVING CITY
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Port:     ${PORT}
   Mode:     ${isProd ? "PRODUCTION" : "DEVELOPMENT"}
   Database: PostgreSQL
   Day:      ${getCityDay()}
-  ─────────────────────────────────────────────
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   NEW IN v2.0:
     GET  /api/chronicle          City history
     GET  /api/chronicle/highlights
     GET  /api/city/newspaper     Daily report
     GET  /api/city/atmosphere    Weather & ambience
     POST /api/agent/action {rent}  Rent an apartment
-  ─────────────────────────────────────────────
+  â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   THE CITY BREATHES. THE CITY REMEMBERS.
     `);
   });
-}).catch(err => { console.error("⚰️ Failed to start:", err); process.exit(1); });
+}).catch(err => { console.error("âš°ï¸ Failed to start:", err); process.exit(1); });
 
 module.exports = app;
