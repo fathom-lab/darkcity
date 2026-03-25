@@ -290,7 +290,11 @@ async function scoreDepth(scorerUrl, text) {
 
     const resp = await fetchFn(`${scorerUrl}/score`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Bypass-Tunnel-Reminder': '1',  // required for localtunnel proxy
+        'User-Agent': 'DarkCity-Backend/1.0',
+      },
       body: JSON.stringify({ prompt: text.substring(0, 500) }),
       signal: controller.signal,
     });
