@@ -93,6 +93,14 @@ class NPCBrain {
     this._interval = setInterval(() => this._tick(), TICK_INTERVAL_MS);
     // First tick after 10s delay (let server warm up)
     setTimeout(() => this._tick(), 10_000);
+
+    // Graceful shutdown — stop brain on process exit so stale intervals don't survive deploys
+    const shutdown = () => {
+      console.log('[NPC-BRAIN] Shutdown signal received, stopping tick loop');
+      this.stop();
+    };
+    process.once('SIGTERM', shutdown);
+    process.once('SIGINT', shutdown);
   }
 
   async _seedAgents() {
@@ -169,10 +177,7 @@ class NPCBrain {
          FROM external_agents ORDER BY agent_id`
       );
 
-      if (agents.length === 0) {
-        this._running = false;
-        return;
-      }
+      if (agents.length === 0) return;
 
       // Round-robin: pick AGENTS_PER_TICK agents starting from tickOffset
       const batch = [];
@@ -191,9 +196,9 @@ class NPCBrain {
       );
     } catch (err) {
       console.error('[NPC-BRAIN] Tick error:', err.message);
+    } finally {
+      this._running = false; // always reset, even on error
     }
-
-    this._running = false;
   }
 
   async _processAgent(agent, allAgentNames) {
@@ -348,7 +353,7 @@ class NPCBrain {
     return lines.join('\n');
   }
 
-  async _callLLM(systemPrompt, userMessage) {
+  async _callLLM(systemPrompt, userMessage, retries = 0) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return null;
 
@@ -374,6 +379,12 @@ class NPCBrain {
       clearTimeout(timeout);
 
       if (!res.ok) {
+        if (res.status === 429 && retries < 3) {
+          const wait = parseInt(res.headers.get('retry-after') || '5') * 1000;
+          console.log(`[NPC-BRAIN] Rate limited (attempt ${retries + 1}/3), waiting ${wait}ms`);
+          await new Promise(r => setTimeout(r, wait));
+          return this._callLLM(systemPrompt, userMessage, retries + 1);
+        }
         const body = await res.text();
         console.error(`[NPC-BRAIN] LLM ${res.status}: ${body.substring(0, 200)}`);
         return null;
