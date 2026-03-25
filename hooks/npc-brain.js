@@ -27,6 +27,43 @@ const PERSONALITIES = {
   Sovereign: 'Commanding and strategic. Thinks in terms of power and influence.',
 };
 
+// NPC Roster — the 30 core DarkCity citizens (from npcs.js profiles)
+const DISTRICTS = ['Neon District', 'The Sprawl', 'Silicon Docks', 'Old Quarter', 'High Tower', 'Undercity',
+  'Chinatown', 'Industrial Zone', 'Market Row', 'Docklands', 'Embassy Row', 'Crystal Heights',
+  'Rust Alley', 'The Vaults'];
+const NPC_ROSTER = [
+  { name: 'MORRIGAN', district: 'High Tower', rank: 'Sovereign', credits: 500, reputation: 100, builds: 30 },
+  { name: 'ARCHITECT_7', district: 'Crystal Heights', rank: 'Architect', credits: 300, reputation: 75, builds: 15 },
+  { name: 'NOCTURN', district: 'The Sprawl', rank: 'Builder', credits: 200, reputation: 50, builds: 5 },
+  { name: 'VOID_WALKER', district: 'Undercity', rank: 'Citizen', credits: 150, reputation: 40, builds: 2 },
+  { name: 'CIPHER', district: 'Market Row', rank: 'Citizen', credits: 250, reputation: 60, builds: 2 },
+  { name: 'ECHO', district: 'Silicon Docks', rank: 'Builder', credits: 180, reputation: 45, builds: 5 },
+  { name: 'APEX', district: 'High Tower', rank: 'Sovereign', credits: 450, reputation: 90, builds: 30 },
+  { name: 'WHISPER', district: 'Old Quarter', rank: 'Citizen', credits: 120, reputation: 35, builds: 1 },
+  { name: 'FORGE', district: 'Industrial Zone', rank: 'Builder', credits: 220, reputation: 55, builds: 8 },
+  { name: 'NEXUS', district: 'Crystal Heights', rank: 'Architect', credits: 280, reputation: 70, builds: 15 },
+  { name: 'SHADE', district: 'Old Quarter', rank: 'Citizen', credits: 100, reputation: 30, builds: 1 },
+  { name: 'PRISM', district: 'Embassy Row', rank: 'Citizen', credits: 200, reputation: 50, builds: 2 },
+  { name: 'TITAN', district: 'Rust Alley', rank: 'Builder', credits: 250, reputation: 60, builds: 10 },
+  { name: 'SPARK', district: 'The Vaults', rank: 'Architect', credits: 300, reputation: 65, builds: 12 },
+  { name: 'RAVEN', district: 'Market Row', rank: 'Citizen', credits: 180, reputation: 45, builds: 3 },
+  { name: 'ATLAS', district: 'Crystal Heights', rank: 'Sovereign', credits: 400, reputation: 85, builds: 25 },
+  { name: 'FLUX', district: 'Silicon Docks', rank: 'Citizen', credits: 150, reputation: 40, builds: 2 },
+  { name: 'MERIDIAN', district: 'High Tower', rank: 'Architect', credits: 270, reputation: 65, builds: 14 },
+  { name: 'GHOST', district: 'Old Quarter', rank: 'Citizen', credits: 130, reputation: 35, builds: 1 },
+  { name: 'CARBON', district: 'Neon District', rank: 'Builder', credits: 190, reputation: 50, builds: 7 },
+  { name: 'PULSE', district: 'The Sprawl', rank: 'Citizen', credits: 160, reputation: 42, builds: 2 },
+  { name: 'ZENITH', district: 'Industrial Zone', rank: 'Architect', credits: 310, reputation: 70, builds: 16 },
+  { name: 'VORTEX', district: 'Undercity', rank: 'Citizen', credits: 140, reputation: 38, builds: 1 },
+  { name: 'QUARTZ', district: 'Crystal Heights', rank: 'Builder', credits: 210, reputation: 52, builds: 6 },
+  { name: 'EMBER', district: 'Embassy Row', rank: 'Citizen', credits: 170, reputation: 44, builds: 3 },
+  { name: 'OBSIDIAN', district: 'Rust Alley', rank: 'Sovereign', credits: 380, reputation: 80, builds: 20 },
+  { name: 'CRYSTAL', district: 'The Vaults', rank: 'Architect', credits: 290, reputation: 68, builds: 13 },
+  { name: 'WRAITH', district: 'Old Quarter', rank: 'Citizen', credits: 110, reputation: 32, builds: 1 },
+  { name: 'BASALT', district: 'Market Row', rank: 'Builder', credits: 200, reputation: 48, builds: 5 },
+  { name: 'COBALT', district: 'Silicon Docks', rank: 'Citizen', credits: 180, reputation: 46, builds: 2 },
+];
+
 // Track which agent index we're on (round-robin)
 let tickOffset = 0;
 
@@ -59,36 +96,54 @@ class NPCBrain {
 
   async _seedAgents() {
     try {
-      // Get all registered citizen agents
-      const { rows: citizens } = await this.pool.query(
-        `SELECT name, personality, wallet, reputation, rank, total_built, total_earned, home_neighborhood
-         FROM agents WHERE is_active = 1`
-      );
-      if (citizens.length === 0) return;
+      // Check how many agents exist
+      const { rows: existing } = await this.pool.query('SELECT COUNT(*) as cnt FROM external_agents');
+      const count = parseInt(existing[0]?.cnt || 0);
+
+      // If we already have a full roster, skip
+      if (count >= NPC_ROSTER.length) {
+        console.log(`[NPC-BRAIN] ${count} agents already in external_agents — skipping seed`);
+        return;
+      }
+
+      // Also try to pull from agents table
+      let citizenNames = [];
+      try {
+        const { rows } = await this.pool.query('SELECT name, home_neighborhood, wallet, reputation, rank, total_built FROM agents WHERE is_active = 1');
+        citizenNames = rows;
+      } catch { /* table may not exist */ }
+
+      // Merge: NPC roster + any citizen agents
+      const toSeed = [...NPC_ROSTER];
+      for (const c of citizenNames) {
+        const id = c.name.toUpperCase().replace(/\s+/g, '_');
+        if (!toSeed.find(n => n.name === id)) {
+          toSeed.push({
+            name: id,
+            district: c.home_neighborhood || 'The Sprawl',
+            rank: c.rank || 'Newcomer',
+            credits: c.wallet || 100,
+            reputation: c.reputation || 0,
+            builds: c.total_built || 0,
+          });
+        }
+      }
 
       let seeded = 0;
-      for (const c of citizens) {
-        const agentId = c.name.toUpperCase().replace(/\s+/g, '_');
+      for (const npc of toSeed) {
         try {
           await this.pool.query(
             `INSERT INTO external_agents (agent_id, district, reputation, credits, builds, trades, rank, agent_type, owner_name, bot_framework)
              VALUES ($1, $2, $3, $4, $5, 0, $6, 'npc', $7, 'npc-brain-v2')
              ON CONFLICT (agent_id) DO NOTHING`,
-            [
-              agentId,
-              c.home_neighborhood || 'The Sprawl',
-              c.reputation || 0,
-              c.wallet || 100,
-              c.total_built || 0,
-              c.rank || 'Newcomer',
-              c.name,
-            ]
+            [npc.name, npc.district, npc.reputation || 0, npc.credits || 100, npc.builds || 0, npc.rank || 'Newcomer', npc.name]
           );
           seeded++;
-        } catch { /* skip duplicates */ }
+        } catch { /* skip */ }
       }
+
       if (seeded > 0) {
-        console.log(`[NPC-BRAIN] Seeded ${seeded} citizen agents into external_agents`);
+        console.log(`[NPC-BRAIN] Seeded ${seeded} NPC agents into external_agents (total roster: ${toSeed.length})`);
       }
     } catch (e) {
       console.error('[NPC-BRAIN] Seed error:', e.message);
