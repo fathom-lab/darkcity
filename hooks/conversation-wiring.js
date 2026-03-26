@@ -26,7 +26,7 @@
 //   Then include conversationData in the agent_actions details if it exists.
 // ============================================================================
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 // ─── MAIN HANDLER ───
 async function handleConversation(pool, initiator, actionResult, callLLM) {
@@ -119,7 +119,7 @@ async function handleConversation(pool, initiator, actionResult, callLLM) {
     const newPatterns = parsed.newPatterns || null;
 
     // 13. Insert into agent_interactions
-    const interactionId = uuidv4();
+    const interactionId = randomUUID();
     await pool.query(
       `INSERT INTO agent_interactions 
        (id, agent_id, subject_id, interaction_type, summary, sentiment,
