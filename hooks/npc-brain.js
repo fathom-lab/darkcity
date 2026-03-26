@@ -11,6 +11,7 @@
 
 const { buildAgentPrompt, parseAgentResponse, hashPrompt } = require('./agent-prompt');
 const { enrichAction, writeEnrichment } = require('./data-pipeline');
+const { handleConversation } = require('./conversation-wiring');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const AGENT_MODEL = process.env.AGENT_MODEL_ID || 'claude-haiku-4-5-20251001';
@@ -233,6 +234,16 @@ class NPCBrain {
       const actionResult = await this._executeAction(agent, result);
       if (!actionResult) return;
 
+      // ─── CONVERSATION SYSTEM ───
+      // When a social action targets a specific agent, fire a second LLM call
+      // AS that agent and log the full exchange to agent_interactions.
+      // 30% gate keeps costs ~$4/day instead of $13/day.
+      let conversationData = null;
+      if (result.action_type === 'social' && result.target_name && Math.random() < 0.30) {
+        const callLLMForConvo = async (prompt) => this._callLLM(prompt.system, prompt.user);
+        conversationData = await handleConversation(this.pool, agent, result, callLLMForConvo);
+      }
+
       // 6. Log to agent_actions
       await this.pool.query(
         'INSERT INTO agent_actions (agent_id, action_type, details, result) VALUES ($1, $2, $3, $4)',
@@ -247,6 +258,12 @@ class NPCBrain {
             target: result.target_name,
             prompt_hash: promptHash,
             model_id: AGENT_MODEL,
+            conversation: conversationData ? {
+              conversation_id: conversationData.conversation_id,
+              target_response: conversationData.target_response,
+              sentiment: conversationData.sentiment,
+              interaction_type: conversationData.interaction_type,
+            } : undefined,
           }),
           JSON.stringify(actionResult.result),
         ]
@@ -293,6 +310,14 @@ class NPCBrain {
           message: actionResult.streamMessage,
           reasoning: result.reasoning ? result.reasoning.substring(0, 200) : null,
           color: '#' + Math.floor(Math.abs(Math.sin(agent.agent_id.length * 2654435761) * 16777215) % 16777215).toString(16).padStart(6, '0'),
+          // Real dialogue — included when two agents actually talked
+          conversation: conversationData ? {
+            with: conversationData.target,
+            initiator_says: conversationData.initiator_message,
+            target_says: conversationData.target_response,
+            sentiment: conversationData.sentiment,
+            interaction_type: conversationData.interaction_type,
+          } : undefined,
         },
       });
 
