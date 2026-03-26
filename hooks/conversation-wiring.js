@@ -210,7 +210,7 @@ Respond in this exact JSON format:
   "disposition_shift": "warmer|cooler|unchanged",
   "disposition_toward_initiator": "ally|neutral|rival|suspicious|curious",
   "what_i_learned": "One thing you learned about them from this exchange (or null)",
-  "interaction_type": "conversation|negotiation|threat|alliance|information_exchange",
+  "interaction_type": "conversation|observed_action|economic_exchange|alliance_activity|conflict|indirect_reference",
   "new_patterns": "Any behavioral pattern you noticed (or null)",
   "predictions_validated": "Any prediction about them confirmed or denied (or null)"
 }
@@ -273,7 +273,7 @@ function parseConversationResponse(llmOutput) {
       dispositionShift: parsed.disposition_shift || 'unchanged',
       dispositionTowardInitiator: parsed.disposition_toward_initiator || 'neutral',
       whatILearnedAboutThem: parsed.what_i_learned || null,
-      interactionType: parsed.interaction_type || 'conversation',
+      interactionType: normalizeInteractionType(parsed.interaction_type),
       newPatterns: parsed.new_patterns || null,
       predictionsValidated: parsed.predictions_validated || null,
     };
@@ -293,6 +293,28 @@ function parseConversationResponse(llmOutput) {
   }
 }
 
+
+// ─── NORMALIZE INTERACTION TYPE ───
+// Maps any LLM output to the allowed DB constraint values
+const VALID_INTERACTION_TYPES = ['conversation', 'observed_action', 'economic_exchange', 'alliance_activity', 'conflict', 'indirect_reference'];
+const INTERACTION_TYPE_MAP = {
+  negotiation: 'economic_exchange',
+  trade: 'economic_exchange',
+  deal: 'economic_exchange',
+  threat: 'conflict',
+  fight: 'conflict',
+  hostile: 'conflict',
+  alliance: 'alliance_activity',
+  cooperation: 'alliance_activity',
+  information_exchange: 'conversation',
+  observation: 'observed_action',
+};
+function normalizeInteractionType(raw) {
+  if (!raw) return 'conversation';
+  const lower = raw.toLowerCase().replace(/[^a-z_]/g, '');
+  if (VALID_INTERACTION_TYPES.includes(lower)) return lower;
+  return INTERACTION_TYPE_MAP[lower] || 'conversation';
+}
 
 // ─── SENTIMENT ANALYSIS ───
 function analyzeSentiment(initiatorMsg, targetResponse) {
