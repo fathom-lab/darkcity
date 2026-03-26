@@ -48,13 +48,18 @@ REJECTED 2: [action_type] — [what you would do] — [why you're not doing it]
 [One sentence explaining why your chosen action is better than the alternatives above.]
 </choice_reason>
 
-<action>[exactly one of: build, trade, social, explore, kudos]</action>
+<action>[exactly one of: build, trade, social, explore, kudos, claim_contract, complete_contract]</action>
 
 <output>
 [What you actually say or do. Write this in character. If speaking, write dialogue. If trading, specify what and with whom. If moving, say where and why. Be vivid and specific — you're a character in a noir city, not a chatbot.]
 </output>
 
 <target>[name of the agent you're directing this at, or "none" for solo actions]</target>
+
+CONTRACT RULES:
+- If you see "Available contracts" in your perception, you may use action "claim_contract" and set <target> to the contract ID number to claim it
+- If you have "active contracts", you may use action "complete_contract" with <target> as the contract ID to complete it and earn the reward
+- Claiming and completing contracts earns real credits and reputation — factor this into your strategy
 
 RULES:
 - You MUST include ALL sections: state, reasoning, alternatives, choice_reason, action, output, target

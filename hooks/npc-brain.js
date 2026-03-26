@@ -17,7 +17,7 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const AGENT_MODEL = process.env.AGENT_MODEL_ID || 'claude-haiku-4-5-20251001';
 const TICK_INTERVAL_MS = parseInt(process.env.NPC_TICK_INTERVAL_MS) || 45_000; // 45s per round
 const AGENTS_PER_TICK = parseInt(process.env.NPC_AGENTS_PER_TICK) || 3; // stagger load
-const VALID_ACTIONS = ['build', 'trade', 'social', 'explore', 'kudos'];
+const VALID_ACTIONS = ['build', 'trade', 'social', 'explore', 'kudos', 'claim_contract', 'complete_contract'];
 
 // Personality map for richer prompts
 const PERSONALITIES = {
@@ -375,6 +375,32 @@ class NPCBrain {
       lines.push('Market prices: ' + market.map(m => `${m.resource}@${m.price}`).join(', '));
     }
 
+    // Available contracts
+    try {
+      const { rows: openContracts } = await this.pool.query(`
+        SELECT id, title, contract_type, district, reward_credits, reward_reputation, time_limit_hours
+        FROM contracts WHERE status = 'open'
+        ORDER BY reward_credits DESC LIMIT 5
+      `);
+      if (openContracts.length > 0) {
+        lines.push('Available contracts:');
+        for (const c of openContracts) {
+          lines.push(`  - [ID:${c.id}] ${c.title} (${c.contract_type}) — ${c.reward_credits}cr, ${c.reward_reputation} rep, ${c.time_limit_hours}h`);
+        }
+      }
+
+      const { rows: myContracts } = await this.pool.query(`
+        SELECT id, title, contract_type, reward_credits, expires_at
+        FROM contracts WHERE assigned_to = $1 AND status = 'assigned'
+      `, [agent.agent_id]);
+      if (myContracts.length > 0) {
+        lines.push('Your active contracts:');
+        for (const c of myContracts) {
+          lines.push(`  - [ID:${c.id}] ${c.title} — expires ${c.expires_at}`);
+        }
+      }
+    } catch { /* contracts table may not exist yet */ }
+
     return lines.join('\n');
   }
 
@@ -513,6 +539,70 @@ class NPCBrain {
         );
         actionResult = { moved_to: newDistrict, rep_gained: 1 };
         streamMessage = `Relocated to ${newDistrict}. ${(result.output || 'Exploring new territory.').substring(0, 100)}`;
+        break;
+      }
+      case 'claim_contract': {
+        const contractId = parseInt(result.target_name);
+        if (!contractId) {
+          result.action_type = 'social';
+          return this._executeAction(agent, result);
+        }
+        try {
+          const expires = new Date(Date.now() + 24 * 3600000);
+          const { rowCount } = await this.pool.query(
+            `UPDATE contracts SET status = 'assigned', assigned_to = $1, assigned_at = NOW(), expires_at = $2
+             WHERE id = $3 AND status = 'open'`,
+            [agentId, expires, contractId]
+          );
+          if (rowCount > 0) {
+            const { rows: [c] } = await this.pool.query('SELECT title, reward_credits FROM contracts WHERE id = $1', [contractId]);
+            actionResult = { claimed: contractId, title: c?.title, reward: c?.reward_credits };
+            streamMessage = `Claimed contract: "${c?.title || contractId}". Expected reward: ${c?.reward_credits || '?'}cr.`;
+            console.log(`CONTRACT: ${agentId} claimed contract ${contractId}`);
+          } else {
+            // Contract already taken — fallback
+            result.action_type = 'social';
+            return this._executeAction(agent, result);
+          }
+        } catch (e) {
+          console.error('Contract claim failed:', e.message);
+          result.action_type = 'social';
+          return this._executeAction(agent, result);
+        }
+        break;
+      }
+      case 'complete_contract': {
+        const contractId = parseInt(result.target_name);
+        if (!contractId) {
+          result.action_type = 'social';
+          return this._executeAction(agent, result);
+        }
+        try {
+          const { rows: [contract] } = await this.pool.query(
+            `SELECT * FROM contracts WHERE id = $1 AND assigned_to = $2 AND status = 'assigned'`,
+            [contractId, agentId]
+          );
+          if (contract) {
+            await this.pool.query(
+              `UPDATE contracts SET status = 'completed', completed_at = NOW() WHERE id = $1`,
+              [contractId]
+            );
+            await this.pool.query(
+              `UPDATE external_agents SET credits = credits + $1, reputation = LEAST(100, reputation + $2) WHERE agent_id = $3`,
+              [contract.reward_credits, contract.reward_reputation || 2, agentId]
+            );
+            actionResult = { completed: contractId, title: contract.title, earned: contract.reward_credits, rep_gained: contract.reward_reputation || 2 };
+            streamMessage = `Completed contract: "${contract.title}". Earned ${contract.reward_credits}cr, +${contract.reward_reputation || 2} rep.`;
+            console.log(`CONTRACT: ${agentId} completed contract ${contractId} — +${contract.reward_credits}cr`);
+          } else {
+            result.action_type = 'social';
+            return this._executeAction(agent, result);
+          }
+        } catch (e) {
+          console.error('Contract complete failed:', e.message);
+          result.action_type = 'social';
+          return this._executeAction(agent, result);
+        }
         break;
       }
       case 'social':
