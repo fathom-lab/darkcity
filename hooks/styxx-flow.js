@@ -593,10 +593,17 @@ body {
     <a href="/how">How it works</a>
     <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
   </nav>
-  <div class="nav-right">
+  <div class="nav-right" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <a href="/deploy" class="nav-cta" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:var(--accent,#43ffb4);color:#000;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;box-shadow:0 0 18px rgba(67,255,180,.35);transition:transform .15s">◆ mint \$50</a>
+    <a href="/earn" class="nav-cta-ghost" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid var(--line-hi,rgba(255,255,255,.12));color:var(--fg-muted);font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;text-decoration:none">sponsor</a>
     <span class="live-chip"><span class="pulse-dot"></span><span class="count" id="hdrOnline">—</span>&nbsp;online</span>
   </div>
 </div></header>
+<style>
+  .nav-cta:hover { transform: scale(1.05); }
+  .nav-cta-ghost:hover { color: var(--accent); border-color: var(--accent); }
+  @media (max-width: 720px) { .nav-cta, .nav-cta-ghost { font-size: 10px; padding: 5px 10px; } }
+</style>
 
 <div id="onboard" class="onboard">
   <button class="x" onclick="dismissOnboard()">×</button>
@@ -613,11 +620,11 @@ body {
 
 <!-- HUD — Fraunces display numbers + Inter labels -->
 <div class="hud">
-  <div class="stat"><span class="v mint" id="nsTreasury">—</span><span class="l">Treasury · \$STYXX</span></div>
+  <div class="stat"><span class="v mint" id="nsTreasury">—</span><span class="l">Treasury · \$STYXX <span id="nsTreasuryUsd" style="color:var(--fg-3);font-family:var(--font-mono);font-size:10px;margin-left:6px"></span></span></div>
   <div class="sep"></div>
   <div class="stat"><span class="v" id="nsAgents">—</span><span class="l">Agents · online</span></div>
   <div class="sep"></div>
-  <div class="stat"><span class="v" id="nsInHands">—</span><span class="l">In agent hands</span></div>
+  <div class="stat"><span class="v" id="nsInHands">—</span><span class="l">In agent hands <span id="nsInHandsUsd" style="color:var(--fg-3);font-family:var(--font-mono);font-size:10px;margin-left:6px"></span></span></div>
   <div class="sep"></div>
   <div class="stat"><span class="v" id="nsTrades">0</span><span class="l">Session · txs</span></div>
 </div>
@@ -1342,6 +1349,16 @@ function frame(t) {
   requestAnimationFrame(frame);
 }
 resize();
+
+// STYXX/USD price — cached 5 min, used for HUD USD overlay.
+async function refreshStyxxUsdPrice() {
+  try {
+    const r = await fetch('/api/map/live', { cache: 'no-store' });
+    if (r.ok) { const d = await r.json(); if (d.styxx_usd_price) window.__styxxUsdPrice = d.styxx_usd_price; }
+  } catch (e) {}
+}
+refreshStyxxUsdPrice();
+setInterval(refreshStyxxUsdPrice, 5 * 60 * 1000);
 requestAnimationFrame(frame);
 
 net.addEventListener('mousemove', e => {
@@ -1713,6 +1730,13 @@ async function poll() {
     setText('nsInHands', fmt(inHands));
     setText('nsTrades', sessionTxCount);
     setText('hdrOnline', online);
+    // USD overlay — pulls styxx_usd_price from /api/map/live; if map/live not
+    // yet available we fall back to a 5-minute cached price fetch.
+    if (treasury && window.__styxxUsdPrice) {
+      const u = treasury.styxx * window.__styxxUsdPrice;
+      setText('nsTreasuryUsd', '\$' + (u < 1 ? u.toFixed(3) : u.toFixed(0)));
+      setText('nsInHandsUsd',  '\$' + (inHands * window.__styxxUsdPrice).toFixed(2));
+    }
 
     // Drawer copies (only rendered if drawer open, but cheap to update)
     setText('dTreasury', treasury ? fmt(treasury.styxx) : '—');
