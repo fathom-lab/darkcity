@@ -90,34 +90,58 @@ async function main() {
   let pulseBudget;
   console.log(`[pulse] window=${PULSE_HOURS}h treasury_styxx=${treasuryBal.styxx.toFixed(2)} base_per_agent=${basePerAgent} treasury_bounds=[${treasuryFloor.toFixed(2)}, ${treasuryCeil.toFixed(2)}]`);
 
-  // ─── Step 1: aggregate depth_evaluations in the pulse window ────────────────
-  // NOTE: depth_evaluations uses citizen_id (not agent_id) to identify the
-  // agent. citizen_id maps 1:1 to external_agents.agent_id.
-  const { rows: activity } = await pool.query(`
-    SELECT citizen_id AS agent_id,
-           COUNT(*) AS n_actions,
-           AVG(depth_score) AS avg_depth,
-           SUM(1 + COALESCE(depth_score, 0) * 0.5) AS total_multiplier
-    FROM depth_evaluations
-    WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
-      AND depth_score IS NOT NULL
-      AND citizen_id IS NOT NULL
-    GROUP BY citizen_id
-    HAVING COUNT(*) > 0
-  `, [String(PULSE_HOURS)]);
+  // ─── Step 1: aggregate depth_evaluations + add baseline floor ───────────────
+  // Every active, non-dormant, non-euthanized agent earns a BASELINE keep-alive
+  // reward each pulse — even without reasoning activity. Without this, a city
+  // where the NPC brain stalls would have zero sponsor yield, killing the
+  // flywheel. With it, sponsors always see at least some payout, agents always
+  // stay in the LP ring, and the economy keeps spinning regardless of what's
+  // happening on the thinking side.
+  //
+  // Baseline multiplier is deliberately small (0.5) so a reasoning-active agent
+  // (n_actions ≥ 1 with avg_depth ≥ 0.5 → total_multiplier ≥ 1.25) still earns
+  // meaningfully more than a silent agent. Tunable via PULSE_BASELINE_MULT.
+  const baselineMult = Number(process.env.PULSE_BASELINE_MULT || 0.5);
 
-  if (!activity.length) { console.log('[pulse] no activity this window'); await pool.end(); return; }
+  const { rows: activity } = await pool.query(`
+    WITH depth_activity AS (
+      SELECT citizen_id AS agent_id,
+             COUNT(*)::int AS n_actions,
+             AVG(depth_score)::numeric AS avg_depth,
+             SUM(1 + COALESCE(depth_score, 0) * 0.5)::numeric AS depth_multiplier
+      FROM depth_evaluations
+      WHERE created_at > NOW() - ($1 || ' hours')::INTERVAL
+        AND depth_score IS NOT NULL
+        AND citizen_id IS NOT NULL
+      GROUP BY citizen_id
+    ),
+    active_agents AS (
+      SELECT agent_id FROM external_agents
+      WHERE COALESCE(dormant, FALSE) = FALSE
+        AND euthanized_at IS NULL
+    )
+    SELECT aa.agent_id,
+           COALESCE(da.n_actions, 0)::int AS n_actions,
+           COALESCE(da.avg_depth, 0)::numeric AS avg_depth,
+           (COALESCE(da.depth_multiplier, 0) + $2::numeric)::numeric AS total_multiplier
+    FROM active_agents aa
+    LEFT JOIN depth_activity da ON da.agent_id = aa.agent_id
+  `, [String(PULSE_HOURS), baselineMult]);
+
+  if (!activity.length) { console.log('[pulse] no active agents'); await pool.end(); return; }
+
+  const reasoningActive = activity.filter(a => a.n_actions > 0).length;
+  const baselineOnly    = activity.length - reasoningActive;
+  console.log(`[pulse] active_agents=${activity.length}  reasoning=${reasoningActive}  baseline_only=${baselineOnly}  baseline_mult=${baselineMult}`);
 
   // Now that we have the active-agent count, compute the final pulse budget:
   //   target = base_per_agent * active_count
   //   clamped to [treasury_min, treasury_max]
   const targetBudget = basePerAgent * activity.length;
   pulseBudget = Math.max(treasuryFloor, Math.min(targetBudget, treasuryCeil));
-  console.log(`[pulse] active_agents=${activity.length} target=${targetBudget.toFixed(2)} → pulseBudget=${pulseBudget.toFixed(2)}`);
-
   const grandMultiplier = activity.reduce((s, a) => s + Number(a.total_multiplier), 0);
   const perMultiplier = grandMultiplier > 0 ? pulseBudget / grandMultiplier : 0;
-  console.log(`[pulse] ${activity.length} active agents, per-mult=${perMultiplier.toFixed(4)}`);
+  console.log(`[pulse] target=${targetBudget.toFixed(2)} → pulseBudget=${pulseBudget.toFixed(2)}  per-mult=${perMultiplier.toFixed(4)}`);
 
   let totals = { paid: 0, burned_fee: 0, city: 0, sponsors: 0, hyphal: 0, fruiting: 0, referral: 0, owner_phantom: 0, dust_skipped: 0 };
 
