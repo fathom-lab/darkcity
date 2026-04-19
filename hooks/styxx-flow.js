@@ -871,8 +871,6 @@ function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h
 
 function layoutAgents() {
   if (!agents.size) return;
-  // Map fills viewport. HUD floats top-left (ignore — only top 100px on left),
-  // FABs float bottom-left, last-tx float bottom-right — all outside map.
   const leftMargin = 80, rightMargin = 80, topMargin = 120, bottomMargin = 100;
   const cx = (leftMargin + W - rightMargin) / 2;
   const cy = (topMargin + H - bottomMargin) / 2;
@@ -886,15 +884,26 @@ function layoutAgents() {
   const primary = Math.min(8, sorted.length);
   const baseLen = R * 0.56;
 
+  // Mycelium growth: new agents start at their PARENT's position and ease
+  // outward to their target layout spot. Existing agents keep their current
+  // x/y (no displacement when more agents join). Target positions are stored
+  // as tx/ty so the frame loop can lerp toward them.
   for (let i = 0; i < primary; i++) {
     const a = sorted[i];
     const ang = -Math.PI / 2 + (i / primary) * Math.PI * 2;
     const r = baseLen * (0.95 + hashStr(a.id + 'r') * 0.15);
-    a.x = cx + Math.cos(ang) * r;
-    a.y = cy + Math.sin(ang) * r;
+    a.tx = cx + Math.cos(ang) * r;
+    a.ty = cy + Math.sin(ang) * r;
     a.angle = ang;
     a.parent = 'TREASURY';
     a.parentX = cx; a.parentY = cy;
+    if (a.x == null || a.y == null) {
+      // First appearance — sprout from treasury
+      a.x = cx; a.y = cy;
+      a.bornAt = Date.now();
+      a.growing = true;
+      addPulse(cx, cy, [67, 255, 180]);  // visual "something is growing" hint
+    }
   }
   const placed = sorted.slice(0, primary);
   for (let i = primary; i < sorted.length; i++) {
@@ -905,11 +914,18 @@ function layoutAgents() {
     const branch = (hashStr(a.id + 'br') - 0.5) * 1.2;
     const branchAng = parent.angle + branch;
     const segLen = R * (0.22 + hashStr(a.id + 'len') * 0.22);
-    a.x = parent.x + Math.cos(branchAng) * segLen;
-    a.y = parent.y + Math.sin(branchAng) * segLen;
+    a.tx = parent.x + Math.cos(branchAng) * segLen;
+    a.ty = parent.y + Math.sin(branchAng) * segLen;
     a.angle = branchAng;
     a.parent = parent.id;
     a.parentX = parent.x; a.parentY = parent.y;
+    if (a.x == null || a.y == null) {
+      // Sprout from its parent — hyphal tip extension
+      a.x = parent.x; a.y = parent.y;
+      a.bornAt = Date.now();
+      a.growing = true;
+      addPulse(parent.x, parent.y, [67, 255, 180]);
+    }
     placed.push(a);
   }
 
@@ -952,6 +968,32 @@ function drawNet(t) {
   // Apply pan + zoom for everything below
   netCtx.translate(view.x, view.y);
   netCtx.scale(view.k, view.k);
+
+  // ── Mycelium physics: ease every agent toward its target + subtle drift
+  // so the network feels alive even when nothing's flowing.
+  for (const a of agents.values()) {
+    if (a.tx == null || a.ty == null) { a.tx = a.x; a.ty = a.y; }
+    // Exponential easing toward target — classic hyphal growth shape
+    const k = 0.055;
+    a.x += (a.tx - a.x) * k;
+    a.y += (a.ty - a.y) * k;
+    // Mark growth complete when we're close enough
+    if (a.growing && Math.hypot(a.tx - a.x, a.ty - a.y) < 0.6) {
+      a.growing = false;
+      // Celebratory bloom when the node "settles"
+      addPulse(a.tx, a.ty, [67, 255, 180]);
+    }
+    // Parent position follows parent's animated pos too, so threads stay connected
+    if (a.parent && a.parent !== 'TREASURY') {
+      const p = agents.get(a.parent);
+      if (p) { a.parentX = p.x; a.parentY = p.y; }
+    }
+    // Subtle breathing drift — tiny sway so even stationary nodes feel organic
+    if (a.driftSeed == null) a.driftSeed = hashStr(a.id + 'drift') * 6.28;
+    const driftA = Math.sin(t * 0.00035 + a.driftSeed) * 1.4;
+    const driftB = Math.cos(t * 0.00041 + a.driftSeed * 1.7) * 1.1;
+    a.driftX = driftA; a.driftY = driftB;
+  }
 
   // Mycelium hyphae (parent → child, curved)
   for (const [id, a] of agents) {
@@ -1612,7 +1654,18 @@ async function poll() {
 
     for (const a of (d.agents || [])) {
       const prev = agents.get(a.id);
-      agents.set(a.id, { ...a, x: prev?.x, y: prev?.y, angle: prev?.angle });
+      // Preserve animation state across polls — new agents (no prev) will
+      // sprout from parent via layoutAgents, existing agents keep their
+      // eased position so the network doesn't jitter on every refresh.
+      agents.set(a.id, {
+        ...a,
+        x: prev?.x, y: prev?.y, angle: prev?.angle,
+        tx: prev?.tx, ty: prev?.ty,
+        parentX: prev?.parentX, parentY: prev?.parentY,
+        parent: prev?.parent,
+        bornAt: prev?.bornAt, growing: prev?.growing,
+        driftSeed: prev?.driftSeed, sparkAt: prev?.sparkAt,
+      });
     }
     if (d.treasury) treasury = { ...d.treasury, x: treasury?.x, y: treasury?.y };
     layoutAgents();
