@@ -1355,7 +1355,7 @@ setInterval(loadEarn, 30000);
       });
       const j = await r.json();
       if (!r.ok || !j.ok) {
-        status('Finalize failed: ' + (j.reason || j.error || r.status) + '. Retry in 30s if tx confirmed on-chain but verification lagged.', 'err');
+        status('Finalize failed: ' + (j.reason || j.error || r.status) + '. Quote is saved — click again in a few seconds. (Quote lasts 60 min.)', 'err');
         $('sp-finalize').disabled = false;
         $('sp-finalize').textContent = 'Finalize sponsorship →';
         return;
@@ -1699,14 +1699,33 @@ ${NAV('/deploy')}
     $('m-finalize').textContent = 'Verifying on-chain…';
     $('m-solscan').href = 'https://solscan.io/tx/' + sig;
     $('m-solscan').style.display = 'inline-flex';
-    try {
+    // Automatic retry loop for transient RPC lag. Backend itself retries ~55s;
+    // we retry the whole request up to 3x if it returns tx_not_found so users
+    // never see a transient "wait and retry" error.
+    const attemptFinalize = async (attempt) => {
       const r = await fetch('/api/mint/finalize', {
         method: 'POST', headers: {'content-type': 'application/json'},
         body: JSON.stringify({ quote_id: currentQuote.quote_id, tx_signature: sig }),
       });
       const j = await r.json();
+      return { r, j };
+    };
+    try {
+      let { r, j } = await attemptFinalize(1);
+      // If backend says tx isn't found yet, auto-retry — it probably just needs
+      // a few more seconds for the RPC to propagate.
+      if ((!r.ok || !j.ok) && (j.reason === 'tx_not_found_after_retries' || j.error === 'quote_expired')) {
+        $('m-finalize').textContent = 'Retrying (chain lag)…';
+        await new Promise(res => setTimeout(res, 15000));
+        ({ r, j } = await attemptFinalize(2));
+      }
+      if ((!r.ok || !j.ok) && j.reason === 'tx_not_found_after_retries') {
+        $('m-finalize').textContent = 'Retrying once more…';
+        await new Promise(res => setTimeout(res, 20000));
+        ({ r, j } = await attemptFinalize(3));
+      }
       if (!r.ok || !j.ok) {
-        status('Finalize failed: ' + (j.reason || j.error || r.status) + '. If the tx confirmed on-chain but verification lagged, wait 30s and retry.', 'err');
+        status('Finalize failed: ' + (j.reason || j.error || r.status) + '. Your tx is saved — click Finalize again anytime (quote lasts 60 min).', 'err');
         $('m-finalize').disabled = false;
         $('m-finalize').textContent = 'Finalize mint →';
         return;

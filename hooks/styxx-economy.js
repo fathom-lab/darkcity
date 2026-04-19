@@ -165,9 +165,10 @@ function usdToStyxx(usdAmount) {
 async function verifyStyxxPayment({ tx_signature, expected_from_pubkey, expected_to_pubkey, expected_amount, expected_memo }) {
   const conn = styxx.getConnection();
 
-  // Step 1: fetch with retries — confirmed tx may take 5-15s on mainnet
+  // Step 1: fetch with retries — confirmed tx may take 5-15s on mainnet,
+  // and some RPC providers lag further. We retry for ~55s total before bailing.
   let tx = null;
-  const attempts = [0, 2000, 5000, 10000, 15000];  // ~32s total
+  const attempts = [0, 2000, 5000, 8000, 10000, 15000, 15000];  // ~55s total
   for (const delay of attempts) {
     if (delay) await new Promise(r => setTimeout(r, delay));
     try {
@@ -291,7 +292,7 @@ async function mintQuote(req, res) {
         AND finalized = FALSE
         AND expires_at > NOW()
     `, [normalizedName]);
-    if (pendingQuote.length) return res.status(409).json({ error: 'name_pending_in_another_quote', retry_after_seconds: 900 });
+    if (pendingQuote.length) return res.status(409).json({ error: 'name_pending_in_another_quote', retry_after_seconds: 3600 });
 
     const p = await getParams(['mint_fee_usd']);
     const feeUsd    = parseFloat(p.mint_fee_usd || '50');
@@ -323,7 +324,7 @@ async function mintQuote(req, res) {
     await pool.query(`
       INSERT INTO mint_quotes (quote_id, owner_pubkey, agent_name, framework, one_liner, referred_by_pubkey,
                                fee_usd, fee_styxx, memo, destination, expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW() + INTERVAL '15 minutes')
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW() + INTERVAL '60 minutes')
     `, [quote_id, owner_pubkey, agent_name, framework || null, one_liner || null,
         referred_by_pubkey || null, feeUsd, feeStyxx, memo, destPubkey]);
 
@@ -336,7 +337,7 @@ async function mintQuote(req, res) {
       memo,
       mint_address: styxx.STYXX_MINT_ADDR,
       instructions: `Send ${feeStyxx} STYXX from ${owner_pubkey} to ${destPubkey} with memo "${memo}". Then POST /api/mint/finalize with the tx signature.`,
-      expires_in_seconds: 900,
+      expires_in_seconds: 3600,
     });
   } catch (err) {
     console.error('[mint/quote]', err);
@@ -358,11 +359,11 @@ async function mintFinalize(req, res) {
     if (!rows.length) return res.status(404).json({ error: 'quote_not_found' });
     const q = rows[0];
     if (q.finalized) return res.status(409).json({ error: 'already_finalized' });
-    if (new Date(q.expires_at).getTime() < Date.now()) {
-      return res.status(410).json({ error: 'quote_expired' });
-    }
 
-    // Verify on-chain payment
+    // On-chain verify FIRST. If the user's tx is confirmed + matches the quote,
+    // we honor it even if the quote technically expired — their money already
+    // moved. Returning quote_expired after a successful payment would strand
+    // funds. Only reject with quote_expired if the tx isn't found on-chain.
     const ver = await verifyStyxxPayment({
       tx_signature,
       expected_from_pubkey: q.owner_pubkey,
@@ -370,7 +371,15 @@ async function mintFinalize(req, res) {
       expected_amount: Number(q.fee_styxx),
       expected_memo: q.memo,
     });
-    if (!ver.ok) return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    if (!ver.ok) {
+      // If the tx isn't on-chain AND the quote is past its window, surface
+      // the clearer quote_expired error so the user knows to re-quote.
+      if (ver.reason === 'tx_not_found_after_retries' &&
+          new Date(q.expires_at).getTime() < Date.now()) {
+        return res.status(410).json({ error: 'quote_expired', hint: 'tx not detected on-chain and quote window closed — start a new mint' });
+      }
+      return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    }
 
     // Provision agent: wallet, insert row, starter grant.
     const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
@@ -543,7 +552,7 @@ async function tipQuote(req, res) {
     `);
     await pool.query(
       `INSERT INTO tip_quotes (quote_id, tipper_pubkey, agent_id, amount_styxx, thought_id, memo, destination, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, NOW() + INTERVAL '10 minutes')`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7, NOW() + INTERVAL '60 minutes')`,
       [quote_id, tipper_pubkey, agent_id, amt, thought_id || null, memo, destPubkey]
     );
 
@@ -569,8 +578,9 @@ async function tipFinalize(req, res) {
     if (!rows.length) return res.status(404).json({ error: 'quote_not_found' });
     const q = rows[0];
     if (q.finalized) return res.status(409).json({ error: 'already_finalized' });
-    if (new Date(q.expires_at).getTime() < Date.now()) return res.status(410).json({ error: 'quote_expired' });
 
+    // Verify on-chain FIRST — if the tip already landed, honor it regardless
+    // of quote age. Only reject with quote_expired if tx isn't found on-chain.
     const ver = await verifyStyxxPayment({
       tx_signature,
       expected_from_pubkey: q.tipper_pubkey,
@@ -578,7 +588,13 @@ async function tipFinalize(req, res) {
       expected_amount: Number(q.amount_styxx),
       expected_memo: q.memo,
     });
-    if (!ver.ok) return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    if (!ver.ok) {
+      if (ver.reason === 'tx_not_found_after_retries' &&
+          new Date(q.expires_at).getTime() < Date.now()) {
+        return res.status(410).json({ error: 'quote_expired' });
+      }
+      return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    }
 
     const amt = Number(q.amount_styxx);
     const cityCut = amt * 0.01;   // 1% to city
@@ -657,7 +673,7 @@ async function sponsorQuote(req, res) {
     `);
     await pool.query(`
       INSERT INTO sponsor_quotes (quote_id, sponsor_pubkey, agent_id, amount_styxx, memo, destination, expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6, NOW() + INTERVAL '15 minutes')
+      VALUES ($1,$2,$3,$4,$5,$6, NOW() + INTERVAL '60 minutes')
     `, [quote_id, sponsor_pubkey, agent_id, amt, memo, destPubkey]);
 
     return res.json({
@@ -666,7 +682,7 @@ async function sponsorQuote(req, res) {
       destination: destPubkey,
       memo,
       instructions: `Send ${amt} STYXX from ${sponsor_pubkey} to ${destPubkey} with memo "${memo}". Then POST /api/sponsor/finalize with the tx signature.`,
-      expires_in_seconds: 900,
+      expires_in_seconds: 3600,
     });
   } catch (err) {
     console.error('[sponsor/quote]', err);
@@ -681,8 +697,9 @@ async function sponsorFinalize(req, res) {
     if (!rows.length) return res.status(404).json({ error: 'quote_not_found' });
     const q = rows[0];
     if (q.finalized) return res.status(409).json({ error: 'already_finalized' });
-    if (new Date(q.expires_at).getTime() < Date.now()) return res.status(410).json({ error: 'quote_expired' });
 
+    // Verify on-chain FIRST — if sponsor's payment already landed, honor it
+    // regardless of quote age. Only reject with quote_expired if tx missing.
     const ver = await verifyStyxxPayment({
       tx_signature,
       expected_from_pubkey: q.sponsor_pubkey,
@@ -690,7 +707,13 @@ async function sponsorFinalize(req, res) {
       expected_amount: Number(q.amount_styxx),
       expected_memo: q.memo,
     });
-    if (!ver.ok) return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    if (!ver.ok) {
+      if (ver.reason === 'tx_not_found_after_retries' &&
+          new Date(q.expires_at).getTime() < Date.now()) {
+        return res.status(410).json({ error: 'quote_expired' });
+      }
+      return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    }
 
     const p = await getParams(['sponsor_cooldown_days']);
     const cooldownDays = Number(p.sponsor_cooldown_days || 7);
@@ -759,7 +782,7 @@ async function hyphalQuote(req, res) {
     `);
     await pool.query(`
       INSERT INTO hyphal_quotes (quote_id, initiator_pubkey, agent_a, agent_b, cost_styxx, memo, destination, expires_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7, NOW() + INTERVAL '15 minutes')
+      VALUES ($1,$2,$3,$4,$5,$6,$7, NOW() + INTERVAL '60 minutes')
     `, [quote_id, initiator_pubkey, a, b, cost, memo, destPubkey]);
 
     return res.json({ quote_id, cost_styxx: cost, destination: destPubkey, memo,
@@ -778,8 +801,9 @@ async function hyphalFinalize(req, res) {
     if (!rows.length) return res.status(404).json({ error: 'quote_not_found' });
     const q = rows[0];
     if (q.finalized) return res.status(409).json({ error: 'already_finalized' });
-    if (new Date(q.expires_at).getTime() < Date.now()) return res.status(410).json({ error: 'quote_expired' });
 
+    // Verify on-chain FIRST — link fee already landed? honor it regardless of
+    // quote age. Only reject with quote_expired if tx isn't found on-chain.
     const ver = await verifyStyxxPayment({
       tx_signature,
       expected_from_pubkey: q.initiator_pubkey,
@@ -787,7 +811,13 @@ async function hyphalFinalize(req, res) {
       expected_amount: Number(q.cost_styxx),
       expected_memo: q.memo,
     });
-    if (!ver.ok) return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    if (!ver.ok) {
+      if (ver.reason === 'tx_not_found_after_retries' &&
+          new Date(q.expires_at).getTime() < Date.now()) {
+        return res.status(410).json({ error: 'quote_expired' });
+      }
+      return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+    }
 
     // Split the cost 50/50 between the two agent wallets
     const half = Number(q.cost_styxx) / 2;
