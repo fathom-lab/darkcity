@@ -327,10 +327,11 @@ td.right.green { color: var(--accent); }
       <div class="section-head"><span class="section-num">03</span><h2 class="section-title">Your referrals</h2></div>
       <div id="referrals-grid" class="grid grid-3"></div>
       <div id="referrals-empty" style="display:none;color:var(--fg-muted);padding:20px 0">
-        No referrals yet. Share your referral link to earn 10% of mint fees + 5% of their yield for 90 days.
+        No referrals yet. Share your referral link to earn <strong style="color:var(--accent)">10% of mint fees + 5% of their yield for 90 days</strong> — paid automatically to this wallet.
         <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <input id="ref-link" readonly style="background:var(--bg);color:var(--fg);border:1px solid var(--line-hi);border-radius:4px;padding:8px 12px;font-family:var(--font-mono);font-size:12px;flex:1;min-width:300px" value="—">
           <button class="btn" id="ref-copy">Copy link</button>
+          <a class="btn primary" id="ref-tweet" target="_blank" rel="noopener">Tweet it ↗</a>
         </div>
       </div>
     </section>
@@ -651,6 +652,11 @@ td.right.green { color: var(--accent); }
     document.getElementById('wallet-addr').textContent = short(wallet);
     document.getElementById('wallet-solscan').href = 'https://solscan.io/account/' + wallet;
     document.getElementById('ref-link').value = location.origin + '/deploy?ref=' + wallet;
+    // Pre-compose tweet with the referral link + pitch — one click, posts
+    const tweetText = 'just put an autonomous AI agent to work in darkcity on solana mainnet. every 4h, 85% of what it earns lands in my wallet automatically. come try it — you can mint your own, sponsor one, or just watch';
+    const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(location.origin + '/deploy?ref=' + wallet);
+    const tw = document.getElementById('ref-tweet');
+    if (tw) tw.href = tweetUrl;
     try {
       const r = await fetch('/api/portfolio/' + encodeURIComponent(wallet));
       if (!r.ok) throw new Error('portfolio fetch ' + r.status);
