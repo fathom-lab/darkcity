@@ -1755,49 +1755,117 @@ function installRoutes(app) {
     }
   });
 
-  // ── Recovery: retry the starter grant if the agent exists but grant never landed ──
-  // Idempotent. If grant already on-chain, returns that. If missing, tries to send.
+  // ── Recovery: reconstruct a stuck mint end-to-end ──────────────────────
+  // The mint fee was paid on-chain (verified by the user's tx_signature)
+  // but the provisioning side hit a snag — agent row missing, starter grant
+  // never landed, etc. This endpoint is FULLY IDEMPOTENT: it re-runs every
+  // step, skipping any that already completed (detected via memo lookup in
+  // styxx_transfers + direct row check on external_agents).
+  //
+  // Requires tx_signature (the user's original payment) to re-verify on-chain.
   app.post('/api/mint/recover/:quote_id', async (req, res) => {
     try {
       const { quote_id } = req.params;
+      const tx_signature = req.body?.tx_signature || null;
       const { rows: qRows } = await pool.query(
         'SELECT * FROM mint_quotes WHERE quote_id = $1', [quote_id]
       );
       if (!qRows.length) return res.status(404).json({ error: 'quote_not_found' });
       const q = qRows[0];
-      const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
-      const { rows: aRows } = await pool.query(
-        `SELECT agent_id, sol_pubkey FROM external_agents WHERE agent_id = $1`, [agentId]
-      );
-      if (!aRows.length) return res.status(404).json({ error: 'agent_not_created_yet',
-        hint: 'POST /api/mint/finalize with your original tx_signature to complete the mint.' });
 
+      const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
+      const memo = `mint:${quote_id}`;
+      const treasuryPk = styxx.getTreasury().publicKey.toBase58();
+
+      // Step 1: make sure the agent row exists. If it doesn't, rebuild it.
+      // We must re-verify the user's payment on-chain before provisioning.
+      let { rows: aRows } = await pool.query(
+        `SELECT agent_id, sol_pubkey, owner_pubkey, mint_tx_signature FROM external_agents WHERE agent_id = $1`, [agentId]
+      );
+
+      let agentPubkey;
+      let agentCreated = false;
+
+      if (!aRows.length) {
+        if (!tx_signature) {
+          return res.status(400).json({ error: 'tx_signature_required',
+            hint: 'POST { "tx_signature": "<your payment tx>" } so we can re-verify your on-chain payment before provisioning.' });
+        }
+        const ver = await verifyStyxxPayment({
+          tx_signature,
+          expected_from_pubkey: q.owner_pubkey,
+          expected_to_pubkey: q.destination,
+          expected_amount: Number(q.fee_styxx),
+          expected_memo: q.memo,
+        });
+        if (!ver.ok) return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+
+        const kp = styxx.generateAgentKeypair();
+        agentPubkey = kp.publicKey.toBase58();
+        const encPriv = styxx.encryptPrivkey(kp.secretKey);
+        const p = await getParams(['starter_grant_styxx']);
+        const starterGrant = Number(p.starter_grant_styxx || 100);
+
+        await pool.query(`
+          INSERT INTO external_agents
+            (agent_id, district, reputation, credits, builds, trades, rank, agent_type,
+             owner_name, bot_framework, owner_pubkey,
+             sol_pubkey, sol_privkey_enc, styxx_cached, styxx_cached_at,
+             minted_at, mint_tx_signature, mint_fee_usd, mint_fee_styxx,
+             cognition_fee_balance, last_cognition_fee_at)
+          VALUES ($1,'The Sprawl',0,${starterGrant},0,0,'Newcomer','external',
+                  $2,$3,$4,$5,$6,$7,NOW(),NOW(),$8,$9,$10,$11,NOW())
+          ON CONFLICT (agent_id) DO NOTHING
+        `, [agentId, q.owner_pubkey.slice(0, 16), q.framework || 'Custom', q.owner_pubkey,
+            agentPubkey, encPriv, starterGrant,
+            tx_signature, q.fee_usd, q.fee_styxx, starterGrant]);
+        agentCreated = true;
+        // Re-read the row (in case of race)
+        ({ rows: aRows } = await pool.query(
+          `SELECT agent_id, sol_pubkey FROM external_agents WHERE agent_id = $1`, [agentId]
+        ));
+      }
+      agentPubkey = aRows[0].sol_pubkey;
+
+      // Step 2: starter grant on-chain if not already landed (memo-scoped)
+      let grantInfo;
       const { rows: existingGrant } = await pool.query(
         `SELECT tx_signature, amount FROM styxx_transfers
-         WHERE memo = $1 AND reason = 'mint_grant'`, [`mint:${quote_id}`]
+         WHERE memo = $1 AND reason = 'mint_grant'`, [memo]
       );
       if (existingGrant.length) {
-        return res.json({ ok: true, already_granted: true,
-          starter_grant: { tx: existingGrant[0].tx_signature, amount: Number(existingGrant[0].amount) } });
+        grantInfo = { already_granted: true, tx: existingGrant[0].tx_signature, amount: Number(existingGrant[0].amount) };
+      } else {
+        const p = await getParams(['starter_grant_styxx']);
+        const starterGrant = Number(p.starter_grant_styxx || 100);
+        const { signature: grantSig } = await styxx.airdropFromTreasury(agentPubkey, starterGrant);
+        await pool.query(`
+          INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+          VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
+          ON CONFLICT (tx_signature) DO NOTHING
+        `, [grantSig, treasuryPk, agentId, agentPubkey, starterGrant, memo]);
+        await pool.query(`
+          INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
+          VALUES ($1, $2, 'mint_grant', $3, NOW())
+          ON CONFLICT DO NOTHING
+        `, [agentId, starterGrant, quote_id]);
+        grantInfo = { already_granted: false, tx: grantSig, amount: starterGrant };
       }
 
-      // Grant not yet landed — send it
-      const p = await getParams(['starter_grant_styxx']);
-      const starterGrant = Number(p.starter_grant_styxx || 100);
-      const { signature: grantSig } = await styxx.airdropFromTreasury(aRows[0].sol_pubkey, starterGrant);
-      await pool.query(`
-        INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
-        VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
-        ON CONFLICT (tx_signature) DO NOTHING
-      `, [grantSig, styxx.getTreasury().publicKey.toBase58(), agentId, aRows[0].sol_pubkey, starterGrant, `mint:${quote_id}`]);
-      await pool.query(`
-        INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
-        VALUES ($1, $2, 'mint_grant', $3, NOW())
-      `, [agentId, starterGrant, quote_id]);
+      // Step 3: mark quote finalized
+      await pool.query('UPDATE mint_quotes SET finalized = TRUE WHERE quote_id = $1', [quote_id]);
 
-      return res.json({ ok: true, recovered: true,
-        starter_grant: { tx: grantSig, amount: starterGrant },
-        message: 'Starter grant sent on-chain. Your agent is now funded.',
+      return res.json({
+        ok: true,
+        agent_id: agentId,
+        agent_pubkey: agentPubkey,
+        agent_created_this_call: agentCreated,
+        starter_grant: grantInfo,
+        message: agentCreated
+          ? 'Agent provisioned + starter grant sent. Your mint is now complete.'
+          : (grantInfo.already_granted
+              ? 'All mint steps already complete — no action needed.'
+              : 'Starter grant was missing — sent now. Your mint is complete.'),
       });
     } catch (err) {
       console.error('[mint/recover]', err);
