@@ -992,7 +992,7 @@ function layoutAgents() {
   const availH = H - topMargin - bottomMargin;
   const R = Math.min(availW, availH) * 0.42;
 
-  if (treasury) { treasury.x = cx; treasury.y = cy; }
+  if (treasury) { treasury.x = cx; treasury.y = cy; treasury.homeX = cx; treasury.homeY = cy; }
 
   const sorted = [...agents.values()].sort((a, b) => a.id.localeCompare(b.id));
   const primary = Math.min(8, sorted.length);
@@ -1006,8 +1006,9 @@ function layoutAgents() {
     const a = sorted[i];
     const ang = -Math.PI / 2 + (i / primary) * Math.PI * 2;
     const r = baseLen * (0.95 + hashStr(a.id + 'r') * 0.15);
-    a.tx = cx + Math.cos(ang) * r;
-    a.ty = cy + Math.sin(ang) * r;
+    a.homeX = cx + Math.cos(ang) * r;
+    a.homeY = cy + Math.sin(ang) * r;
+    a.tx = a.homeX; a.ty = a.homeY;
     a.angle = ang;
     a.parent = 'TREASURY';
     a.parentX = cx; a.parentY = cy;
@@ -1028,11 +1029,12 @@ function layoutAgents() {
     const branch = (hashStr(a.id + 'br') - 0.5) * 1.2;
     const branchAng = parent.angle + branch;
     const segLen = R * (0.22 + hashStr(a.id + 'len') * 0.22);
-    a.tx = parent.x + Math.cos(branchAng) * segLen;
-    a.ty = parent.y + Math.sin(branchAng) * segLen;
+    a.homeX = parent.homeX + Math.cos(branchAng) * segLen;
+    a.homeY = parent.homeY + Math.sin(branchAng) * segLen;
+    a.tx = a.homeX; a.ty = a.homeY;
     a.angle = branchAng;
     a.parent = parent.id;
-    a.parentX = parent.x; a.parentY = parent.y;
+    a.parentX = parent.homeX; a.parentY = parent.homeY;
     if (a.x == null || a.y == null) {
       // Sprout from its parent — hyphal tip extension
       a.x = parent.x; a.y = parent.y;
@@ -1053,6 +1055,79 @@ function layoutAgents() {
 function nodeRadius(styxx, online) {
   const base = online ? 4.5 : 3;
   return base + Math.min(16, Math.log(1 + Math.max(0, styxx)) * 2);
+}
+
+// ═══ Expedition task system ═══════════════════════════════════════════════
+// Each narrative (thought) can trigger an expedition: the agent leaves its
+// home slot in the mycelium tree, travels to a target that reflects its
+// intent, does the thing for a beat, then returns. Hyphae anchor from HOME
+// positions so the tree structure stays rigid — only the agent circle drifts.
+//
+// Task phases:
+//   outbound  — easing from home toward action target (3–5s)
+//   at_target — parked at target (1.5–2.5s, thought bubble shows)
+//   returning — easing back home (3–5s)
+//
+// After 'returning' completes, task is cleared and agent rests at home.
+function updateAgentTask(a, now) {
+  if (a.homeX == null) return;
+  if (!a.task) {
+    a.tx = a.homeX; a.ty = a.homeY;
+    return;
+  }
+  const T = a.task;
+  if (T.phase === 'outbound') {
+    a.tx = T.targetX; a.ty = T.targetY;
+    if (now - T.phaseStartedAt > T.outboundMs) { T.phase = 'at_target'; T.phaseStartedAt = now; }
+  } else if (T.phase === 'at_target') {
+    a.tx = T.targetX; a.ty = T.targetY;
+    if (now - T.phaseStartedAt > T.dwellMs) { T.phase = 'returning'; T.phaseStartedAt = now; }
+  } else if (T.phase === 'returning') {
+    a.tx = a.homeX; a.ty = a.homeY;
+    if (now - T.phaseStartedAt > T.returnMs) { a.task = null; }
+  }
+}
+
+function assignTask(agent, action) {
+  if (!agent || agent.homeX == null) return;
+  // Don't override an active task — let it play out before starting next
+  if (agent.task) return;
+  const act = (action || '').toLowerCase();
+  let targetX, targetY, kind;
+  if (act.includes('social') || act.includes('outreach')) {
+    // Head toward another online agent's home — conversation/meeting motif
+    const others = [...agents.values()].filter(x => x.id !== agent.id && x.online && x.homeX != null);
+    if (!others.length) return;
+    const pick = others[Math.floor(Math.random() * others.length)];
+    targetX = pick.homeX; targetY = pick.homeY;
+    kind = 'social';
+  } else if (act.includes('trade') || act.includes('contract') || act.includes('resource') || act.includes('claim') || act.includes('market')) {
+    // Head to treasury/market center — transactional work
+    if (!treasury) return;
+    targetX = treasury.homeX; targetY = treasury.homeY;
+    kind = 'market';
+  } else if (act.includes('build') || act.includes('reason') || act.includes('think')) {
+    // Short wobble at home — heads-down work
+    const r = 18 + Math.random() * 12;
+    const ang = Math.random() * Math.PI * 2;
+    targetX = agent.homeX + Math.cos(ang) * r;
+    targetY = agent.homeY + Math.sin(ang) * r;
+    kind = 'local';
+  } else {
+    // Default: mild orbit
+    const r = 22;
+    const ang = Math.random() * Math.PI * 2;
+    targetX = agent.homeX + Math.cos(ang) * r;
+    targetY = agent.homeY + Math.sin(ang) * r;
+    kind = 'local';
+  }
+  agent.task = {
+    kind, targetX, targetY, phase: 'outbound',
+    startedAt: Date.now(), phaseStartedAt: Date.now(),
+    outboundMs: 3200 + Math.random() * 1800,
+    dwellMs:    1500 + Math.random() * 1200,
+    returnMs:   3200 + Math.random() * 1800,
+  };
 }
 
 function addParticle(from, to, amount, reason, tx) {
@@ -1085,22 +1160,25 @@ function drawNet(t) {
 
   // ── Mycelium physics: ease every agent toward its target + subtle drift
   // so the network feels alive even when nothing's flowing.
+  const now = Date.now();
   for (const a of agents.values()) {
+    if (a.homeX == null) { a.homeX = a.tx; a.homeY = a.ty; }
+    // Update task phase → sets tx/ty to expedition target or home
+    updateAgentTask(a, now);
     if (a.tx == null || a.ty == null) { a.tx = a.x; a.ty = a.y; }
     // Exponential easing toward target — classic hyphal growth shape
-    const k = 0.055;
+    const k = a.task ? 0.035 : 0.055;  // slower when on expedition for visible motion
     a.x += (a.tx - a.x) * k;
     a.y += (a.ty - a.y) * k;
-    // Mark growth complete when we're close enough
-    if (a.growing && Math.hypot(a.tx - a.x, a.ty - a.y) < 0.6) {
+    // Mark growth complete when we're close enough to home
+    if (a.growing && Math.hypot(a.homeX - a.x, a.homeY - a.y) < 0.6) {
       a.growing = false;
-      // Celebratory bloom when the node "settles"
-      addPulse(a.tx, a.ty, [67, 255, 180]);
+      addPulse(a.homeX, a.homeY, [67, 255, 180]);
     }
-    // Parent position follows parent's animated pos too, so threads stay connected
+    // Parent hypha anchor = parent's HOME (rigid mycelium tree, never distorts)
     if (a.parent && a.parent !== 'TREASURY') {
       const p = agents.get(a.parent);
-      if (p) { a.parentX = p.x; a.parentY = p.y; }
+      if (p && p.homeX != null) { a.parentX = p.homeX; a.parentY = p.homeY; }
     }
     // Subtle breathing drift — tiny sway so even stationary nodes feel organic
     if (a.driftSeed == null) a.driftSeed = hashStr(a.id + 'drift') * 6.28;
@@ -1136,12 +1214,15 @@ function drawNet(t) {
     'Dark Library':     [210, 180, 110],  // parchment
   };
 
-  // Mycelium hyphae (parent → child, curved) — district-tinted + flow-dash
+  // Mycelium hyphae (parent-home → child-home, curved). Hyphae ALWAYS use
+  // HOME positions — the rigid tree skeleton never distorts when agents move
+  // on expedition. The agent's live position (a.x, a.y) is decoupled from
+  // the hypha anchor (a.homeX, a.homeY).
   for (const [id, a] of agents) {
-    if (a.parentX == null) continue;
+    if (a.homeX == null || a.parentX == null) continue;
     const pulse = .5 + .5 * Math.sin(t * .0008 + hashStr(id) * 6.28);
-    const mx = (a.parentX + a.x) / 2, my = (a.parentY + a.y) / 2;
-    const dx = a.x - a.parentX, dy = a.y - a.parentY;
+    const mx = (a.parentX + a.homeX) / 2, my = (a.parentY + a.homeY) / 2;
+    const dx = a.homeX - a.parentX, dy = a.homeY - a.parentY;
     const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
     const px = -dy / len, py = dx / len;
     const bend = (hashStr(id + 'bend') - 0.5) * len * 0.15;
@@ -1153,18 +1234,17 @@ function drawNet(t) {
     // Base stroke — district-tinted with low alpha
     netCtx.beginPath();
     netCtx.moveTo(a.parentX, a.parentY);
-    netCtx.quadraticCurveTo(cpX, cpY, a.x, a.y);
+    netCtx.quadraticCurveTo(cpX, cpY, a.homeX, a.homeY);
     const baseA = a.online ? .11 + .06 * pulse : .04;
     netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',' + baseA + ')';
     netCtx.lineWidth = a.online ? 1.0 : 0.6;
     netCtx.stroke();
 
-    // Flow-dash pass — animated dash phase gives directional motion without
-    // needing arrowheads. Only for online agents; offline threads stay still.
+    // Flow-dash pass
     if (a.online) {
       netCtx.beginPath();
       netCtx.moveTo(a.parentX, a.parentY);
-      netCtx.quadraticCurveTo(cpX, cpY, a.x, a.y);
+      netCtx.quadraticCurveTo(cpX, cpY, a.homeX, a.homeY);
       netCtx.setLineDash([4, 10]);
       netCtx.lineDashOffset = -(t * 0.04 + hashStr(id) * 14);
       netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',' + (0.18 * (0.5 + 0.5 * pulse)) + ')';
@@ -1181,12 +1261,27 @@ function drawNet(t) {
     // Flow dot along hypha for online agents
     if (a.online) {
       const ft = ((t * 0.00045 + hashStr(id)) % 1);
-      const bx = (1-ft)*(1-ft)*a.parentX + 2*(1-ft)*ft*cpX + ft*ft*a.x;
-      const by = (1-ft)*(1-ft)*a.parentY + 2*(1-ft)*ft*cpY + ft*ft*a.y;
+      const bx = (1-ft)*(1-ft)*a.parentX + 2*(1-ft)*ft*cpX + ft*ft*a.homeX;
+      const by = (1-ft)*(1-ft)*a.parentY + 2*(1-ft)*ft*cpY + ft*ft*a.homeY;
       netCtx.beginPath();
       netCtx.arc(bx, by, 1.3, 0, 6.28);
       netCtx.fillStyle = 'rgba(92,208,255,.55)';
       netCtx.fill();
+    }
+
+    // Expedition tether — thin dashed line from agent's home to its live
+    // position when the agent is off on a task. Visualizes "something is
+    // traveling out from this slot" without disrupting the tree.
+    if (a.task && Math.hypot(a.x - a.homeX, a.y - a.homeY) > 6) {
+      netCtx.beginPath();
+      netCtx.moveTo(a.homeX, a.homeY);
+      netCtx.lineTo(a.x, a.y);
+      netCtx.setLineDash([2, 6]);
+      netCtx.lineDashOffset = -(t * 0.05);
+      netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',.22)';
+      netCtx.lineWidth = 0.8;
+      netCtx.stroke();
+      netCtx.setLineDash([]);
     }
   }
 
@@ -2123,10 +2218,12 @@ async function poll() {
         ...a,
         x: prev?.x, y: prev?.y, angle: prev?.angle,
         tx: prev?.tx, ty: prev?.ty,
+        homeX: prev?.homeX, homeY: prev?.homeY,
         parentX: prev?.parentX, parentY: prev?.parentY,
         parent: prev?.parent,
         bornAt: prev?.bornAt, growing: prev?.growing,
         driftSeed: prev?.driftSeed, sparkAt: prev?.sparkAt,
+        task: prev?.task,
       });
     }
     if (d.treasury) treasury = { ...d.treasury, x: treasury?.x, y: treasury?.y };
@@ -2160,6 +2257,9 @@ async function poll() {
         bubbles.set(n.agent, { text: n.text, action: n.action || 'think', bornAt: Date.now(), depth: n.depth });
         const node = agents.get(n.agent);
         addPulse(node.x, node.y, actionC(n.action));
+        // Every new thought triggers purposeful movement — agent expeditions
+        // from home toward a target that reflects the action's intent.
+        assignTask(node, n.action);
         narrateThought(n);
       }
     }
