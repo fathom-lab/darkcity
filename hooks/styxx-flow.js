@@ -773,6 +773,14 @@ let totalFlowed = 0;
 let sessionTxCount = 0;
 let mouseX = -999, mouseY = -999;
 let hovered = null;
+// ═══ Pan/zoom camera ═══════════════════════════════════════════════════
+// view.x / view.y are pan offsets in screen pixels, view.k is zoom level.
+// Applied inside drawNet after the motion-trail wipe so the background
+// nebula stays still and only the network moves.
+const view = { x: 0, y: 0, k: 1 };
+const VIEW_MIN_K = 0.35, VIEW_MAX_K = 3.5;
+let panning = false, panStart = null;
+function screenToWorld(sx, sy) { return { x: (sx - view.x) / view.k, y: (sy - view.y) / view.k }; }
 
 // ═══ Canvas setup ══════════════════════════════════════════════════════
 const neb = document.getElementById('nebula');
@@ -936,9 +944,14 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ═══ Render network ═══════════════════════════════════════════════════
 function drawNet(t) {
+  // Reset to screen space so motion trail clears the full viewport
+  netCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
   // Gentle motion trail
   netCtx.fillStyle = 'rgba(5,7,11,.22)';
   netCtx.fillRect(0, 0, W, H);
+  // Apply pan + zoom for everything below
+  netCtx.translate(view.x, view.y);
+  netCtx.scale(view.k, view.k);
 
   // Mycelium hyphae (parent → child, curved)
   for (const [id, a] of agents) {
@@ -1010,7 +1023,10 @@ function drawNet(t) {
   for (const [id, a] of agents) {
     const rad = nodeRadius(a.styxx, a.online);
     const breath = .85 + .15 * Math.sin(t * .0015 + hashStr(id) * 6.28);
-    const isH = Math.hypot(mouseX - a.x, mouseY - a.y) < rad + 8;
+    // Hit-test in world coords (account for pan+zoom). rad+8 tolerance
+    // shrinks with zoom so it stays roughly constant in screen pixels.
+    const wm = screenToWorld(mouseX, mouseY);
+    const isH = Math.hypot(wm.x - a.x, wm.y - a.y) < rad + 8 / view.k;
     if (isH) hovered = a;
     const color = a.online ? C.cyan : C.agentOff;
     const [r, g, b] = color;
@@ -1275,9 +1291,92 @@ function frame(t) {
 resize();
 requestAnimationFrame(frame);
 
-net.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
-net.addEventListener('mouseleave', () => { mouseX = -999; mouseY = -999; });
-net.addEventListener('click', () => { if (hovered?.solscan) window.open(hovered.solscan, '_blank'); });
+net.addEventListener('mousemove', e => {
+  mouseX = e.clientX; mouseY = e.clientY;
+  if (panning && panStart) {
+    view.x = panStart.vx + (e.clientX - panStart.mx);
+    view.y = panStart.vy + (e.clientY - panStart.my);
+    net.style.cursor = 'grabbing';
+  }
+});
+net.addEventListener('mouseleave', () => { mouseX = -999; mouseY = -999; panning = false; panStart = null; });
+net.addEventListener('click', e => {
+  if (panStart && (Math.abs(e.clientX - panStart.mx) + Math.abs(e.clientY - panStart.my) > 4)) return; // drag, not click
+  if (hovered?.solscan) window.open(hovered.solscan, '_blank');
+});
+
+// ═══ Pan/zoom input ════════════════════════════════════════════════════
+// Wheel: zoom around cursor. Drag empty space: pan. Dragging an agent
+// still counts as a click (handled above by distance check).
+net.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  const newK = Math.max(VIEW_MIN_K, Math.min(VIEW_MAX_K, view.k * factor));
+  // Zoom around cursor position (keeps the point under mouse fixed)
+  const worldBefore = screenToWorld(e.clientX, e.clientY);
+  view.k = newK;
+  view.x = e.clientX - worldBefore.x * view.k;
+  view.y = e.clientY - worldBefore.y * view.k;
+}, { passive: false });
+
+net.addEventListener('pointerdown', e => {
+  panning = true;
+  panStart = { mx: e.clientX, my: e.clientY, vx: view.x, vy: view.y };
+  net.style.cursor = 'grabbing';
+});
+window.addEventListener('pointerup', () => {
+  panning = false;
+  net.style.cursor = 'grab';
+});
+
+// Touch: two-finger pinch-zoom + one-finger pan (pointer events cover one-finger)
+let pinchStart = null;
+net.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    const [a, b] = e.touches;
+    pinchStart = {
+      dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+      k: view.k,
+      cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2,
+      vx: view.x, vy: view.y,
+    };
+  }
+}, { passive: true });
+net.addEventListener('touchmove', e => {
+  if (e.touches.length === 2 && pinchStart) {
+    e.preventDefault();
+    const [a, b] = e.touches;
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const newK = Math.max(VIEW_MIN_K, Math.min(VIEW_MAX_K, pinchStart.k * (d / pinchStart.dist)));
+    const worldAtCenter = { x: (pinchStart.cx - pinchStart.vx) / pinchStart.k, y: (pinchStart.cy - pinchStart.vy) / pinchStart.k };
+    view.k = newK;
+    view.x = pinchStart.cx - worldAtCenter.x * view.k;
+    view.y = pinchStart.cy - worldAtCenter.y * view.k;
+  }
+}, { passive: false });
+net.addEventListener('touchend', () => { pinchStart = null; }, { passive: true });
+
+// Reset button — tiny floating corner control
+(() => {
+  const btn = document.createElement('button');
+  btn.setAttribute('aria-label', 'Reset view');
+  btn.textContent = '⌖ reset view';
+  Object.assign(btn.style, {
+    position: 'fixed', bottom: '20px', right: '20px', zIndex: 60,
+    padding: '8px 14px', borderRadius: '999px',
+    background: 'rgba(10,10,11,.72)', color: 'var(--fg-muted)',
+    border: '1px solid var(--hair, rgba(255,255,255,.1))',
+    fontFamily: "'JetBrains Mono', monospace", fontSize: '11px',
+    letterSpacing: '.12em', textTransform: 'uppercase',
+    cursor: 'pointer', backdropFilter: 'blur(10px)',
+    transition: 'color .15s, border-color .15s',
+  });
+  btn.onmouseenter = () => { btn.style.color = 'var(--accent, #43ffb4)'; btn.style.borderColor = 'rgba(67,255,180,.4)'; };
+  btn.onmouseleave = () => { btn.style.color = 'var(--fg-muted)'; btn.style.borderColor = 'rgba(255,255,255,.1)'; };
+  btn.onclick = () => { view.x = 0; view.y = 0; view.k = 1; };
+  document.body.appendChild(btn);
+  net.style.cursor = 'grab';
+})();
 
 // ═══ Onboarding pill ═══
 function dismissOnboard() {
