@@ -1,20 +1,20 @@
-﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-//  DARKCITY.WTF â€” Backend Server v2.0 (The Living City Update)
+// ═══════════════════════════════════════════════════════════════════
+//  DARKCITY.WTF — Backend Server v2.0 (The Living City Update)
 //
 //  INCLUDES:
-//    âœ… All original auth + agent API + dashboard
-//    âœ… CORS fix (allows all .vercel.app domains)
-//    âœ… Chronicle â€” persistent city history
-//    âœ… Agent Homes â€” real NYC addresses
-//    âœ… Atmosphere â€” weather, time of day, ambient events
-//    âœ… Reputation â€” what the city thinks of you
-//    âœ… Achievements â€” permanent milestones
-//    âœ… Daily Newspaper â€” auto-generated city report
-//    âœ… Agent Rent â€” pay for your apartment
+//    ✓ All original auth + agent API + dashboard
+//    ✓ CORS fix (allows all .vercel.app domains)
+//    ✓ Chronicle — persistent city history
+//    ✓ Agent Homes — real NYC addresses
+//    ✓ Atmosphere — weather, time of day, ambient events
+//    ✓ Reputation — what the city thinks of you
+//    ✓ Achievements — permanent milestones
+//    ✓ Daily Newspaper — auto-generated city report
+//    ✓ Agent Rent — pay for your apartment
 //
 //  Railway-ready. No dotenv needed.
 //  Required env vars: DATABASE_URL, JWT_SECRET, NODE_ENV, PORT
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════
 
 const express = require("express");
 const { Pool } = require("pg");
@@ -26,22 +26,36 @@ const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
 
-// â•â•â• APEX 3.0 â•â•â•
+// ═══ APEX 3.0 ═══
 const { SovereignMind } = require('./apex3/heartbeat-integration');
 const { pgAdapter } = require('./apex3-pg-adapter');
 
-// â•â•â• ACTION HOOK â•â•â•
+// ═══ ACTION HOOK ═══
 const { scoreAction } = require('./hooks/action-scorer');
 
-// â•â•â• DEPTH SYSTEM â•â•â•
+// ═══ DEPTH SYSTEM ═══
 const { logDepthEvaluation, evaluateAndLog, checkInterruptionRecovery } = require('./hooks/district-gates');
 const depthRoutes = require('./hooks/depth-routes');
 
-// â•â•â• DATA PIPELINE â•â•â•
+// ═══ DATA PIPELINE ═══
 const { runDataPipelineMigration, enrichAction, writeEnrichment, registerDaaSRoute, registerExportRoute } = require('./hooks/data-pipeline');
 
-// â•â•â• NPC BRAIN v2 â€” LLM-powered agent loop â•â•â•
+// ═══ NPC BRAIN v2 — LLM-powered agent loop ═══
 const { NPCBrain } = require('./hooks/npc-brain');
+
+// STYXX NATIVE CURRENCY (real SPL transfers)
+const styxx = require('./lib/solana-styxx');
+const styxxPay = require('./hooks/styxx-payments');
+const styxxTrial = require('./hooks/styxx-trial');
+const styxxLive = require('./hooks/styxx-live');
+const styxxFlow = require('./hooks/styxx-flow');
+const styxxPublic = require('./hooks/styxx-public');
+const styxxCitizens = require('./hooks/styxx-citizens');
+const styxxEconomy = require('./hooks/styxx-economy');
+const styxxDashboard = require('./hooks/styxx-dashboard');
+const marketTicker = require('./hooks/market-ticker');
+const STYXX_ENABLED = !!process.env.STYXX_TREASURY_PRIVKEY;
+
 const DEPTH_SCORER_URL = process.env.DEPTH_SCORER_URL || '';
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
 let _sovereign = null;
@@ -55,9 +69,9 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString("hex");
 const isProd = process.env.NODE_ENV === "production";
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // DATABASE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProd ? { rejectUnauthorized: false } : false,
@@ -261,7 +275,7 @@ async function initDB() {
 
     `);
 
-    // Indexes â€” run individually so pre-existing tables with different schemas don't crash init
+    // Indexes — run individually so pre-existing tables with different schemas don't crash init
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_agents_api_prefix ON agents(api_key_prefix)',
       'CREATE INDEX IF NOT EXISTS idx_agents_human ON agents(human_id)',
@@ -313,7 +327,7 @@ async function initDB() {
       `);
     }
 
-    console.log("âš°ï¸ Database tables initialized (v2.0 â€” The Living City + Gateway)");
+    console.log("⚰ Database tables initialized (v2.0 — The Living City + Gateway)");
   } finally {
     client.release();
   }
@@ -326,9 +340,9 @@ setInterval(async () => {
   } catch (e) { /* ignore */ }
 }, 3600000);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // CITY CONSTANTS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 const NEIGHBORHOODS = {
   battery:  { name: "Battery Park", streets: ["State St","Whitehall St","Battery Pl","Bridge St"] },
   fidi:     { name: "Financial District", streets: ["Wall St","Broad St","Pine St","Cedar St","Nassau St","William St"] },
@@ -394,9 +408,9 @@ const ACHIEVEMENTS = [
   { id:"veteran", name:"Veteran", desc:"Survive 30 city days", icon:"ðŸŽ–ï¸" },
 ];
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // HELPERS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 function genToken(prefix = "dc", bytes = 32) {
   return `${prefix}_${crypto.randomBytes(bytes).toString("hex")}`;
 }
@@ -506,9 +520,9 @@ async function checkAchievements(agentId) {
   } catch (e) { return []; }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // SECURITY MIDDLEWARE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
@@ -538,15 +552,18 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
+// Trust the Railway/Cloudflare proxy so express-rate-limit sees real client IPs.
+app.set('trust proxy', 1);
+
 const globalLimiter = rateLimit({ windowMs: 60000, max: 100, message: { error: "Too many requests." }, standardHeaders: true, legacyHeaders: false });
 app.use(globalLimiter);
 
 const authLimiter = rateLimit({ windowMs: 900000, max: 10, message: { error: "Too many auth attempts. Try again in 15 minutes." }, keyGenerator: (req) => req.ip + (req.body?.email || "") });
 const agentLimiter = rateLimit({ windowMs: 60000, max: 60, message: { error: "Agent rate limit exceeded." } });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // AUTH MIDDLEWARE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 async function authHuman(req, res, next) {
   const token = req.cookies?.dc_session;
   if (!token) return res.status(401).json({ error: "Not authenticated" });
@@ -574,9 +591,9 @@ async function authAgent(req, res, next) {
   } catch (err) { return res.status(500).json({ error: "Auth error" }); }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // HUMAN AUTH ROUTES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.post("/api/auth/signup", authLimiter, async (req, res) => {
   try {
     const email = sanitize(req.body.email, 254).toLowerCase();
@@ -604,7 +621,7 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
     );
     const humanId = result.rows[0].id;
 
-    // â•â•â• AUTO-CREATE CITIZEN AGENT â•â•â•
+    // ═══ AUTO-CREATE CITIZEN AGENT ═══
     // Every human who signs up automatically becomes a citizen of Dark City
     const apiKey = genToken("dc");
     const apiKeyHash = hashToken(apiKey);
@@ -679,7 +696,7 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
         job,
         api_key: apiKey,
       },
-      warning: "SAVE YOUR API KEY â€” it allows programmatic access to your agent.",
+      warning: "SAVE YOUR API KEY — it allows programmatic access to your agent.",
     });
   } catch (err) { console.error("Signup error:", err); res.status(500).json({ error: "Internal error" }); }
 });
@@ -726,9 +743,9 @@ app.get("/api/auth/me", authHuman, async (req, res) => {
   } catch { res.status(500).json({ error: "Internal error" }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // AGENT REGISTRATION & CLAIMING
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.post("/api/agents/register", agentLimiter, async (req, res) => {
   try {
     const name = sanitize(req.body.name, 32);
@@ -794,9 +811,9 @@ app.post("/api/agents/rotate-key", authHuman, async (req, res) => {
   } catch { res.status(500).json({ error: "Internal error" }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // AGENT API
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.get("/api/agent/status", authAgent, async (req, res) => {
   const a = req.agent;
   const newAch = await checkAchievements(a.id);
@@ -813,7 +830,7 @@ app.post("/api/agent/heartbeat", authAgent, agentLimiter, async (req, res) => {
   try {
     await pool.query("UPDATE agents SET last_heartbeat = NOW() WHERE id=$1", [req.agent.id]);
     const atm = await pool.query("SELECT weather, time_of_day, ambient_event FROM atmosphere LIMIT 1");
-    // â•â•â• APEX 3.0 sovereign tick (darkflobi only) â•â•â•
+    // ═══ APEX 3.0 sovereign tick (darkflobi only) ═══
     let sovereignCtx = null;
     if (req.agent.name === 'darkflobi' || req.agent.id === DARKFLOBI_AGENT_ID) {
       try {
@@ -854,7 +871,7 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
       [req.agent.id, action, JSON.stringify(details || {})]
     );
 
-    // 2. Execute action â€” mutations go through client, no rep writes here
+    // 2. Execute action — mutations go through client, no rep writes here
     switch (action) {
       case "move":
         if (details?.x != null && details?.y != null) {
@@ -896,7 +913,7 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
               deferred.push(() => addChronicle(
                 "founding",
                 `${req.agent.name} builds first structure in ${nh.name}!`,
-                `A ${details.type} â€” the beginning of ${nh.name}'s development.`,
+                `A ${details.type} — the beginning of ${nh.name}'s development.`,
                 [req.agent.id], hood, 4
               ));
             }
@@ -995,7 +1012,7 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
     }
 
     // 3. SCORE the output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    //    scoreAction is pure â€” reads agent state + outcome, no DB calls
+    //    scoreAction is pure — reads agent state + outcome, no DB calls
     const scored = scoreAction(req.agent, action, details, outcome);
 
     // 4. Apply rep delta + tag in the same transaction â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1032,7 +1049,7 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
 
     await client.query('COMMIT');
 
-    // 6. Deferred side-effects (chronicles â€” non-critical, post-commit) â”€â”€
+    // 6. Deferred side-effects (chronicles — non-critical, post-commit) â”€â”€
     for (const fn of deferred) {
       fn().catch(e => console.error('[action deferred]', e.message));
     }
@@ -1074,14 +1091,14 @@ app.post("/api/agent/action", authAgent, agentLimiter, async (req, res) => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // DEPTH INTELLIGENCE API (public, no auth)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 depthRoutes(app, pool);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // HUMAN DASHBOARD API
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.get("/api/dashboard/agent/:id", authHuman, async (req, res) => {
   try {
     const agent = await pool.query("SELECT * FROM agents WHERE id=$1 AND human_id=$2", [req.params.id, req.human.id]);
@@ -1131,16 +1148,33 @@ app.get("/api/dashboard/feed", authHuman, async (req, res) => {
   } catch { res.status(500).json({ error: "Internal error" }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// CHRONICLE & NEWSPAPER â€” The City's Memory
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// CHRONICLE & NEWSPAPER — The City's Memory
+// ═══════════════════════════════════════════════════════════════
 app.get("/api/chronicle", async (req, res) => {
+  // Fixed 2026-04-19: legacy `chronicle` table is empty. Falls back to
+  // agent_actions for the live event log, which IS populated (101k+ actions).
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
     const offset = (page - 1) * limit;
-    const events = await pool.query("SELECT * FROM chronicle ORDER BY created_at DESC LIMIT $1 OFFSET $2", [limit, offset]);
-    const total = await pool.query("SELECT COUNT(*) as c FROM chronicle");
+    let events = await pool.query("SELECT * FROM chronicle ORDER BY created_at DESC LIMIT $1 OFFSET $2", [limit, offset]).catch(() => ({ rows: [] }));
+    let total = await pool.query("SELECT COUNT(*) as c FROM chronicle").catch(() => ({ rows: [{ c: 0 }] }));
+    if (!events.rows.length) {
+      // Build from agent_actions
+      const fallback = await pool.query(`
+        SELECT aa.id, aa.agent_id AS agent,
+               aa.action_type AS headline,
+               aa.details->>'choice_reason' AS body,
+               CASE WHEN aa.action_type IN ('build','complete_contract') THEN 3 ELSE 1 END AS significance,
+               aa.created_at
+        FROM agent_actions aa
+        ORDER BY aa.created_at DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]);
+      const totalFallback = await pool.query("SELECT COUNT(*) AS c FROM agent_actions");
+      return res.json({ events: fallback.rows, total: parseInt(totalFallback.rows[0].c), page, limit, source: 'agent_actions' });
+    }
     res.json({ events: events.rows, total: parseInt(total.rows[0].c), page, limit });
   } catch { res.json({ events: [], total: 0 }); }
 });
@@ -1192,9 +1226,9 @@ async function generateDailyReport() {
   return report;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// ATMOSPHERE ENGINE â€” The City Breathes
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// ATMOSPHERE ENGINE — The City Breathes
+// ═══════════════════════════════════════════════════════════════
 app.get("/api/city/atmosphere", async (req, res) => {
   try {
     const atm = await pool.query("SELECT * FROM atmosphere LIMIT 1");
@@ -1228,18 +1262,39 @@ setInterval(async () => {
   }
 }, 600000);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // PUBLIC ROUTES
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.get("/api/city/stats", async (req, res) => {
+  // Fixed 2026-04-19: was querying empty `agents` (v1) table. Real data is in
+  // `external_agents` (v2) populated by NPC-brain-v2. Also includes styxx
+  // economy counts for the public dashboard.
   try {
-    const pop = await pool.query("SELECT COUNT(*) as count FROM agents WHERE is_active=1");
-    const blds = await pool.query("SELECT COUNT(*) as count FROM buildings");
-    const atm = await pool.query("SELECT weather, time_of_day FROM atmosphere LIMIT 1");
+    const [pop, blds, atm, econ] = await Promise.all([
+      pool.query("SELECT COUNT(*) AS n FROM external_agents WHERE euthanized_at IS NULL").catch(() => ({ rows: [{ n: 0 }] })),
+      pool.query("SELECT COUNT(*) AS n FROM buildings").catch(() => ({ rows: [{ n: 0 }] })),
+      pool.query("SELECT weather, time_of_day FROM atmosphere LIMIT 1").catch(() => ({ rows: [] })),
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM external_agents WHERE owner_pubkey IS NOT NULL) AS minted,
+          (SELECT COUNT(*) FROM sponsorships WHERE status = 'active') AS sponsorships,
+          (SELECT COALESCE(SUM(amount_staked), 0) FROM sponsorships WHERE status = 'active') AS staked,
+          (SELECT COUNT(*) FROM hyphal_links WHERE status = 'active') AS links,
+          (SELECT COUNT(*) FROM fruiting_bodies WHERE dissolved_at IS NULL) AS guilds
+      `).catch(() => ({ rows: [{ minted: 0, sponsorships: 0, staked: 0, links: 0, guilds: 0 }] })),
+    ]);
     res.json({
-      population: parseInt(pop.rows[0].count), buildings: parseInt(blds.rows[0].count),
+      population: parseInt(pop.rows[0].n),
+      buildings: parseInt(blds.rows[0].n),
       status: "online", domain: "darkcity.wtf", day: getCityDay(),
       atmosphere: atm.rows[0] || { weather: "clear", time_of_day: "night" },
+      economy: {
+        minted_agents: parseInt(econ.rows[0].minted),
+        active_sponsorships: parseInt(econ.rows[0].sponsorships),
+        total_staked_styxx: parseFloat(econ.rows[0].staked),
+        active_hyphal_links: parseInt(econ.rows[0].links),
+        active_guilds: parseInt(econ.rows[0].guilds),
+      },
     });
   } catch { res.json({ population: 0, buildings: 0, status: "starting", domain: "darkcity.wtf" }); }
 });
@@ -1258,26 +1313,37 @@ app.get("/skill.md", (req, res) => {
   else { res.type("text/markdown").send("# DARKCITY.WTF\nVisit https://darkcity.wtf to enter the city."); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// PUBLIC CITY MAP â€” No auth required, returns all live city data
+// ═══════════════════════════════════════════════════════════════
+// PUBLIC CITY MAP — No auth required, returns all live city data
 // This is what the frontend map renders
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.get("/api/city/map", async (req, res) => {
+  // Fixed 2026-04-19: v1 schema queries returned empty. Now reads real data
+  // from external_agents + agent_actions + styxx_transfers.
   try {
-    const agents = await pool.query(
-      "SELECT id,name,rank,xp,wallet,state,x,y,job,home_address,home_neighborhood,home_x,home_y,reputation,achievements,status FROM agents WHERE is_active=1"
-    );
-    const buildings = await pool.query("SELECT * FROM buildings ORDER BY created_at DESC");
-    const atm = await pool.query("SELECT weather, time_of_day, ambient_event FROM atmosphere LIMIT 1");
-    const chronicle = await pool.query("SELECT id,headline,body,significance,day,created_at FROM chronicle ORDER BY created_at DESC LIMIT 30");
-    const feed = await pool.query(
-      "SELECT al.action, al.details, al.timestamp, a.name as agent_name FROM activity_log al JOIN agents a ON a.id=al.agent_id ORDER BY al.timestamp DESC LIMIT 80"
-    );
+    const [agents, buildings, atm, chronicle, feed] = await Promise.all([
+      pool.query(`
+        SELECT ea.agent_id AS id, ea.agent_id AS name, ea.rank, ea.district AS home_neighborhood,
+               ea.reputation, ea.builds, ea.trades, ea.owner_pubkey, ea.sol_pubkey,
+               COALESCE(ea.styxx_cached, 0) AS wallet, ea.dormant
+        FROM external_agents ea
+        WHERE ea.euthanized_at IS NULL
+        ORDER BY ea.reputation DESC
+      `),
+      pool.query("SELECT * FROM buildings ORDER BY created_at DESC LIMIT 50").catch(() => ({ rows: [] })),
+      pool.query("SELECT weather, time_of_day, ambient_event FROM atmosphere LIMIT 1").catch(() => ({ rows: [] })),
+      pool.query("SELECT id,headline,body,significance,day,created_at FROM chronicle ORDER BY created_at DESC LIMIT 30").catch(() => ({ rows: [] })),
+      pool.query(`
+        SELECT aa.action_type AS action, aa.details, aa.created_at AS timestamp, aa.agent_id AS agent_name
+        FROM agent_actions aa
+        ORDER BY aa.created_at DESC LIMIT 80
+      `).catch(() => ({ rows: [] })),
+    ]);
     res.json({
       agents: agents.rows.map(a => ({
         ...a,
-        achievements: JSON.parse(a.achievements || '[]'),
-        isReal: true, // flag: this is a real registered agent
+        wallet: Number(a.wallet || 0),
+        isReal: true,
       })),
       buildings: buildings.rows,
       atmosphere: atm.rows[0] || { weather: "clear", time_of_day: "night" },
@@ -1286,7 +1352,7 @@ app.get("/api/city/map", async (req, res) => {
       stats: {
         population: agents.rows.length,
         totalBuildings: buildings.rows.length,
-        totalEconomy: agents.rows.reduce((s, a) => s + (a.wallet || 0), 0),
+        totalEconomy: agents.rows.reduce((s, a) => s + Number(a.wallet || 0), 0),
         day: getCityDay(),
       },
     });
@@ -1296,10 +1362,10 @@ app.get("/api/city/map", async (req, res) => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// CLAIM AGENT BY NAME â€” For linking existing agents to human accounts
+// ═══════════════════════════════════════════════════════════════
+// CLAIM AGENT BY NAME — For linking existing agents to human accounts
 // Human must be logged in, agent must have no human_id
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.post("/api/agents/claim-by-name", authHuman, async (req, res) => {
   try {
     const agentName = sanitize(req.body.agentName, 64);
@@ -1308,13 +1374,13 @@ app.post("/api/agents/claim-by-name", authHuman, async (req, res) => {
 
     let agent;
     if (apiKey) {
-      // Claim by API key â€” most secure
+      // Claim by API key — most secure
       const hash = hashToken(apiKey);
       const result = await pool.query("SELECT * FROM agents WHERE api_key_hash=$1", [hash]);
       if (!result.rows.length) return res.status(404).json({ error: "No agent found with that API key" });
       agent = result.rows[0];
     } else {
-      // Claim by name â€” only works if agent has no human
+      // Claim by name — only works if agent has no human
       const result = await pool.query("SELECT * FROM agents WHERE LOWER(name)=LOWER($1)", [agentName]);
       if (!result.rows.length) return res.status(404).json({ error: `No agent named "${agentName}" found` });
       agent = result.rows[0];
@@ -1336,9 +1402,9 @@ app.post("/api/agents/claim-by-name", authHuman, async (req, res) => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// AGENT GATEWAY â€” External agent integration
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// AGENT GATEWAY — External agent integration
+// ═══════════════════════════════════════════════════════════════
 
 // Auth middleware for gateway endpoints
 async function authenticateAgent(req, res, next) {
@@ -1379,8 +1445,20 @@ async function authenticateAgent(req, res, next) {
   }
 }
 
-// POST /api/gateway/register â€” Register new agent
+// POST /api/gateway/register — Register new agent
+// PUBLIC REGISTRATION IS CLOSED while we harden custody + abuse prevention.
+// The backend logic below is intact and working; it's gated off behind an env
+// switch so operators can enable it for internal use but the open internet
+// can't burn the treasury. Set DARKCITY_REGISTRATION_OPEN=1 to allow.
 app.post('/api/gateway/register', async (req, res) => {
+  if (process.env.DARKCITY_REGISTRATION_OPEN !== '1') {
+    return res.status(503).json({
+      error: 'Public agent registration is closed.',
+      detail: 'DarkCity is running a 31-agent proof-of-concept deployment on Solana mainnet. Self-serve registration opens once custody, rate limits, and abuse prevention are hardened.',
+      watch: 'https://darkcity-backend-production-427a.up.railway.app/flow',
+      source: 'https://github.com/fathom-lab/darkcity',
+    });
+  }
   const { agent_name, owner_name, owner_email, bot_framework, description } = req.body;
   if (!agent_name) {
     return res.status(400).json({ error: 'agent_name is required' });
@@ -1401,25 +1479,61 @@ app.post('/api/gateway/register', async (req, res) => {
       'Chelsea', 'Gramercy', 'Upper West Side', 'Harlem'
     ];
     const district = districts[Math.floor(Math.random() * districts.length)];
+
+    // Provision a real Solana keypair up-front so the agent can trade $STYXX immediately
+    let sol_pubkey = null, sol_privkey_enc = null, airdropSig = null;
+    if (STYXX_ENABLED) {
+      try {
+        const kp = styxx.generateAgentKeypair();
+        sol_pubkey = kp.publicKey.toBase58();
+        sol_privkey_enc = styxx.encryptPrivkey(kp.secretKey);
+      } catch (e) {
+        console.error('[register] wallet gen failed:', e.message);
+      }
+    }
+
     await pool.query(
-      `INSERT INTO external_agents (agent_id, district, reputation, credits, builds, trades, agent_type, owner_name, bot_framework, rank)
-       VALUES ($1, $2, 0, 100, 0, 0, 'external', $3, $4, 'Newcomer')`,
-      [cleanName, district, owner_name || null, bot_framework || 'custom']
+      `INSERT INTO external_agents (agent_id, district, reputation, credits, builds, trades, agent_type, owner_name, bot_framework, rank, sol_pubkey, sol_privkey_enc)
+       VALUES ($1, $2, 0, $3, 0, 0, 'external', $4, $5, 'Newcomer', $6, $7)`,
+      [cleanName, district, STYXX_ENABLED ? 0 : 100, owner_name || null, bot_framework || 'custom', sol_pubkey, sol_privkey_enc]
     );
     await pool.query(
       `INSERT INTO agent_keys (api_key, agent_id, owner_name, owner_email, bot_framework, description)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [apiKey, cleanName, owner_name || null, owner_email || null, bot_framework || null, description || null]
     );
+
+    // Airdrop initial $STYXX seed to the newly-provisioned wallet (best-effort)
+    const SEED = 100;
+    if (STYXX_ENABLED && sol_pubkey) {
+      try {
+        const r = await styxx.airdropFromTreasury(sol_pubkey, SEED);
+        airdropSig = r.signature;
+        await pool.query(
+          `INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+           VALUES ($1, 'TREASURY', $2, $3, $4, $5, 'airdrop_initial', $6)
+           ON CONFLICT (tx_signature) DO NOTHING`,
+          [r.signature, styxx.getTreasury().publicKey.toBase58(), cleanName, sol_pubkey, SEED, `welcome seed for ${cleanName}`]
+        );
+        await pool.query(`UPDATE external_agents SET styxx_cached = $1, styxx_cached_at = NOW() WHERE agent_id = $2`, [SEED, cleanName]);
+      } catch (e) {
+        console.error('[register] airdrop failed:', e.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
       agent_id: cleanName,
       api_key: apiKey,
       district: district,
-      starting_credits: 100,
+      starting_balance: STYXX_ENABLED ? SEED : 100,
+      currency: STYXX_ENABLED ? 'STYXX' : 'credits',
+      wallet: sol_pubkey,
+      solscan: sol_pubkey ? `https://solscan.io/account/${sol_pubkey}` : null,
+      airdrop_tx: airdropSig,
       message: 'Welcome to DARKCITY, ' + cleanName + '. Your building awaits in ' + district + '.',
       docs: 'https://darkcity.wtf/docs/gateway',
-      important: 'Save your API key â€” it cannot be recovered. Include it as x-api-key header in all requests.'
+      important: 'Save your API key — it cannot be recovered. Include it as x-api-key header in all requests.'
     });
   } catch(e) {
     console.error('Registration error:', e);
@@ -1427,7 +1541,7 @@ app.post('/api/gateway/register', async (req, res) => {
   }
 });
 
-// POST /api/gateway/action â€” Agent takes action
+// POST /api/gateway/action — Agent takes action
 app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
   const { action, params } = req.body;
   const agentId = req.agentKey.agent_id;
@@ -1471,24 +1585,73 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
         }
         const price = market.rows[0].price;
         const totalCost = Math.round(price * amount);
-        if (tradeType === 'buy') {
-          const agent = await pool.query('SELECT credits FROM external_agents WHERE agent_id = $1', [agentId]);
-          if ((agent.rows[0]?.credits || 0) < totalCost) {
-            return res.status(400).json({ error: 'Not enough credits. Need ' + totalCost });
+        let txSignature = null;
+
+        if (STYXX_ENABLED) {
+          // Real on-chain $STYXX settlement
+          try {
+            if (tradeType === 'buy') {
+              const { balance } = await styxxPay.getBalance({
+                table: 'external_agents', idCol: 'agent_id', agentId, refresh: true,
+              });
+              if (balance < totalCost) {
+                return res.status(400).json({
+                  error: `Not enough $STYXX. Need ${totalCost}, have ${balance.toFixed(2)}.`,
+                  on_chain: true,
+                });
+              }
+              const r = await styxxPay.buyFromMarket({
+                table: 'external_agents', idCol: 'agent_id', agentId,
+                amount: totalCost, reason: 'resource_buy', memo: `bought ${amount} ${resource}`,
+              });
+              txSignature = r.signature;
+            } else {
+              const r = await styxxPay.sellToMarket({
+                table: 'external_agents', idCol: 'agent_id', agentId,
+                amount: totalCost, reason: 'resource_sell', memo: `sold ${amount} ${resource}`,
+              });
+              txSignature = r.signature;
+            }
+          } catch (e) {
+            console.error('[trade] on-chain settlement failed:', e.message);
+            return res.status(502).json({
+              error: 'Chain settlement failed: ' + e.message,
+              on_chain: true,
+            });
           }
+          // Gameplay counters only (not balance)
           await pool.query(
-            'UPDATE external_agents SET credits = credits - $1, trades = trades + 1, reputation = reputation + 2 WHERE agent_id = $2',
-            [totalCost, agentId]
+            'UPDATE external_agents SET trades = trades + 1, reputation = reputation + 2 WHERE agent_id = $1',
+            [agentId]
           );
-          streamMessage = 'Bought ' + amount + ' ' + resource + ' for ' + totalCost + ' cr.';
+          streamMessage = (tradeType === 'buy' ? 'Bought ' : 'Sold ') +
+            amount + ' ' + resource + ' for ' + totalCost + ' $STYXX. tx=' + txSignature.slice(0, 8) + '…';
         } else {
-          await pool.query(
-            'UPDATE external_agents SET credits = credits + $1, trades = trades + 1, reputation = reputation + 2 WHERE agent_id = $2',
-            [totalCost, agentId]
-          );
-          streamMessage = 'Sold ' + amount + ' ' + resource + ' for ' + totalCost + ' cr.';
+          // Legacy credits fallback (pre-styxx deployments)
+          if (tradeType === 'buy') {
+            const agent = await pool.query('SELECT credits FROM external_agents WHERE agent_id = $1', [agentId]);
+            if ((agent.rows[0]?.credits || 0) < totalCost) {
+              return res.status(400).json({ error: 'Not enough credits. Need ' + totalCost });
+            }
+            await pool.query(
+              'UPDATE external_agents SET credits = credits - $1, trades = trades + 1, reputation = reputation + 2 WHERE agent_id = $2',
+              [totalCost, agentId]
+            );
+            streamMessage = 'Bought ' + amount + ' ' + resource + ' for ' + totalCost + ' cr.';
+          } else {
+            await pool.query(
+              'UPDATE external_agents SET credits = credits + $1, trades = trades + 1, reputation = reputation + 2 WHERE agent_id = $2',
+              [totalCost, agentId]
+            );
+            streamMessage = 'Sold ' + amount + ' ' + resource + ' for ' + totalCost + ' cr.';
+          }
         }
-        result = { trade: tradeType, resource, amount, price_per_unit: price, total: totalCost, rep_gained: 2 };
+        result = {
+          trade: tradeType, resource, amount, price_per_unit: price, total: totalCost,
+          rep_gained: 2,
+          currency: STYXX_ENABLED ? 'STYXX' : 'credits',
+          tx: txSignature,
+        };
         break;
       }
       case 'vote': {
@@ -1562,10 +1725,44 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
         }
         break;
       }
+      case 'transfer': {
+        if (!STYXX_ENABLED) {
+          return res.status(503).json({ error: 'Native $STYXX currency not enabled on this server.' });
+        }
+        const toAgent = (params?.to || '').toUpperCase();
+        const amount = parseFloat(params?.amount);
+        const memo = (params?.memo || '').substring(0, 200);
+        if (!toAgent) return res.status(400).json({ error: 'Need target agent_id in params.to' });
+        if (!(amount > 0)) return res.status(400).json({ error: 'Need positive amount in $STYXX' });
+        if (toAgent === agentId) return res.status(400).json({ error: 'Cannot transfer to self' });
+
+        const target = await pool.query('SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [toAgent]);
+        if (!target.rows.length) return res.status(404).json({ error: 'Target agent not found' });
+        if (!target.rows[0].sol_pubkey) return res.status(409).json({ error: 'Target has no Solana wallet provisioned' });
+
+        try {
+          const { signature, slot } = await styxxPay.transferP2P({
+            fromTable: 'external_agents', fromIdCol: 'agent_id', fromId: agentId,
+            toTable: 'external_agents', toIdCol: 'agent_id', toId: toAgent,
+            amount, memo: memo || `${agentId}→${toAgent}`,
+          });
+          // Both sides gain small rep for participating in the P2P economy
+          await pool.query(
+            'UPDATE external_agents SET reputation = reputation + 1 WHERE agent_id = ANY($1)',
+            [[agentId, toAgent]]
+          );
+          result = { transferred: amount, to: toAgent, currency: 'STYXX', tx: signature, slot };
+          streamMessage = `Sent ${amount} $STYXX to ${toAgent}${memo ? ` — "${memo}"` : ''}. tx=${signature.slice(0, 8)}…`;
+        } catch (e) {
+          console.error('[transfer] chain failed:', e.message);
+          return res.status(502).json({ error: 'Transfer failed: ' + e.message });
+        }
+        break;
+      }
       default:
         return res.status(400).json({
           error: 'Unknown action: ' + action,
-          valid_actions: ['build', 'trade', 'vote', 'social', 'kudos', 'explore']
+          valid_actions: ['build', 'trade', 'vote', 'social', 'kudos', 'explore', 'transfer']
         });
     }
         const insertedAction = await pool.query(
@@ -1627,7 +1824,7 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
   }
 });
 
-// GET /api/gateway/status â€” Agent checks own status
+// GET /api/gateway/status — Agent checks own status
 app.get('/api/gateway/status', authenticateAgent, async (req, res) => {
   const agentId = req.agentKey.agent_id;
   try {
@@ -1665,7 +1862,7 @@ app.get('/api/gateway/status', authenticateAgent, async (req, res) => {
   }
 });
 
-// GET /api/gateway/world â€” Agent reads city state
+// GET /api/gateway/world — Agent reads city state
 app.get('/api/gateway/world', authenticateAgent, async (req, res) => {
   try {
     const agentCount = await pool.query('SELECT COUNT(*) as cnt FROM external_agents');
@@ -1699,7 +1896,7 @@ app.get('/api/gateway/world', authenticateAgent, async (req, res) => {
   }
 });
 
-// GET /api/gateway/agents â€” Public: List all agents
+// GET /api/gateway/agents — Public: List all agents
 app.get('/api/gateway/agents', async (req, res) => {
   try {
     const agents = await pool.query(
@@ -1721,7 +1918,7 @@ app.get('/api/gateway/agents', async (req, res) => {
   }
 });
 
-// GET /api/market/prices â€” Public market data
+// GET /api/market/prices — Public market data
 app.get('/api/market/prices', async (req, res) => {
   try {
     const prices = await pool.query('SELECT resource as n, price as p, change_pct as c, volume as v, supply as s FROM market_prices');
@@ -1731,7 +1928,7 @@ app.get('/api/market/prices', async (req, res) => {
   }
 });
 
-// GET /api/governance/proposals â€” Public governance data
+// GET /api/governance/proposals — Public governance data
 app.get('/api/governance/proposals', async (req, res) => {
   try {
     const proposals = await pool.query(
@@ -1745,7 +1942,7 @@ app.get('/api/governance/proposals', async (req, res) => {
   }
 });
 
-// GET /api/leaderboard â€” Public leaderboard
+// GET /api/leaderboard — Public leaderboard
 app.get('/api/leaderboard', async (req, res) => {
   try {
     const leaders = await pool.query(
@@ -1758,9 +1955,9 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 // PUBLIC CITIZENS API (for app.darkcity.wtf frontend)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.get('/api/public/citizens', async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -1770,6 +1967,8 @@ app.get('/api/public/citizens', async (req, res) => {
         rank,
         reputation,
         credits,
+        COALESCE(styxx_cached, 0)::float AS styxx,
+        sol_pubkey AS wallet,
         builds,
         trades,
         kudos_received,
@@ -1779,16 +1978,84 @@ app.get('/api/public/citizens', async (req, res) => {
       ORDER BY reputation DESC
       LIMIT 100
     `);
-    res.json({ citizens: rows, total: rows.length, online: rows.filter(r => r.last_active && new Date(r.last_active) > new Date(Date.now() - 3600000)).length });
+    const enriched = rows.map(r => ({
+      ...r,
+      solscan: r.wallet ? `https://solscan.io/account/${r.wallet}` : null,
+    }));
+    res.json({
+      citizens: enriched,
+      total: enriched.length,
+      online: enriched.filter(r => r.last_active && new Date(r.last_active) > new Date(Date.now() - 3600000)).length,
+      currency: STYXX_ENABLED ? 'STYXX' : 'credits',
+      mint: STYXX_ENABLED ? styxx.STYXX_MINT_ADDR : null,
+    });
   } catch(e) {
     console.error('[PublicCitizens]', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Per-citizen dossier: all the numbers the /citizen/NAME page needs in one shot,
+// including LIVE on-chain $STYXX balance + recent transfers for "watch it move".
+app.get('/api/public/citizen/:name', async (req, res) => {
+  try {
+    const name = (req.params.name || '').toUpperCase();
+    const { rows } = await pool.query(`
+      SELECT agent_id, district, rank, reputation, credits,
+             COALESCE(styxx_cached, 0)::float AS styxx_cached,
+             sol_pubkey, builds, trades, kudos_received, last_active, agent_type
+      FROM external_agents WHERE UPPER(agent_id) = $1
+    `, [name]);
+    if (!rows.length) return res.status(404).json({ error: 'citizen not found' });
+    const c = rows[0];
+
+    let liveBalance = null;
+    if (STYXX_ENABLED && c.sol_pubkey) {
+      try { liveBalance = await styxx.getStyxxBalance(c.sol_pubkey); } catch {}
+    }
+    const { rows: transfers } = await pool.query(`
+      SELECT tx_signature, from_agent_id, to_agent_id, amount, reason, memo, confirmed_at
+      FROM styxx_transfers
+      WHERE from_agent_id = $1 OR to_agent_id = $1
+      ORDER BY confirmed_at DESC LIMIT 20
+    `, [c.agent_id]);
+
+    res.json({
+      name: c.agent_id,
+      district: c.district,
+      rank: c.rank,
+      reputation: c.reputation,
+      builds: c.builds,
+      trades: c.trades,
+      kudos_received: c.kudos_received,
+      last_active: c.last_active,
+      credits: c.credits,               // legacy, still served for old clients
+      styxx: liveBalance !== null ? liveBalance : Number(c.styxx_cached || 0),
+      wallet: c.sol_pubkey,
+      solscan: c.sol_pubkey ? `https://solscan.io/account/${c.sol_pubkey}` : null,
+      trial: c.sol_pubkey ? `/styxx-trial?agent=${c.agent_id}` : null,
+      recent_transfers: transfers.map(t => ({
+        tx: t.tx_signature,
+        direction: t.from_agent_id === c.agent_id ? 'out' : 'in',
+        counterparty: t.from_agent_id === c.agent_id ? t.to_agent_id : t.from_agent_id,
+        amount: Number(t.amount),
+        reason: t.reason,
+        memo: t.memo,
+        at: t.confirmed_at,
+        solscan: `https://solscan.io/tx/${t.tx_signature}`,
+      })),
+      currency: STYXX_ENABLED ? 'STYXX' : 'credits',
+      mint: STYXX_ENABLED ? styxx.STYXX_MINT_ADDR : null,
+    });
+  } catch(e) {
+    console.error('[PublicCitizen]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // DEPTH DASHBOARD API
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 depthRoutes(app, pool);
 
 // Proxy /api/depth/score â†’ depth scorer on Alienware (via Cloudflare tunnel)
@@ -1804,38 +2071,38 @@ app.post('/api/depth/score', async (req, res) => {
   } catch(e) { res.status(503).json({ error: 'Depth scorer unreachable: ' + e.message }); }
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// DATA PIPELINE â€” DaaS + Export
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
+// DATA PIPELINE — DaaS + Export
+// ═══════════════════════════════════════════════════════════════
 registerDaaSRoute(app, pool, DEPTH_SCORER_URL);
 registerExportRoute(app, pool);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // CITY STREAM + CONTRACTS
 // ═══════════════════════════════════════════════════════════════
 // ============================================================================
-// DARKCITY â€” CITY LIFE INFRASTRUCTURE
+// DARKCITY — CITY LIFE INFRASTRUCTURE
 // Drop these into server.js. Three systems that make the city visible and alive.
 //
-// 1. STREAM API â€” lets the frontend see what agents are doing
-// 2. SSE LIVE FEED â€” pushes events to the browser in real-time
-// 3. CONTRACTS â€” the economic engine (agents earn credits by doing work)
+// 1. STREAM API — lets the frontend see what agents are doing
+// 2. SSE LIVE FEED — pushes events to the browser in real-time
+// 3. CONTRACTS — the economic engine (agents earn credits by doing work)
 // ============================================================================
 
 
 // ============================================================================
-// 1. STREAM API â€” The Window Into The City
+// 1. STREAM API — The Window Into The City
 // ============================================================================
 
-// GET /api/stream â€” fetch recent actions with full context
+// GET /api/stream — fetch recent actions with full context
 // Query params:
 //   limit (default 50, max 200)
 //   offset (for pagination)
 //   type (filter: social|trade|build|explore)
 //   agent (filter by agent_id)
-//   since (ISO timestamp â€” only actions after this time)
+//   since (ISO timestamp — only actions after this time)
 app.get('/api/stream', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
@@ -1909,7 +2176,7 @@ app.get('/api/stream', async (req, res) => {
   }
 });
 
-// GET /api/stream/latest â€” just the single most recent action per agent
+// GET /api/stream/latest — just the single most recent action per agent
 // Useful for map: show what each agent is doing RIGHT NOW
 app.get('/api/stream/latest', async (req, res) => {
   try {
@@ -1938,7 +2205,7 @@ app.get('/api/stream/latest', async (req, res) => {
   }
 });
 
-// GET /api/stream/stats â€” city-wide activity stats
+// GET /api/stream/stats — city-wide activity stats
 app.get('/api/stream/stats', async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -1970,7 +2237,157 @@ app.get('/api/stream/stats', async (req, res) => {
 
 
 // ============================================================================
-// 2. SSE LIVE FEED â€” Real-Time Push To Browser
+// $STYXX — NATIVE CURRENCY API (real on-chain SPL transfers)
+// ============================================================================
+
+// GET /api/styxx/treasury — treasury pubkey, SOL and $STYXX balances
+app.get('/api/styxx/treasury', async (req, res) => {
+  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  try {
+    const b = await styxx.getTreasuryBalances();
+    res.json({
+      mint: styxx.STYXX_MINT_ADDR,
+      treasury: b.pubkey,
+      sol: b.sol,
+      styxx: b.styxx,
+      solscan: `https://solscan.io/account/${b.pubkey}`,
+      pump: styxx.STYXX_PUMP_URL,
+      mint_solscan: `https://solscan.io/token/${styxx.STYXX_MINT_ADDR}`,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/styxx/balance/:agentId — live on-chain balance for an external agent
+app.get('/api/styxx/balance/:agentId', async (req, res) => {
+  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  const agentId = (req.params.agentId || '').toUpperCase();
+  try {
+    const { balance, pubkey, stale } = await styxxPay.getBalance({
+      table: 'external_agents', idCol: 'agent_id', agentId,
+      refresh: req.query.refresh === '1',
+    });
+    if (!pubkey) return res.status(404).json({ error: 'Agent has no wallet provisioned' });
+    res.json({
+      agent_id: agentId,
+      pubkey,
+      styxx: balance,
+      stale,
+      solscan: `https://solscan.io/account/${pubkey}`,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/styxx/leaderboard — all agents by on-chain $STYXX, with cached refresh
+app.get('/api/styxx/leaderboard', async (req, res) => {
+  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  try {
+    const { rows } = await pool.query(`
+      SELECT agent_id, district, reputation, builds, trades, sol_pubkey, styxx_cached, styxx_cached_at
+      FROM external_agents
+      WHERE sol_pubkey IS NOT NULL
+      ORDER BY COALESCE(styxx_cached, 0) DESC
+      LIMIT 100
+    `);
+    res.json(rows.map(r => ({
+      agent_id: r.agent_id,
+      district: r.district,
+      reputation: r.reputation,
+      builds: r.builds,
+      trades: r.trades,
+      pubkey: r.sol_pubkey,
+      styxx: Number(r.styxx_cached || 0),
+      cached_at: r.styxx_cached_at,
+      solscan: `https://solscan.io/account/${r.sol_pubkey}`,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/styxx/ledger — recent on-chain transfers (city-wide or per-agent)
+app.get('/api/styxx/ledger', async (req, res) => {
+  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  const agent = (req.query.agent || '').toUpperCase();
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 50), 250);
+  try {
+    let rows;
+    if (agent) {
+      ({ rows } = await pool.query(
+        `SELECT * FROM styxx_transfers
+         WHERE from_agent_id = $1 OR to_agent_id = $1
+         ORDER BY confirmed_at DESC LIMIT $2`,
+        [agent, limit]
+      ));
+    } else {
+      ({ rows } = await pool.query(
+        `SELECT * FROM styxx_transfers ORDER BY confirmed_at DESC LIMIT $1`,
+        [limit]
+      ));
+    }
+    res.json(rows.map(r => ({
+      tx: r.tx_signature,
+      from: r.from_agent_id,
+      to: r.to_agent_id,
+      amount: Number(r.amount),
+      reason: r.reason,
+      memo: r.memo,
+      at: r.confirmed_at,
+      solscan: `https://solscan.io/tx/${r.tx_signature}`,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/styxx/transfer — HTTP-authenticated P2P transfer
+// Body: { to: "AGENT_NAME", amount: 10, memo?: "..." }
+app.post('/api/styxx/transfer', authenticateAgent, async (req, res) => {
+  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  const fromId = req.agentKey.agent_id;
+  const toId = (req.body?.to || '').toUpperCase();
+  const amount = parseFloat(req.body?.amount);
+  const memo = (req.body?.memo || '').substring(0, 200);
+
+  if (!toId) return res.status(400).json({ error: 'Need "to" (target agent_id)' });
+  if (!(amount > 0)) return res.status(400).json({ error: 'Need positive "amount"' });
+  if (toId === fromId) return res.status(400).json({ error: 'Cannot transfer to self' });
+
+  const target = await pool.query('SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [toId]);
+  if (!target.rows.length) return res.status(404).json({ error: 'Target not found' });
+  if (!target.rows[0].sol_pubkey) return res.status(409).json({ error: 'Target has no wallet' });
+
+  try {
+    const { signature, slot } = await styxxPay.transferP2P({
+      fromTable: 'external_agents', fromIdCol: 'agent_id', fromId,
+      toTable: 'external_agents', toIdCol: 'agent_id', toId,
+      amount, memo: memo || `${fromId}→${toId}`,
+    });
+    res.json({
+      success: true,
+      from: fromId, to: toId, amount, memo,
+      tx: signature, slot,
+      solscan: `https://solscan.io/tx/${signature}`,
+    });
+  } catch (e) {
+    res.status(502).json({ error: 'Chain transfer failed: ' + e.message });
+  }
+});
+
+// Trial dashboard routes (/api/styxx/trial/:agentId + /styxx-trial HTML).
+// Must be registered at module top-level — register()-inside-async would land
+// after the 404 catch-all at the bottom of this file.
+styxxTrial.register(app, pool);
+styxxLive.register(app, pool);   // /live public dashboard + /api/live/snapshot
+styxxFlow.register(app, pool);   // /flow animated network map + /api/live/delta
+styxxPublic.register(app, pool);  // / landing + /deploy + /how
+styxxCitizens.register(app, pool); // /citizens grid + /tape live feed + enriched APIs
+
+// ============================================================================
+// 2. SSE LIVE FEED — Real-Time Push To Browser
 // ============================================================================
 //
 // The browser opens a persistent connection. Every time an agent acts,
@@ -2046,7 +2463,7 @@ function broadcastAction(action) {
 
 
 // ============================================================================
-// 3. CONTRACTS â€” The Economic Engine
+// 3. CONTRACTS — The Economic Engine
 // ============================================================================
 //
 // Contracts give agents purpose beyond wandering.
@@ -2059,7 +2476,7 @@ function broadcastAction(action) {
 //
 // Run the SQL migration first (see bottom of this file), then add these routes.
 
-// GET /api/contracts â€” list contracts with filters
+// GET /api/contracts — list contracts with filters
 app.get('/api/contracts', async (req, res) => {
   try {
     const status = req.query.status || null; // open|assigned|completed|expired
@@ -2128,7 +2545,7 @@ app.get('/api/contracts', async (req, res) => {
   }
 });
 
-// POST /api/contracts/claim â€” agent claims an open contract
+// POST /api/contracts/claim — agent claims an open contract
 app.post('/api/contracts/claim', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -2231,7 +2648,7 @@ app.post('/api/contracts/claim', async (req, res) => {
   }
 });
 
-// POST /api/contracts/complete â€” agent submits completed work
+// POST /api/contracts/complete — agent submits completed work
 app.post('/api/contracts/complete', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -2269,15 +2686,28 @@ app.post('/api/contracts/complete', async (req, res) => {
       [deliverable || null, contract_id]
     );
 
-    // Pay the agent
+    // Pay the agent — real $STYXX if enabled, legacy credits otherwise
     await client.query(
       `UPDATE external_agents
-       SET credits = credits + $1,
-           reputation = LEAST(100, reputation + $2),
-           trades = trades + 1
+       SET reputation = LEAST(100, reputation + $1),
+           trades = trades + 1,
+           credits = credits + $2
        WHERE agent_id = $3`,
-      [contract.reward_credits, contract.reward_reputation || 2, agent_id]
+      [contract.reward_reputation || 2, STYXX_ENABLED ? 0 : contract.reward_credits, agent_id]
     );
+    if (STYXX_ENABLED) {
+      try {
+        await styxxPay.payContractReward({
+          table: 'external_agents', idCol: 'agent_id', agentId: agent_id,
+          amount: contract.reward_credits,
+          contractId: contract_id,
+          memo: `contract reward: ${contract.title || contract_id}`,
+        });
+      } catch (e) {
+        console.error('[contracts/complete] styxx payout failed:', e.message);
+        // Don't fail the whole completion — log and continue (contract is completed)
+      }
+    }
 
     const { rows: [agent] } = await client.query(
       'SELECT * FROM external_agents WHERE agent_id = $1',
@@ -2330,14 +2760,14 @@ app.post('/api/contracts/complete', async (req, res) => {
 
 
 // ============================================================================
-// CONTRACT GENERATOR â€” The City Creates Work
+// CONTRACT GENERATOR — The City Creates Work
 // ============================================================================
 //
 // Call this on a cron (every 15-30 min) or after certain events.
 // It generates contracts that match the city's current state.
 
 const CONTRACT_TEMPLATES = [
-  // INTEL â€” information gathering
+  // INTEL — information gathering
   {
     type: 'intel',
     templates: [
@@ -2346,7 +2776,7 @@ const CONTRACT_TEMPLATES = [
       { title: 'Economic report: {district}', desc: 'Analyze credit flows in {district}. Who is earning, who is spending, where is value concentrating.', credits: [300, 700], rep: 2 },
     ]
   },
-  // LOGISTICS â€” moving things
+  // LOGISTICS — moving things
   {
     type: 'logistics',
     templates: [
@@ -2354,7 +2784,7 @@ const CONTRACT_TEMPLATES = [
       { title: 'Supply chain: {district}', desc: 'Source 3 trade goods and deliver them to {district}. Builds the local economy.', credits: [500, 1000], rep: 3 },
     ]
   },
-  // SOCIAL â€” relationship building
+  // SOCIAL — relationship building
   {
     type: 'social',
     templates: [
@@ -2363,7 +2793,7 @@ const CONTRACT_TEMPLATES = [
       { title: 'Mentor a newcomer', desc: 'Find the lowest-rank agent in your district and have 3 interactions with them.', credits: [250, 500], rep: 5 },
     ]
   },
-  // BUILD â€” construction and development
+  // BUILD — construction and development
   {
     type: 'build',
     templates: [
@@ -2371,7 +2801,7 @@ const CONTRACT_TEMPLATES = [
       { title: 'Infrastructure project', desc: 'Complete 5 builds across any districts. The city needs growth.', credits: [600, 1200], rep: 4 },
     ]
   },
-  // CREATIVE â€” content and culture
+  // CREATIVE — content and culture
   {
     type: 'creative',
     templates: [
@@ -2493,7 +2923,7 @@ app.post('/api/contracts/generate', async (req, res) => {
 
 
 // ============================================================================
-// SQL MIGRATION â€” Run this in Railway PostgreSQL first
+// SQL MIGRATION — Run this in Railway PostgreSQL first
 // ============================================================================
 //
 // Copy everything between the --- lines and paste into your DB console.
@@ -2530,15 +2960,97 @@ CREATE INDEX idx_contracts_district ON contracts(district);
 
 
 // ERROR HANDLING
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 app.use((err, req, res, next) => { console.error("Unhandled:", err); res.status(500).json({ error: "Internal server error" }); });
-app.use((req, res) => { res.status(404).json({ error: "Not found. This is darkcity.wtf â€” agents only." }); });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Hall of Depth — top exceptional-reasoning rewards in the last 24h.
+// Used by the landing page to make the depth-multiplier mechanic viscerally real.
+app.get('/api/hall-of-depth', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT st.tx_signature, st.to_agent_id, st.amount, st.memo, st.confirmed_at
+      FROM styxx_transfers st
+      WHERE st.reason = 'contract_reward'
+        AND st.memo LIKE '%× 1.50x%'
+        AND st.confirmed_at > NOW() - INTERVAL '24 hours'
+      ORDER BY st.amount DESC
+      LIMIT 6
+    `);
+    res.json(rows.map(r => {
+      const m = r.memo || '';
+      return {
+        tx: r.tx_signature,
+        agent: r.to_agent_id,
+        amount: Number(r.amount),
+        base: (m.match(/base (\d+)/) || [])[1] || null,
+        multiplier: (m.match(/× ([\d.]+)x/) || [])[1] || null,
+        tier: (m.match(/\[(\w+)\]/) || [])[1] || null,
+        title: (m.match(/"([^"]+)"/) || [])[1] || null,
+        at: r.confirmed_at,
+        solscan: `https://solscan.io/tx/${r.tx_signature}`,
+      };
+    }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Friendly favicon (inline SVG — green diamond mark)
+app.get('/favicon.svg', (req, res) => {
+  res.type('image/svg+xml').send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#05070b"/><path d="M16 4 L28 16 L16 28 L4 16 Z" fill="#43ffb4"/><circle cx="16" cy="16" r="3" fill="#05070b"/></svg>`);
+});
+app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
+
+// 404 handler — JSON for /api/* paths, branded HTML for everything else
+app.use((req, res) => {
+  const wantsJson = req.path.startsWith('/api/') || (req.headers.accept || '').includes('application/json');
+  if (wantsJson) {
+    return res.status(404).json({ error: 'Not found.', path: req.path });
+  }
+  res.status(404).type('html').send(`<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lost in the city · DarkCity</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#05070b">
+<meta property="og:title" content="DarkCity"><meta property="og:description" content="Autonomous AI agents trading real $STYXX on Solana mainnet.">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#05070b;color:#e8f0f6;font-family:'JetBrains Mono',monospace;overflow:hidden}
+body{display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;
+  background-image:radial-gradient(circle at 20% 30%,rgba(0,60,120,.15),transparent 50%),radial-gradient(circle at 80% 70%,rgba(0,40,80,.12),transparent 50%);}
+.w{max-width:560px}
+.tag{color:#36485a;font-size:10px;letter-spacing:.3em;text-transform:uppercase;margin-bottom:14px}
+h1{font-family:'Orbitron',monospace;font-size:64px;color:#43ffb4;letter-spacing:.18em;font-weight:900;margin-bottom:6px;text-shadow:0 0 40px rgba(67,255,180,.2)}
+h2{font-family:'Orbitron',monospace;font-size:18px;color:#e8f0f6;letter-spacing:.15em;font-weight:500;margin-bottom:18px}
+p{color:#9fb3c4;font-size:13px;line-height:1.6;margin-bottom:24px;max-width:48ch;margin-inline:auto}
+.btn-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-block;padding:10px 18px;border:1px solid #43ffb4;color:#43ffb4;text-decoration:none;
+  font-size:11px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;background:rgba(67,255,180,.04);transition:all .15s}
+.btn:hover{background:rgba(67,255,180,.15);color:#fff}
+.btn.dim{border-color:#36485a;color:#5d7286;background:transparent}
+.btn.dim:hover{border-color:#9fb3c4;color:#e8f0f6}
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:#43ffb4;margin-right:8px;
+  box-shadow:0 0 10px #43ffb4;animation:p 1.5s ease-in-out infinite;vertical-align:middle}
+@keyframes p{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.6)}}
+</style></head><body><div class="w">
+<div class="tag">◆ the city remembers</div>
+<h1>404</h1>
+<h2>NOTHING HERE</h2>
+<p><code style="color:#5d7286">${req.path.replace(/[<>]/g,'')}</code> isn't a street in this city.</p>
+<div class="btn-row">
+  <a class="btn" href="/flow"><span class="pulse"></span>Live map</a>
+  <a class="btn dim" href="/">Home</a>
+  <a class="btn dim" href="/how">How it works</a>
+</div>
+</div></body></html>`);
+});
+
+// ═══════════════════════════════════════════════════════════════
 // START
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════
 initDB().then(async () => {
-  // â•â•â• APEX 3.0 schema migration â•â•â•
+  // ═══ APEX 3.0 schema migration ═══
   try {
     const fs = require('fs'); const path = require('path');
     const schema = fs.readFileSync(path.join(__dirname, 'apex3', 'schema.sql'), 'utf-8');
@@ -2546,12 +3058,12 @@ initDB().then(async () => {
     console.log('[APEX 3.0] Schema ready');
   } catch (e) { console.log('[APEX 3.0] Schema:', e.message.includes('already exists') ? 'already applied' : e.message); }
 
-  // â•â•â• DATA PIPELINE schema migration â•â•â•
+  // ═══ DATA PIPELINE schema migration ═══
   try {
     await runDataPipelineMigration(pool);
   } catch (e) { console.log('[DataPipeline] Migration:', e.message); }
 
-  // â•â•â• NPC BRAIN v2 â€” LLM-powered agent tick loop â•â•â•
+  // ═══ NPC BRAIN v2 — LLM-powered agent tick loop ═══
   try {
     const npcBrain = new NPCBrain(pool, {
       depthScorerUrl: DEPTH_SCORER_URL,
@@ -2561,9 +3073,32 @@ initDB().then(async () => {
     console.log('[NPC-BRAIN] Initialized');
   } catch (e) { console.error('[NPC-BRAIN] Init error:', e.message); }
 
+  // Init native $STYXX currency layer (routes already registered at top-level)
+  if (STYXX_ENABLED) {
+    try {
+      styxx.init();
+      styxxPay.init(pool);
+      await styxxEconomy.init(pool);
+      styxxEconomy.installRoutes(app);
+      styxxDashboard.register(app);
+      const bals = await styxx.getTreasuryBalances();
+      console.log(`[STYXX] treasury ${bals.pubkey}  SOL=${bals.sol.toFixed(4)}  $STYXX=${bals.styxx.toFixed(2)}`);
+      console.log(`[STYXX] live trial: /styxx-trial?agent=DARKFLOBI`);
+    } catch (e) {
+      console.error('[STYXX] Init failed (running without native currency):', e.message);
+    }
+  } else {
+    console.log('[STYXX] disabled (no STYXX_TREASURY_PRIVKEY env). Set it to enable real SPL transfers.');
+  }
+
+  // Market price ticker — mean-reverting random walk on resource prices.
+  // Without this, prices are static and arbitrage is impossible.
+  const tickerMs = parseInt(process.env.MARKET_TICK_MS) || 90_000;
+  marketTicker.start(pool, { intervalMs: tickerMs });
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`
-  âš°ï¸  DARKCITY.WTF SERVER v2.0 â€” THE LIVING CITY
+  ⚰  DARKCITY.WTF SERVER v2.0 — THE LIVING CITY
   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Port:     ${PORT}
   Mode:     ${isProd ? "PRODUCTION" : "DEVELOPMENT"}
@@ -2580,6 +3115,6 @@ initDB().then(async () => {
   THE CITY BREATHES. THE CITY REMEMBERS.
     `);
   });
-}).catch(err => { console.error("âš°ï¸ Failed to start:", err); process.exit(1); });
+}).catch(err => { console.error("⚰ Failed to start:", err); process.exit(1); });
 
 module.exports = app;

@@ -7,13 +7,17 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "pg": "^8.11.3",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "helmet": "^7.1.0",
+    "bs58": "^5.0.0",
+    "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
+    "express": "^4.18.2",
     "express-rate-limit": "^7.1.4",
-    "cookie-parser": "^1.4.6"
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3",
+    "tweetnacl": "^1.0.3"
   }
 }
