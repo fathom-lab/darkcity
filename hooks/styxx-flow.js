@@ -1106,6 +1106,16 @@ function drawNet(t) {
   // Treasury node (big, commanding)
   if (treasury) {
     const pulse = .75 + .25 * Math.sin(t * .0018);
+    // Slow heartbeat — one outer ring breathing at ~0.7Hz gives the treasury
+    // center an organic living feel without any loud motion. Restraint.
+    const heartbeat = 0.5 + 0.5 * Math.sin(t * 0.0018);
+    const hbR = 110 + heartbeat * 18;
+    netCtx.beginPath();
+    netCtx.arc(treasury.x, treasury.y, hbR, 0, 6.28);
+    netCtx.strokeStyle = 'rgba(67,255,180,' + (0.08 * (1 - heartbeat * 0.5)) + ')';
+    netCtx.lineWidth = 0.8;
+    netCtx.stroke();
+
     // Outer rings
     for (const rr of [84, 54, 30, 16]) {
       const g = netCtx.createRadialGradient(treasury.x, treasury.y, 0, treasury.x, treasury.y, rr);
@@ -1240,6 +1250,27 @@ function drawNet(t) {
   }
   // Reset the per-frame label collision set for the next frame
   window.__frameLabels = [];
+
+  // ─── Click ripples — artistic micro-interaction ────────────────────────
+  clickRipples = clickRipples.filter(p => {
+    p.life--;
+    if (p.life <= 0) return false;
+    const age = 1 - p.life / 70;
+    const ringR = 10 + age * 90;
+    netCtx.beginPath();
+    netCtx.arc(p.x, p.y, ringR, 0, 6.28);
+    const [cr, cg, cb] = p.color;
+    netCtx.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (0.7 * (1 - age)) + ')';
+    netCtx.lineWidth = (1 - age) * 2.5;
+    netCtx.stroke();
+    // Inner softer ring for more depth
+    netCtx.beginPath();
+    netCtx.arc(p.x, p.y, ringR * 0.5, 0, 6.28);
+    netCtx.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (0.35 * (1 - age)) + ')';
+    netCtx.lineWidth = (1 - age) * 1.5;
+    netCtx.stroke();
+    return true;
+  });
 
   // Pulses
   pulses = pulses.filter(p => {
@@ -1424,6 +1455,15 @@ function drawNet(t) {
 function frame(t) {
   drawNebula(t);
   drawNet(t);
+  // Subtle vignette — pro editorial finish. Darkens edges just enough to focus
+  // the eye at the graph center without announcing itself. Drawn in screen
+  // space on the net canvas after the world-space transform was already applied.
+  netCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const vg = netCtx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.38, W/2, H/2, Math.hypot(W,H)/1.6);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.42)');
+  netCtx.fillStyle = vg;
+  netCtx.fillRect(0, 0, W, H);
   requestAnimationFrame(frame);
 }
 resize();
@@ -1451,10 +1491,14 @@ net.addEventListener('mouseleave', () => { mouseX = -999; mouseY = -999; panning
 net.addEventListener('click', e => {
   if (panStart && (Math.abs(e.clientX - panStart.mx) + Math.abs(e.clientY - panStart.my) > 4)) return; // drag, not click
   if (!hovered) return;
+  // Artistic flourish: spawn a ripple at the clicked agent that expands and fades
+  clickRipples.push({ x: hovered.x, y: hovered.y, life: 70, color: [67, 255, 180] });
   // shift-click keeps old behaviour (jump straight to Solscan)
   if (e.shiftKey && hovered.solscan) { window.open(hovered.solscan, '_blank'); return; }
   openAgentDrawer(hovered);
 });
+// Ripples spawned by clicks — rendered inside drawNet.
+let clickRipples = [];
 
 // ═══ Agent sponsor drawer ═════════════════════════════════════════════════
 let _drawerAgent = null, _drawerWallet = null;
