@@ -98,6 +98,57 @@ const COMMON_HEAD = `<meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="module">
+// ─── Auto-sign SPL Token-2022 transfer + memo via Phantom ─────────────
+// Exposes window.dcAutoSign({ destination, amount, memo, decimals }) →
+// returns { signature } or throws. Used by /deploy and /earn so users
+// click one button, Phantom pops up, transaction broadcasts, done.
+import { Connection, PublicKey, Transaction, TransactionInstruction } from 'https://esm.sh/@solana/web3.js@1.95.8';
+import { createTransferCheckedInstruction, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_2022_PROGRAM_ID } from 'https://esm.sh/@solana/spl-token@0.4.8?deps=@solana/web3.js@1.95.8';
+
+const STYXX_MINT = new PublicKey('Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump');
+const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+const RPC_URL = 'https://api.mainnet-beta.solana.com';
+
+window.dcAutoSign = async function({ destination, amount, memo, decimals = 6 }) {
+  if (!window.solana?.isPhantom) throw new Error('Phantom wallet required');
+  if (!window.solana.publicKey) await window.solana.connect();
+  const from = window.solana.publicKey;
+  const to = new PublicKey(destination);
+  const conn = new Connection(RPC_URL, 'confirmed');
+
+  const fromAta = await getAssociatedTokenAddress(STYXX_MINT, from, false, TOKEN_2022_PROGRAM_ID);
+  const toAta   = await getAssociatedTokenAddress(STYXX_MINT, to,   false, TOKEN_2022_PROGRAM_ID);
+
+  const tx = new Transaction();
+
+  // Create destination ATA if it doesn't exist (covers fresh treasury)
+  const toAtaInfo = await conn.getAccountInfo(toAta);
+  if (!toAtaInfo) {
+    tx.add(createAssociatedTokenAccountInstruction(from, toAta, to, STYXX_MINT, TOKEN_2022_PROGRAM_ID));
+  }
+
+  // Integer amount in smallest units
+  const amt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
+  tx.add(createTransferCheckedInstruction(
+    fromAta, STYXX_MINT, toAta, from, amt, decimals, [], TOKEN_2022_PROGRAM_ID
+  ));
+
+  // Memo instruction — links the tx to the backend quote record
+  tx.add(new TransactionInstruction({
+    keys: [{ pubkey: from, isSigner: true, isWritable: false }],
+    programId: MEMO_PROGRAM,
+    data: new TextEncoder().encode(memo),
+  }));
+
+  tx.feePayer = from;
+  const { blockhash } = await conn.getLatestBlockhash('confirmed');
+  tx.recentBlockhash = blockhash;
+
+  const { signature } = await window.solana.signAndSendTransaction(tx);
+  return { signature };
+};
+</script>
 <style>
 /* ═══ DarkCity design system v2 — editorial noir ═══ */
 :root {
@@ -948,7 +999,24 @@ setInterval(loadEarn, 30000);
       $('sp-memo').textContent = j.memo;
       $('sp-quote-card').style.display = 'block';
       $('sp-quote-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      status('Quote issued. Send the stake in Phantom, paste the tx signature below.');
+      if (typeof window.dcAutoSign === 'function') {
+        status('Opening Phantom to sign + send…');
+        try {
+          const { signature } = await window.dcAutoSign({
+            destination: j.destination,
+            amount: Number(j.amount_styxx),
+            memo: j.memo,
+          });
+          status('Tx sent. Verifying on-chain…');
+          $('sp-sig').value = signature;
+          setTimeout(() => $('sp-finalize').click(), 4000);
+          return;
+        } catch (autoErr) {
+          status('Auto-sign failed. Send manually in Phantom and paste the tx signature below.', 'err');
+        }
+      } else {
+        status('Quote issued. Send the stake in Phantom, paste the tx signature below.');
+      }
     } catch (e) {
       status('Quote error: ' + e.message, 'err');
       $('sp-get-quote').disabled = false;
@@ -1259,7 +1327,30 @@ ${NAV('/deploy')}
       $('m-memo').textContent = j.memo;
       $('m-quote-card').style.display = 'block';
       $('m-quote-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      status('Quote issued. Send the fee in Phantom, then paste the tx signature below.');
+
+      // Try auto-sign via Phantom — one click, done. Fallback to paste on failure.
+      if (typeof window.dcAutoSign === 'function') {
+        status('Opening Phantom to sign + send…');
+        try {
+          const { signature } = await window.dcAutoSign({
+            destination: j.destination,
+            amount: Number(j.fee_styxx),
+            memo: j.memo,
+          });
+          status('Tx sent (' + signature.slice(0, 8) + '…). Verifying on-chain…');
+          $('m-sig').value = signature;
+          $('m-solscan').href = 'https://solscan.io/tx/' + signature;
+          $('m-solscan').style.display = 'inline-flex';
+          // Auto-finalize
+          setTimeout(() => $('m-finalize').click(), 4000);
+          return;
+        } catch (autoErr) {
+          console.warn('auto-sign failed, falling back to manual paste:', autoErr);
+          status('Auto-sign failed (' + (autoErr.message || 'unknown') + '). Send manually in Phantom and paste the tx signature below.', 'err');
+        }
+      } else {
+        status('Quote issued. Send the fee in Phantom, then paste the tx signature below.');
+      }
     } catch (e) {
       status('Quote error: ' + e.message, 'err');
       $('m-get-quote').disabled = false;
