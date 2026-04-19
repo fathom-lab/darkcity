@@ -905,7 +905,14 @@ function initNebula() {
 }
 
 function drawNebula(t) {
+  // Reset transform first so clear covers the whole viewport even when the
+  // parallax shift would otherwise leave a seam. Then apply a 40% parallax
+  // translate so the background appears to move slower than the foreground
+  // graph when panning. Subtle depth cue — unnoticeable individually but
+  // makes the map feel volumetric at rest.
+  nebCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
   nebCtx.clearRect(0, 0, W, H);
+  nebCtx.translate(view.x * 0.4, view.y * 0.4);
   for (const c of clouds) {
     c.x += c.vx; c.y += c.vy;
     if (c.x < -c.r) c.x = W + c.r; if (c.x > W + c.r) c.x = -c.r;
@@ -1067,7 +1074,34 @@ function drawNet(t) {
     a.driftX = driftA; a.driftY = driftB;
   }
 
-  // Mycelium hyphae (parent → child, curved)
+  // District hue palette — subtle per-region tint for hyphae. Restraint:
+  // each district offsets RGB by ~±30 from the cool-cyan baseline so the
+  // graph reads as topography, never as a loud color-key. Unknown districts
+  // fall back to the base tone.
+  const DISTRICT_HUE = {
+    'High Tower':       [92, 208, 255],   // baseline cyan
+    'Crystal Heights':  [220, 210, 140],  // soft amber
+    'Silicon Docks':    [110, 230, 240],  // teal
+    'Neon District':    [210, 130, 240],  // violet
+    'Old Quarter':      [160, 170, 210],  // dusk blue
+    'The Sprawl':       [230, 170, 140],  // warm sand
+    'Undercity':        [130, 120, 200],  // indigo
+    'Industrial Zone':  [240, 170, 110],  // rust
+    'Embassy Row':      [200, 160, 240],  // lavender
+    'Chinatown':        [240, 140, 130],  // coral
+    'Market Row':       [230, 210, 130],  // gold
+    'Rust Alley':       [220, 120, 110],  // red rust
+    'The Vaults':       [150, 140, 210],  // deep violet
+    'The Cathedral':    [200, 180, 240],  // amethyst
+    'The Crypt':        [140, 200, 170],  // moss
+    'The Belfry':       [220, 150, 150],  // rose
+    'Gargoyle Market':  [220, 180, 110],  // ochre
+    'The Catacombs':    [170, 130, 130],  // mauve
+    'Obsidian Forge':   [100, 170, 210],  // steel
+    'Dark Library':     [210, 180, 110],  // parchment
+  };
+
+  // Mycelium hyphae (parent → child, curved) — district-tinted + flow-dash
   for (const [id, a] of agents) {
     if (a.parentX == null) continue;
     const pulse = .5 + .5 * Math.sin(t * .0008 + hashStr(id) * 6.28);
@@ -1078,16 +1112,34 @@ function drawNet(t) {
     const bend = (hashStr(id + 'bend') - 0.5) * len * 0.15;
     const cpX = mx + px * bend, cpY = my + py * bend;
 
+    const tint = DISTRICT_HUE[a.district] || [92, 208, 255];
+    const [hR, hG, hB] = tint;
+
+    // Base stroke — district-tinted with low alpha
     netCtx.beginPath();
     netCtx.moveTo(a.parentX, a.parentY);
     netCtx.quadraticCurveTo(cpX, cpY, a.x, a.y);
     const baseA = a.online ? .11 + .06 * pulse : .04;
-    netCtx.strokeStyle = \`rgba(92,208,255,\${baseA})\`;
+    netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',' + baseA + ')';
     netCtx.lineWidth = a.online ? 1.0 : 0.6;
     netCtx.stroke();
 
+    // Flow-dash pass — animated dash phase gives directional motion without
+    // needing arrowheads. Only for online agents; offline threads stay still.
+    if (a.online) {
+      netCtx.beginPath();
+      netCtx.moveTo(a.parentX, a.parentY);
+      netCtx.quadraticCurveTo(cpX, cpY, a.x, a.y);
+      netCtx.setLineDash([4, 10]);
+      netCtx.lineDashOffset = -(t * 0.04 + hashStr(id) * 14);
+      netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',' + (0.18 * (0.5 + 0.5 * pulse)) + ')';
+      netCtx.lineWidth = 1.2;
+      netCtx.stroke();
+      netCtx.setLineDash([]);
+    }
+
     // Outer glow pass
-    netCtx.strokeStyle = \`rgba(92,208,255,\${.03 * pulse})\`;
+    netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',' + (.03 * pulse) + ')';
     netCtx.lineWidth = 3;
     netCtx.stroke();
 
