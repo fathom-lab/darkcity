@@ -1950,7 +1950,85 @@ function installRoutes(app) {
     }
   });
 
-  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover / admin/bonus');
+  // ── Treasury transparency endpoint — public trust signal ─────────────
+  // Aggregates all in/out/burned numbers + recent flows so anyone can see
+  // exactly how $STYXX moves through the city. Powers the /treasury page.
+  app.get('/api/treasury/stats', async (req, res) => {
+    try {
+      const treasuryBal = await styxx.getTreasuryBalances();
+      const [
+        totalBurned, totalMinted, agentCount,
+        flow24hIn, flow24hOut,
+        pulse24h, tipsAll,
+        recentFlows, topAgents,
+      ] = await Promise.all([
+        pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers WHERE reason = 'mint_fee_burn'`),
+        pool.query(`SELECT COUNT(*)::int AS v FROM external_agents WHERE owner_pubkey IS NOT NULL AND euthanized_at IS NULL`),
+        pool.query(`SELECT COUNT(*)::int AS v FROM external_agents WHERE euthanized_at IS NULL AND COALESCE(dormant,FALSE)=FALSE`),
+        // Inflows to treasury in last 24h (mint fees, sponsor stakes, tip receipts)
+        pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers
+                    WHERE to_pubkey = $1 AND confirmed_at > NOW() - INTERVAL '24 hours'`,
+                   [styxx.getTreasury().publicKey.toBase58()]),
+        // Outflows from treasury in last 24h (grants, pulse payouts, referrals)
+        pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers
+                    WHERE from_agent_id = 'TREASURY' AND to_agent_id != 'BURN'
+                      AND confirmed_at > NOW() - INTERVAL '24 hours'`),
+        pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM distribution_events
+                    WHERE kind IN ('weekly_sponsor','hyphal_flow','fruiting_dividend','referral_bonus')
+                      AND recorded_at > NOW() - INTERVAL '24 hours'`),
+        pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers WHERE reason = 'social_tip' OR reason = 'tip_forward'`),
+        pool.query(`SELECT tx_signature, from_agent_id, to_agent_id, amount::float, reason, confirmed_at
+                    FROM styxx_transfers ORDER BY confirmed_at DESC LIMIT 20`),
+        pool.query(`SELECT ea.agent_id, COALESCE(ea.styxx_cached, 0)::float AS balance
+                    FROM external_agents ea WHERE ea.euthanized_at IS NULL
+                    ORDER BY ea.styxx_cached DESC NULLS LAST LIMIT 8`),
+      ]);
+
+      const usdPrice = getStyxxUsdPrice();
+      return res.json({
+        ts: new Date().toISOString(),
+        treasury: {
+          pubkey: treasuryBal.pubkey,
+          solscan: 'https://solscan.io/account/' + treasuryBal.pubkey,
+          styxx: Number(treasuryBal.styxx),
+          sol: Number(treasuryBal.sol),
+          usd_value: Number(treasuryBal.styxx) * usdPrice,
+        },
+        supply: {
+          mint: styxx.STYXX_MINT_ADDR,
+          solscan: 'https://solscan.io/token/' + styxx.STYXX_MINT_ADDR,
+          total_burned_styxx: Number(totalBurned.rows[0].v),
+          total_burned_usd: Number(totalBurned.rows[0].v) * usdPrice,
+          styxx_usd_price: usdPrice,
+        },
+        city: {
+          total_agents_minted: Number(totalMinted.rows[0].v),
+          active_agents: Number(agentCount.rows[0].v),
+        },
+        flow_24h: {
+          inflow_styxx: Number(flow24hIn.rows[0].v),
+          outflow_styxx: Number(flow24hOut.rows[0].v),
+          net_styxx: Number(flow24hIn.rows[0].v) - Number(flow24hOut.rows[0].v),
+          pulse_payouts_styxx: Number(pulse24h.rows[0].v),
+        },
+        lifetime: {
+          total_tips_styxx: Number(tipsAll.rows[0].v),
+        },
+        recent_flows: recentFlows.rows.map(r => ({
+          tx: r.tx_signature,
+          solscan: 'https://solscan.io/tx/' + r.tx_signature,
+          from: r.from_agent_id, to: r.to_agent_id,
+          amount: r.amount, reason: r.reason, at: r.confirmed_at,
+        })),
+        top_wallets: topAgents.rows.map(r => ({ agent_id: r.agent_id, balance: r.balance })),
+      });
+    } catch (err) {
+      console.error('[treasury/stats]', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover / admin/bonus / treasury/stats');
 }
 
 module.exports = {
