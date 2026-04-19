@@ -1141,14 +1141,25 @@ function drawNet(t) {
     const tx2 = p.fx + (p.tx - p.fx) * tailT;
     const ty2 = p.fy + (p.ty - p.fy) * tailT;
     const [r, g, b] = p.color;
+    // Size scales with amount: 3-10px radius via log10. Makes big flows pop.
+    const headR = Math.min(10, 3 + Math.log10(Math.max(1, p.amount || 1)) * 1.6);
+    const trailW = Math.max(2.2, headR * 0.65);
     const grad = netCtx.createLinearGradient(tx2, ty2, x, y);
     grad.addColorStop(0, \`rgba(\${r},\${g},\${b},0)\`);
     grad.addColorStop(1, \`rgba(\${r},\${g},\${b},.95)\`);
     netCtx.strokeStyle = grad;
-    netCtx.lineWidth = 2.2;
+    netCtx.lineWidth = trailW;
     netCtx.beginPath(); netCtx.moveTo(tx2, ty2); netCtx.lineTo(x, y); netCtx.stroke();
+    // Bloom halo — soft outer glow so the head is visible even at zoom-out
+    const bloomR = headR * 2.8;
+    const bloom = netCtx.createRadialGradient(x, y, 0, x, y, bloomR);
+    bloom.addColorStop(0, \`rgba(\${r},\${g},\${b},\${tt < 1 ? .55 : Math.max(0, p.life/60) * .45})\`);
+    bloom.addColorStop(1, \`rgba(\${r},\${g},\${b},0)\`);
+    netCtx.fillStyle = bloom;
+    netCtx.beginPath(); netCtx.arc(x, y, bloomR, 0, 6.28); netCtx.fill();
+    // Solid head
     netCtx.beginPath();
-    netCtx.arc(x, y, tt < 1 ? 3.2 : Math.max(.5, 4.5 - (60 - p.life) * 0.07), 0, 6.28);
+    netCtx.arc(x, y, tt < 1 ? headR : Math.max(.5, (headR + 1) - (60 - p.life) * 0.07), 0, 6.28);
     netCtx.fillStyle = \`rgba(\${r},\${g},\${b},\${tt < 1 ? 1 : Math.max(0, p.life/60)})\`;
     netCtx.fill();
     if (tt >= 0.88) {
@@ -1376,6 +1387,43 @@ net.addEventListener('touchend', () => { pinchStart = null; }, { passive: true }
   btn.onclick = () => { view.x = 0; view.y = 0; view.k = 1; };
   document.body.appendChild(btn);
   net.style.cursor = 'grab';
+
+  // Keyboard: +/- zoom, 0 reset, arrow keys pan
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+    const zoomAt = (factor) => {
+      const newK = Math.max(VIEW_MIN_K, Math.min(VIEW_MAX_K, view.k * factor));
+      const w = screenToWorld(cx, cy);
+      view.k = newK; view.x = cx - w.x * view.k; view.y = cy - w.y * view.k;
+    };
+    if (e.key === '+' || e.key === '=') { zoomAt(1.2); e.preventDefault(); }
+    else if (e.key === '-' || e.key === '_') { zoomAt(1/1.2); e.preventDefault(); }
+    else if (e.key === '0') { view.x = 0; view.y = 0; view.k = 1; e.preventDefault(); }
+    else if (e.key === 'ArrowLeft')  { view.x += 40; e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { view.x -= 40; e.preventDefault(); }
+    else if (e.key === 'ArrowUp')    { view.y += 40; e.preventDefault(); }
+    else if (e.key === 'ArrowDown')  { view.y -= 40; e.preventDefault(); }
+  });
+
+  // First-visit hint: fades after 5s, hidden permanently after dismissal
+  if (!localStorage.getItem('dc_map_hint_shown')) {
+    const hint = document.createElement('div');
+    hint.innerHTML = 'scroll to zoom · drag to pan · click an agent';
+    Object.assign(hint.style, {
+      position: 'fixed', bottom: '68px', left: '50%', transform: 'translateX(-50%)',
+      zIndex: 60, padding: '8px 16px', borderRadius: '999px',
+      background: 'rgba(10,10,11,.72)', color: 'var(--fg-muted, #a0a0aa)',
+      border: '1px solid rgba(255,255,255,.1)',
+      fontFamily: "'JetBrains Mono', monospace", fontSize: '11px',
+      letterSpacing: '.12em', textTransform: 'uppercase',
+      backdropFilter: 'blur(10px)', pointerEvents: 'none',
+      opacity: '0', transition: 'opacity .6s ease',
+    });
+    document.body.appendChild(hint);
+    requestAnimationFrame(() => { hint.style.opacity = '1'; });
+    setTimeout(() => { hint.style.opacity = '0'; setTimeout(() => hint.remove(), 800); localStorage.setItem('dc_map_hint_shown', '1'); }, 5500);
+  }
 })();
 
 // ═══ Onboarding pill ═══

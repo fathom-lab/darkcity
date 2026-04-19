@@ -1097,6 +1097,73 @@ async function runMigration(pgPool) {
 async function init(pgPool) {
   pool = pgPool;
   await runMigration(pgPool);
+  startPulseScheduler();
+}
+
+// ─── In-process pulse scheduler ─────────────────────────────────────────────
+// Fires scripts/distribution-pulse.js logic on a setInterval so payouts
+// happen automatically without needing Railway cron config. Safe: skips if
+// previous run still in flight. Can be disabled with PULSE_ENABLED=0.
+let pulseRunning = false;
+function startPulseScheduler() {
+  if (process.env.PULSE_ENABLED === '0') {
+    console.log('[pulse] in-process scheduler disabled (PULSE_ENABLED=0)');
+    return;
+  }
+  const hours = parseInt(process.env.PULSE_HOURS || '4', 10);
+  const intervalMs = hours * 3600 * 1000;
+  console.log(`[pulse] in-process scheduler armed — firing every ${hours}h`);
+
+  // Skip the first immediate fire on cold start — wait one full interval
+  // so users mid-action don't get surprised by an instant pulse.
+  setInterval(runPulse, intervalMs);
+
+  // Dormancy check weekly (Sundays 02:00 UTC via day-of-week + hour gate)
+  setInterval(runDormancyCheck, 60 * 60 * 1000);  // check hourly if it's time
+}
+
+async function runPulse() {
+  if (pulseRunning) {
+    console.log('[pulse] skip — previous run still in progress');
+    return;
+  }
+  pulseRunning = true;
+  const t0 = Date.now();
+  try {
+    const { main: pulseMain } = require('../scripts/distribution-pulse');
+    if (typeof pulseMain === 'function') {
+      await pulseMain();
+    } else {
+      // Fallback: spawn as child process if we can't require the main
+      const { spawn } = require('child_process');
+      const path = require('path');
+      const scriptPath = path.join(__dirname, '..', 'scripts', 'distribution-pulse.js');
+      await new Promise((resolve, reject) => {
+        const p = spawn('node', [scriptPath], { stdio: 'inherit', env: process.env });
+        p.on('close', code => code === 0 ? resolve() : reject(new Error(`exit ${code}`)));
+      });
+    }
+    console.log(`[pulse] complete in ${((Date.now() - t0)/1000).toFixed(1)}s`);
+  } catch (err) {
+    console.error('[pulse] FAILED:', err.message);
+  } finally {
+    pulseRunning = false;
+  }
+}
+
+async function runDormancyCheck() {
+  const now = new Date();
+  // Only fire on Sundays at 02:00 UTC
+  if (now.getUTCDay() !== 0 || now.getUTCHours() !== 2) return;
+  // Prevent double-fire within same hour
+  if (runDormancyCheck._lastFire === now.toISOString().slice(0, 13)) return;
+  runDormancyCheck._lastFire = now.toISOString().slice(0, 13);
+  try {
+    const { main: dormMain } = require('../scripts/cognition-fee-weekly');
+    if (typeof dormMain === 'function') await dormMain();
+  } catch (err) {
+    console.error('[dormancy] FAILED:', err.message);
+  }
 }
 
 function installRoutes(app) {
