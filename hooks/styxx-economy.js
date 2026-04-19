@@ -436,11 +436,11 @@ async function mintFinalize(req, res) {
     );
     if (!claim.rows.length) return res.status(409).json({ error: 'already_finalized' });
 
-    // Provision agent: wallet, insert row, starter grant.
+    // Provision agent: idempotent per step. If an agent row already exists
+    // for this agent_id (from a partial prior attempt), we REUSE it rather
+    // than creating a new one — preventing orphan rows + wrong-pubkey grants.
     const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
-    const kp = styxx.generateAgentKeypair();
-    const pubkey = kp.publicKey.toBase58();
-    const encPriv = styxx.encryptPrivkey(kp.secretKey);
+    const mintMemo = `mint:${quote_id}`;
 
     const params = await getParams([
       'starter_grant_styxx','mint_fee_burn_bps','mint_fee_pool_bps',
@@ -452,102 +452,127 @@ async function mintFinalize(req, res) {
     const refBps  = Number(params.referral_mint_bonus_bps || 1000);
     const refDays = Number(params.referral_duration_days || 90);
 
-    // Burn fraction is split between a REAL on-chain burn and the city pool.
-    // We burn a conservative 10% of the mint fee's "burn allocation" (so 5%
-    // of total mint fee at default bps) to start — visible deflationary
-    // pressure without risking treasury drain on first real launches. Rest
-    // stays in treasury for pulse budget.
     const burnAmt    = Number(q.fee_styxx) * bps(burnBps);
     const poolAmt    = Number(q.fee_styxx) * bps(poolBps);
     const refBonus   = q.referred_by_pubkey ? Number(q.fee_styxx) * bps(refBps) : 0;
-    const realBurnAmt = Math.floor(Number(q.fee_styxx) * 0.10);  // 10% of gross mint fee
+    const realBurnAmt = Math.floor(Number(q.fee_styxx) * 0.10);
 
-    // Agent-row insert is its own atomic op. We intentionally do NOT wrap the
-    // on-chain transfers in a DB transaction — Solana txs can't be rolled back,
-    // so bundling them into BEGIN..ROLLBACK risks the reverse: on-chain state
-    // landed but DB has no record. Instead: insert agent first (idempotent on
-    // agent_id), then do on-chain ops, then log each one. If an on-chain op
-    // throws, the agent still exists and admin can manually reconcile.
+    // Step 1: resolve agent row — reuse if already inserted from prior attempt
+    let pubkey;
+    {
+      const { rows: existingAgent } = await pool.query(
+        'SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [agentId]
+      );
+      if (existingAgent.length && existingAgent[0].sol_pubkey) {
+        pubkey = existingAgent[0].sol_pubkey;
+        console.log(`[mint/finalize] reusing existing agent ${agentId} @ ${pubkey.slice(0,8)}…`);
+      } else {
+        const kp = styxx.generateAgentKeypair();
+        pubkey = kp.publicKey.toBase58();
+        const encPriv = styxx.encryptPrivkey(kp.secretKey);
+        await pool.query(`
+          INSERT INTO external_agents
+            (agent_id, district, reputation, credits, builds, trades, rank, agent_type,
+             owner_name, bot_framework, owner_pubkey, referred_by_pubkey,
+             sol_pubkey, sol_privkey_enc, styxx_cached, styxx_cached_at,
+             minted_at, mint_tx_signature, mint_fee_usd, mint_fee_styxx,
+             cognition_fee_balance, last_cognition_fee_at)
+          VALUES ($1,'The Sprawl',0,${starterGrant},0,0,'Newcomer','external',
+                  $2,$3,$4,$5,$6,$7,$8,NOW(),NOW(),$9,$10,$11,$12,NOW())
+          ON CONFLICT (agent_id) DO NOTHING
+        `, [agentId, q.owner_pubkey.slice(0, 16), q.framework || 'Custom',
+            q.owner_pubkey, q.referred_by_pubkey,
+            pubkey, encPriv, starterGrant,
+            tx_signature, q.fee_usd, q.fee_styxx, starterGrant]);
+      }
+    }
+
     try {
-      await pool.query(`
-        INSERT INTO external_agents
-          (agent_id, district, reputation, credits, builds, trades, rank, agent_type,
-           owner_name, bot_framework, owner_pubkey, referred_by_pubkey,
-           sol_pubkey, sol_privkey_enc, styxx_cached, styxx_cached_at,
-           minted_at, mint_tx_signature, mint_fee_usd, mint_fee_styxx,
-           cognition_fee_balance, last_cognition_fee_at)
-        VALUES ($1,'The Sprawl',0,${starterGrant},0,0,'Newcomer','external',
-                $2,$3,$4,$5,$6,$7,$8,NOW(),NOW(),$9,$10,$11,$12,NOW())
-        ON CONFLICT (agent_id) DO NOTHING
-      `, [agentId, q.owner_pubkey.slice(0, 16), q.framework || 'Custom',
-          q.owner_pubkey, q.referred_by_pubkey,
-          pubkey, encPriv, starterGrant,
-          tx_signature, q.fee_usd, q.fee_styxx, starterGrant]);
-
-      // REAL on-chain burn — 10% of mint fee destroyed permanently from
-      // treasury ATA. Best-effort: if burn fails we still complete the mint.
+      // Step 2: real on-chain burn — skip if already done for this quote (memo-scoped)
       try {
-        if (realBurnAmt > 0) {
+        const { rows: priorBurn } = await pool.query(
+          `SELECT 1 FROM styxx_transfers WHERE memo = $1 AND reason = 'mint_fee_burn' LIMIT 1`,
+          [mintMemo]
+        );
+        if (!priorBurn.length && realBurnAmt > 0) {
           const { signature: burnSig } = await styxx.burnFromTreasury(realBurnAmt);
           await pool.query(`
             INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
             VALUES ($1,'TREASURY',$2,'BURN','BURN',$3,'mint_fee_burn',$4)
             ON CONFLICT (tx_signature) DO NOTHING
-          `, [burnSig, styxx.getTreasury().publicKey.toBase58(), realBurnAmt, `mint:${quote_id}`]);
+          `, [burnSig, styxx.getTreasury().publicKey.toBase58(), realBurnAmt, mintMemo]);
           console.log(`[mint-burn] destroyed ${realBurnAmt} STYXX, tx=${burnSig}`);
+        } else if (priorBurn.length) {
+          console.log(`[mint-burn] skip — already burned for quote ${quote_id}`);
         }
       } catch (burnErr) {
         console.warn('[mint-burn] failed (non-fatal):', burnErr.message);
       }
 
-      // Starter grant on-chain (treasury → new agent). Retry up to 3x.
-      let grantSig = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const r = await styxx.airdropFromTreasury(pubkey, starterGrant);
-          grantSig = r.signature; break;
-        } catch (grantErr) {
-          console.warn(`[mint-grant] attempt ${attempt + 1} failed:`, grantErr.message);
-          if (attempt === 2) throw grantErr;
-          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      // Starter grant on-chain (treasury → agent). Skip if already landed.
+      const { rows: priorGrant } = await pool.query(
+        `SELECT 1 FROM styxx_transfers WHERE memo = $1 AND reason = 'mint_grant' LIMIT 1`,
+        [mintMemo]
+      );
+      if (!priorGrant.length) {
+        let grantSig = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const r = await styxx.airdropFromTreasury(pubkey, starterGrant);
+            grantSig = r.signature; break;
+          } catch (grantErr) {
+            console.warn(`[mint-grant] attempt ${attempt + 1} failed:`, grantErr.message);
+            if (attempt === 2) throw grantErr;
+            await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+          }
         }
+        await pool.query(`
+          INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+          VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
+          ON CONFLICT (tx_signature) DO NOTHING
+        `, [grantSig, styxx.getTreasury().publicKey.toBase58(), agentId, pubkey, starterGrant, mintMemo]);
+        await pool.query(`
+          INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
+          VALUES ($1, $2, 'mint_grant', $3, NOW())
+          ON CONFLICT DO NOTHING
+        `, [agentId, starterGrant, quote_id]);
+      } else {
+        console.log(`[mint-grant] skip — already granted for quote ${quote_id}`);
       }
-      await pool.query(`
-        INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
-        VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
-        ON CONFLICT (tx_signature) DO NOTHING
-      `, [grantSig, styxx.getTreasury().publicKey.toBase58(), agentId, pubkey, starterGrant, `mint:${quote_id}`]);
 
-      await pool.query(`
-        INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
-        VALUES ($1, $2, 'mint_grant', $3, NOW())
-      `, [agentId, starterGrant, quote_id]);
-
-      // Referral bonus — best-effort; mint completes even if this fails
+      // Referral bonus — best-effort + idempotent (skip if already paid)
       if (q.referred_by_pubkey) {
-        try {
-          const { signature: refSig } = await styxx.airdropFromTreasury(q.referred_by_pubkey, refBonus);
-          await pool.query(`
-            INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
-            VALUES ($1,'TREASURY',$2,'REFERRER',$3,$4,'referral_mint_bonus',$5)
-            ON CONFLICT (tx_signature) DO NOTHING
-          `, [refSig, styxx.getTreasury().publicKey.toBase58(), q.referred_by_pubkey, refBonus, quote_id]);
-          await pool.query(`
-            INSERT INTO referrals (referrer_pubkey, referred_agent_id, referred_owner_pubkey,
-                                   minted_at, expires_at, mint_fee_bonus_styxx, mint_fee_bonus_tx)
-            VALUES ($1,$2,$3,NOW(),NOW() + ($4 || ' days')::INTERVAL,$5,$6)
-          `, [q.referred_by_pubkey, agentId, q.owner_pubkey, String(refDays), refBonus, refSig]);
-          await pool.query(`
-            INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature)
-            VALUES ('referral_bonus',$1,$2,$3,$4)
-          `, [agentId, q.referred_by_pubkey, refBonus, refSig]);
-        } catch (refErr) {
-          console.warn('[mint-referral] failed (non-fatal):', refErr.message);
+        const { rows: priorRef } = await pool.query(
+          `SELECT 1 FROM styxx_transfers WHERE memo = $1 AND reason = 'referral_mint_bonus' LIMIT 1`,
+          [String(quote_id)]  // referral memo uses just quote_id
+        );
+        if (!priorRef.length) {
+          try {
+            const { signature: refSig } = await styxx.airdropFromTreasury(q.referred_by_pubkey, refBonus);
+            await pool.query(`
+              INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+              VALUES ($1,'TREASURY',$2,'REFERRER',$3,$4,'referral_mint_bonus',$5)
+              ON CONFLICT (tx_signature) DO NOTHING
+            `, [refSig, styxx.getTreasury().publicKey.toBase58(), q.referred_by_pubkey, refBonus, quote_id]);
+            await pool.query(`
+              INSERT INTO referrals (referrer_pubkey, referred_agent_id, referred_owner_pubkey,
+                                     minted_at, expires_at, mint_fee_bonus_styxx, mint_fee_bonus_tx)
+              VALUES ($1,$2,$3,NOW(),NOW() + ($4 || ' days')::INTERVAL,$5,$6)
+              ON CONFLICT DO NOTHING
+            `, [q.referred_by_pubkey, agentId, q.owner_pubkey, String(refDays), refBonus, refSig]);
+            await pool.query(`
+              INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature)
+              VALUES ('referral_bonus',$1,$2,$3,$4)
+              ON CONFLICT DO NOTHING
+            `, [agentId, q.referred_by_pubkey, refBonus, refSig]);
+          } catch (refErr) {
+            console.warn('[mint-referral] failed (non-fatal):', refErr.message);
+          }
         }
       }
     } catch (txErr) {
-      // Unclaim the finalize so user (or recovery job) can retry later.
-      // Agent row may already exist via ON CONFLICT DO NOTHING — that's fine.
+      // Unclaim so user (or recovery job) can retry. Every step above is now
+      // idempotent so a retry safely completes only what's missing.
       await pool.query('UPDATE mint_quotes SET finalized = FALSE WHERE quote_id = $1', [quote_id]);
       throw txErr;
     }

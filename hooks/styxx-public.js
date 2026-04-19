@@ -1510,6 +1510,25 @@ ${NAV('/deploy')}
     </div>
   </div>
 
+  <!-- Stuck mint recovery panel — anyone who hit an error can self-heal here -->
+  <div class="card" id="m-recover-card" style="max-width: 640px; margin-bottom: 20px; border-color:rgba(255,179,71,.2)">
+    <details>
+      <summary style="cursor:pointer;font-size:12px;letter-spacing:.14em;color:var(--warn);text-transform:uppercase;margin-bottom:0">Stuck mint? Paid but no agent? → Recover here</summary>
+      <div style="margin-top:16px">
+        <p class="muted" style="font-size:13px;margin-bottom:12px">If your tx confirmed on-chain but the finalize errored, paste your quote ID (from the quote card above, or the mint memo in your Solana tx). We'll check state + auto-complete anything missing.</p>
+        <label style="display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">Quote ID</label>
+        <input type="text" id="m-recover-qid" placeholder="e.g. ce387e74-2058-4d72-aac1-97fbee4f4d66" maxlength="64" style="font-family:var(--font-mono,monospace);font-size:12px;margin-bottom:10px">
+        <label style="display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">Tx signature (only needed if agent not created yet)</label>
+        <input type="text" id="m-recover-sig" placeholder="optional — your original payment tx" maxlength="128" style="font-family:var(--font-mono,monospace);font-size:12px;margin-bottom:12px">
+        <div class="btn-row">
+          <button class="btn" id="m-recover-check">Check status</button>
+          <button class="btn primary" id="m-recover-run">Recover →</button>
+        </div>
+        <pre id="m-recover-out" style="margin-top:14px;padding:12px;background:var(--bg-elev);border-radius:6px;font-size:11px;color:var(--fg-muted);white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;display:none"></pre>
+      </div>
+    </details>
+  </div>
+
 </div></section>
 
 <section><div class="container">
@@ -1797,6 +1816,53 @@ ${NAV('/deploy')}
       })
       .catch(() => {});
   }
+
+  // ─── Stuck-mint recovery panel wiring ─────────────────────────────────
+  // Lets any user who hit a finalize error paste their quote_id + optional
+  // tx_signature and either check status or trigger the recovery endpoint
+  // (which is fully idempotent — safe to re-run).
+  const showOut = (obj) => {
+    const out = $('m-recover-out');
+    if (!out) return;
+    out.style.display = 'block';
+    out.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+  };
+  $('m-recover-check') && $('m-recover-check').addEventListener('click', async () => {
+    const qid = $('m-recover-qid').value.trim();
+    if (!qid) return showOut('Paste your quote ID first.');
+    showOut('Checking…');
+    try {
+      const r = await fetch('/api/mint/status/' + encodeURIComponent(qid));
+      const j = await r.json();
+      showOut(j);
+    } catch (e) { showOut('Error: ' + e.message); }
+  });
+  $('m-recover-run') && $('m-recover-run').addEventListener('click', async () => {
+    const qid = $('m-recover-qid').value.trim();
+    const sig = $('m-recover-sig').value.trim();
+    if (!qid) return showOut('Paste your quote ID first.');
+    $('m-recover-run').disabled = true;
+    $('m-recover-run').textContent = 'Recovering…';
+    showOut('Recovering — this can take up to ~30s if on-chain ops are needed…');
+    try {
+      const r = await fetch('/api/mint/recover/' + encodeURIComponent(qid), {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(sig ? { tx_signature: sig } : {}),
+      });
+      const j = await r.json();
+      showOut(j);
+      if (j.ok) {
+        $('m-recover-run').textContent = '✓ Recovered';
+      } else {
+        $('m-recover-run').disabled = false;
+        $('m-recover-run').textContent = 'Recover →';
+      }
+    } catch (e) {
+      showOut('Error: ' + e.message);
+      $('m-recover-run').disabled = false;
+      $('m-recover-run').textContent = 'Recover →';
+    }
+  });
 })();
 </script>
 </body></html>`;
