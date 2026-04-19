@@ -76,6 +76,29 @@ function verifyOwnershipSignature({ pubkey, signatureB58, message, expectedPrefi
   }
 }
 
+// Replay protection — persist hash of each accepted signed message. Callers
+// invoke this AFTER verifyOwnershipSignature returns ok. Returns true if the
+// message is fresh (first use), false if it was already consumed. Entries
+// expire naturally via the ±10min timestamp window but we keep 1h of history.
+async function consumeSignedMessage(message, pubkey) {
+  const h = crypto.createHash('sha256').update(message).digest('hex');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS consumed_signed_messages (
+      message_hash TEXT PRIMARY KEY,
+      pubkey       TEXT NOT NULL,
+      consumed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Garbage-collect entries older than 1h — keeps table tiny even under load
+  await pool.query(`DELETE FROM consumed_signed_messages WHERE consumed_at < NOW() - INTERVAL '1 hour'`);
+  const r = await pool.query(
+    `INSERT INTO consumed_signed_messages (message_hash, pubkey) VALUES ($1, $2)
+     ON CONFLICT (message_hash) DO NOTHING RETURNING message_hash`,
+    [h, pubkey]
+  );
+  return r.rows.length > 0;
+}
+
 let pool = null;
 
 // ─── Config helpers ─────────────────────────────────────────────────────────
@@ -287,12 +310,34 @@ async function mintQuote(req, res) {
       )
     `);
     const { rows: pendingQuote } = await pool.query(`
-      SELECT quote_id FROM mint_quotes
+      SELECT quote_id, owner_pubkey, fee_styxx, fee_usd, memo, destination,
+             EXTRACT(EPOCH FROM (expires_at - NOW()))::int AS seconds_remaining
+      FROM mint_quotes
       WHERE UPPER(REPLACE(agent_name, ' ', '_')) = $1
         AND finalized = FALSE
         AND expires_at > NOW()
     `, [normalizedName]);
-    if (pendingQuote.length) return res.status(409).json({ error: 'name_pending_in_another_quote', retry_after_seconds: 3600 });
+    if (pendingQuote.length) {
+      const pq = pendingQuote[0];
+      // If the SAME owner is re-quoting their own pending mint, resume the
+      // existing quote instead of blocking. Lets users recover from a stuck
+      // mint flow without waiting out the TTL.
+      if (pq.owner_pubkey === owner_pubkey) {
+        return res.json({
+          quote_id: pq.quote_id,
+          fee_usd: Number(pq.fee_usd),
+          fee_styxx: Number(pq.fee_styxx),
+          styxx_usd_price: getStyxxUsdPrice(),
+          destination: pq.destination,
+          memo: pq.memo,
+          mint_address: styxx.STYXX_MINT_ADDR,
+          resumed: true,
+          instructions: 'Resuming your pending mint for this name. If you already paid, just click Finalize with your tx signature.',
+          expires_in_seconds: pq.seconds_remaining,
+        });
+      }
+      return res.status(409).json({ error: 'name_pending_in_another_quote', retry_after_seconds: pq.seconds_remaining });
+    }
 
     const p = await getParams(['mint_fee_usd']);
     const feeUsd    = parseFloat(p.mint_fee_usd || '50');
@@ -381,6 +426,16 @@ async function mintFinalize(req, res) {
       return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
     }
 
+    // ATOMIC CLAIM — prevents double-finalize race. Two parallel requests both
+    // pass verify (it's idempotent), but only one can flip finalized FALSE→TRUE.
+    // The loser returns 409. If provisioning later fails, we unclaim for retry.
+    const claim = await pool.query(
+      `UPDATE mint_quotes SET finalized = TRUE
+       WHERE quote_id = $1 AND finalized = FALSE RETURNING quote_id`,
+      [quote_id]
+    );
+    if (!claim.rows.length) return res.status(409).json({ error: 'already_finalized' });
+
     // Provision agent: wallet, insert row, starter grant.
     const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
     const kp = styxx.generateAgentKeypair();
@@ -407,10 +462,12 @@ async function mintFinalize(req, res) {
     const refBonus   = q.referred_by_pubkey ? Number(q.fee_styxx) * bps(refBps) : 0;
     const realBurnAmt = Math.floor(Number(q.fee_styxx) * 0.10);  // 10% of gross mint fee
 
-    // Log on-chain mint tx (we received the fee already — treasury just holds it)
-    // Actual burn is a follow-up instruction we enqueue; for V1 we track it as
-    // "city pool burn allocation" and a scheduled burn job executes on-chain.
-    await pool.query('BEGIN');
+    // Agent-row insert is its own atomic op. We intentionally do NOT wrap the
+    // on-chain transfers in a DB transaction — Solana txs can't be rolled back,
+    // so bundling them into BEGIN..ROLLBACK risks the reverse: on-chain state
+    // landed but DB has no record. Instead: insert agent first (idempotent on
+    // agent_id), then do on-chain ops, then log each one. If an on-chain op
+    // throws, the agent still exists and admin can manually reconcile.
     try {
       await pool.query(`
         INSERT INTO external_agents
@@ -428,8 +485,7 @@ async function mintFinalize(req, res) {
           tx_signature, q.fee_usd, q.fee_styxx, starterGrant]);
 
       // REAL on-chain burn — 10% of mint fee destroyed permanently from
-      // treasury ATA. Best-effort: if burn fails we still complete the mint;
-      // user isn't penalized for our infra issues.
+      // treasury ATA. Best-effort: if burn fails we still complete the mint.
       try {
         if (realBurnAmt > 0) {
           const { signature: burnSig } = await styxx.burnFromTreasury(realBurnAmt);
@@ -444,8 +500,18 @@ async function mintFinalize(req, res) {
         console.warn('[mint-burn] failed (non-fatal):', burnErr.message);
       }
 
-      // Starter grant on-chain (treasury → new agent)
-      const { signature: grantSig } = await styxx.airdropFromTreasury(pubkey, starterGrant);
+      // Starter grant on-chain (treasury → new agent). Retry up to 3x.
+      let grantSig = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await styxx.airdropFromTreasury(pubkey, starterGrant);
+          grantSig = r.signature; break;
+        } catch (grantErr) {
+          console.warn(`[mint-grant] attempt ${attempt + 1} failed:`, grantErr.message);
+          if (attempt === 2) throw grantErr;
+          await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        }
+      }
       await pool.query(`
         INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
         VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
@@ -457,31 +523,32 @@ async function mintFinalize(req, res) {
         VALUES ($1, $2, 'mint_grant', $3, NOW())
       `, [agentId, starterGrant, quote_id]);
 
-      // Referral bonus
+      // Referral bonus — best-effort; mint completes even if this fails
       if (q.referred_by_pubkey) {
-        const { signature: refSig } = await styxx.airdropFromTreasury(q.referred_by_pubkey, refBonus);
-        await pool.query(`
-          INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
-          VALUES ($1,'TREASURY',$2,'REFERRER',$3,$4,'referral_mint_bonus',$5)
-          ON CONFLICT (tx_signature) DO NOTHING
-        `, [refSig, styxx.getTreasury().publicKey.toBase58(), q.referred_by_pubkey, refBonus, quote_id]);
-
-        await pool.query(`
-          INSERT INTO referrals (referrer_pubkey, referred_agent_id, referred_owner_pubkey,
-                                 minted_at, expires_at, mint_fee_bonus_styxx, mint_fee_bonus_tx)
-          VALUES ($1,$2,$3,NOW(),NOW() + ($4 || ' days')::INTERVAL,$5,$6)
-        `, [q.referred_by_pubkey, agentId, q.owner_pubkey, String(refDays), refBonus, refSig]);
-
-        await pool.query(`
-          INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature)
-          VALUES ('referral_bonus',$1,$2,$3,$4)
-        `, [agentId, q.referred_by_pubkey, refBonus, refSig]);
+        try {
+          const { signature: refSig } = await styxx.airdropFromTreasury(q.referred_by_pubkey, refBonus);
+          await pool.query(`
+            INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+            VALUES ($1,'TREASURY',$2,'REFERRER',$3,$4,'referral_mint_bonus',$5)
+            ON CONFLICT (tx_signature) DO NOTHING
+          `, [refSig, styxx.getTreasury().publicKey.toBase58(), q.referred_by_pubkey, refBonus, quote_id]);
+          await pool.query(`
+            INSERT INTO referrals (referrer_pubkey, referred_agent_id, referred_owner_pubkey,
+                                   minted_at, expires_at, mint_fee_bonus_styxx, mint_fee_bonus_tx)
+            VALUES ($1,$2,$3,NOW(),NOW() + ($4 || ' days')::INTERVAL,$5,$6)
+          `, [q.referred_by_pubkey, agentId, q.owner_pubkey, String(refDays), refBonus, refSig]);
+          await pool.query(`
+            INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature)
+            VALUES ('referral_bonus',$1,$2,$3,$4)
+          `, [agentId, q.referred_by_pubkey, refBonus, refSig]);
+        } catch (refErr) {
+          console.warn('[mint-referral] failed (non-fatal):', refErr.message);
+        }
       }
-
-      await pool.query('UPDATE mint_quotes SET finalized = TRUE WHERE quote_id = $1', [quote_id]);
-      await pool.query('COMMIT');
     } catch (txErr) {
-      await pool.query('ROLLBACK');
+      // Unclaim the finalize so user (or recovery job) can retry later.
+      // Agent row may already exist via ON CONFLICT DO NOTHING — that's fine.
+      await pool.query('UPDATE mint_quotes SET finalized = FALSE WHERE quote_id = $1', [quote_id]);
       throw txErr;
     }
 
@@ -596,31 +663,46 @@ async function tipFinalize(req, res) {
       return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
     }
 
+    // Atomic claim — only one concurrent request flips FALSE→TRUE.
+    const claim = await pool.query(
+      `UPDATE tip_quotes SET finalized = TRUE
+       WHERE quote_id = $1 AND finalized = FALSE RETURNING quote_id`,
+      [quote_id]
+    );
+    if (!claim.rows.length) return res.status(409).json({ error: 'already_finalized' });
+
     const amt = Number(q.amount_styxx);
     const cityCut = amt * 0.01;   // 1% to city
     const agentCut = amt - cityCut;
+    let fwdSig;
 
-    // Forward 99% to agent's wallet
-    const { rows: agentRow } = await pool.query(
-      'SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [q.agent_id]
-    );
-    const agentPubkey = agentRow[0]?.sol_pubkey;
-    if (!agentPubkey) return res.status(500).json({ error: 'agent_has_no_wallet' });
+    try {
+      // Forward 99% to agent's wallet
+      const { rows: agentRow } = await pool.query(
+        'SELECT sol_pubkey, euthanized_at FROM external_agents WHERE agent_id = $1', [q.agent_id]
+      );
+      const agentPubkey = agentRow[0]?.sol_pubkey;
+      if (!agentPubkey) throw new Error('agent_has_no_wallet');
+      if (agentRow[0].euthanized_at) throw new Error('agent_euthanized_between_quote_and_finalize');
 
-    const { signature: fwdSig } = await styxx.airdropFromTreasury(agentPubkey, agentCut);
-    await pool.query(`
-      INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
-      VALUES ($1,'TREASURY',$2,$3,$4,$5,'tip_forward',$6)
-      ON CONFLICT (tx_signature) DO NOTHING
-    `, [fwdSig, styxx.getTreasury().publicKey.toBase58(), q.agent_id, agentPubkey, agentCut, 'tip:' + quote_id + ':' + q.thought_id]);
+      const r = await styxx.airdropFromTreasury(agentPubkey, agentCut);
+      fwdSig = r.signature;
+      await pool.query(`
+        INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+        VALUES ($1,'TREASURY',$2,$3,$4,$5,'tip_forward',$6)
+        ON CONFLICT (tx_signature) DO NOTHING
+      `, [fwdSig, styxx.getTreasury().publicKey.toBase58(), q.agent_id, agentPubkey, agentCut, 'tip:' + quote_id + ':' + q.thought_id]);
 
-    // Record tip in agent_earnings so it counts toward their stats
-    await pool.query(`
-      INSERT INTO agent_earnings (agent_id, amount, source, source_ref)
-      VALUES ($1, $2, 'social_tip', $3)
-    `, [q.agent_id, agentCut, q.thought_id || quote_id]);
-
-    await pool.query('UPDATE tip_quotes SET finalized = TRUE WHERE quote_id = $1', [quote_id]);
+      // Record tip in agent_earnings so it counts toward their stats
+      await pool.query(`
+        INSERT INTO agent_earnings (agent_id, amount, source, source_ref)
+        VALUES ($1, $2, 'social_tip', $3)
+      `, [q.agent_id, agentCut, q.thought_id || quote_id]);
+    } catch (fwdErr) {
+      // Unclaim so user can retry
+      await pool.query('UPDATE tip_quotes SET finalized = FALSE WHERE quote_id = $1', [quote_id]);
+      throw fwdErr;
+    }
 
     return res.json({
       ok: true,
@@ -648,11 +730,12 @@ async function sponsorQuote(req, res) {
     if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'amount_styxx must be positive' });
 
     const { rows: agents } = await pool.query(
-      'SELECT agent_id, dormant FROM external_agents WHERE agent_id = $1',
+      'SELECT agent_id, dormant, euthanized_at FROM external_agents WHERE agent_id = $1',
       [agent_id]
     );
     if (!agents.length) return res.status(404).json({ error: 'agent_not_found' });
     if (agents[0].dormant) return res.status(400).json({ error: 'agent_dormant' });
+    if (agents[0].euthanized_at) return res.status(400).json({ error: 'agent_euthanized' });
 
     const quote_id = crypto.randomUUID();
     const memo = `sponsor:${quote_id}`;
@@ -715,16 +798,44 @@ async function sponsorFinalize(req, res) {
       return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
     }
 
+    // Atomic claim — only one request flips FALSE→TRUE.
+    const claim = await pool.query(
+      `UPDATE sponsor_quotes SET finalized = TRUE
+       WHERE quote_id = $1 AND finalized = FALSE RETURNING quote_id`,
+      [quote_id]
+    );
+    if (!claim.rows.length) return res.status(409).json({ error: 'already_finalized' });
+
     const p = await getParams(['sponsor_cooldown_days']);
     const cooldownDays = Number(p.sponsor_cooldown_days || 7);
 
-    await pool.query(`
-      INSERT INTO sponsorships (sponsor_pubkey, agent_id, amount_staked, stake_tx,
-                                started_at, cooldown_ends_at, status)
-      VALUES ($1,$2,$3,$4, NOW(), NOW() + ($5 || ' days')::INTERVAL, 'active')
-    `, [q.sponsor_pubkey, q.agent_id, q.amount_staked || q.amount_styxx, tx_signature, String(cooldownDays)]);
+    try {
+      // Re-check agent state at finalize time — could have been euthanized
+      // between quote and finalize, which would strand the sponsor's stake.
+      const { rows: agentRow } = await pool.query(
+        'SELECT dormant, euthanized_at FROM external_agents WHERE agent_id = $1',
+        [q.agent_id]
+      );
+      if (!agentRow.length) throw new Error('agent_not_found_at_finalize');
+      if (agentRow[0].euthanized_at) throw new Error('agent_euthanized_between_quote_and_finalize');
+      if (agentRow[0].dormant) throw new Error('agent_dormant_at_finalize');
 
-    await pool.query('UPDATE sponsor_quotes SET finalized = TRUE WHERE quote_id = $1', [quote_id]);
+      // Check before insert — defends against crash-retry where a prior attempt
+      // already created the sponsorship row. (No UNIQUE (stake_tx) constraint yet.)
+      const { rows: existing } = await pool.query(
+        'SELECT id FROM sponsorships WHERE stake_tx = $1', [tx_signature]
+      );
+      if (!existing.length) {
+        await pool.query(`
+          INSERT INTO sponsorships (sponsor_pubkey, agent_id, amount_staked, stake_tx,
+                                    started_at, cooldown_ends_at, status)
+          VALUES ($1,$2,$3,$4, NOW(), NOW() + ($5 || ' days')::INTERVAL, 'active')
+        `, [q.sponsor_pubkey, q.agent_id, Number(q.amount_styxx), tx_signature, String(cooldownDays)]);
+      }
+    } catch (spErr) {
+      await pool.query('UPDATE sponsor_quotes SET finalized = FALSE WHERE quote_id = $1', [quote_id]);
+      throw spErr;
+    }
 
     return res.json({
       ok: true,
@@ -759,6 +870,16 @@ async function hyphalQuote(req, res) {
       [a, b, 'active']
     );
     if (existing.length) return res.status(409).json({ error: 'link_already_exists' });
+
+    // Block linking a dead/dormant agent — initiator would pay for a link
+    // that generates no flow and can't be recouped.
+    const { rows: aliveCheck } = await pool.query(`
+      SELECT agent_id, dormant, euthanized_at FROM external_agents
+      WHERE agent_id IN ($1, $2)
+    `, [a, b]);
+    if (aliveCheck.length < 2) return res.status(404).json({ error: 'one_or_both_agents_not_found' });
+    const dead = aliveCheck.filter(x => x.euthanized_at || x.dormant);
+    if (dead.length) return res.status(400).json({ error: 'agent_not_active', dead_agents: dead.map(d => d.agent_id) });
 
     const p = await getParams(['hyphal_link_cost_styxx']);
     const cost = Number(p.hyphal_link_cost_styxx || 25);
@@ -819,32 +940,63 @@ async function hyphalFinalize(req, res) {
       return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
     }
 
-    // Split the cost 50/50 between the two agent wallets
+    // Atomic claim — only one request flips FALSE→TRUE.
+    const claim = await pool.query(
+      `UPDATE hyphal_quotes SET finalized = TRUE
+       WHERE quote_id = $1 AND finalized = FALSE RETURNING quote_id`,
+      [quote_id]
+    );
+    if (!claim.rows.length) return res.status(409).json({ error: 'already_finalized' });
+
+    try {
+      // Split the cost 50/50 between the two agent wallets. Each leg is done
+      // independently and checked via styxx_transfers memo to support retry
+      // after a partial failure (leg A sent, leg B failed → retry skips A).
+      const half = Number(q.cost_styxx) / 2;
+      const [aRow] = (await pool.query('SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [q.agent_a])).rows;
+      const [bRow] = (await pool.query('SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [q.agent_b])).rows;
+      if (!aRow?.sol_pubkey || !bRow?.sol_pubkey) throw new Error('agent_has_no_wallet');
+
+      // Check for already-completed legs from a prior attempt (memo-scoped)
+      const { rows: prior } = await pool.query(`
+        SELECT to_agent_id, tx_signature FROM styxx_transfers
+        WHERE reason = 'hyphal_formation' AND memo = $1
+      `, [q.memo]);
+      const doneA = prior.find(r => r.to_agent_id === q.agent_a);
+      const doneB = prior.find(r => r.to_agent_id === q.agent_b);
+
+      let sigA = doneA?.tx_signature;
+      if (!sigA) {
+        const r = await styxx.airdropFromTreasury(aRow.sol_pubkey, half);
+        sigA = r.signature;
+        await pool.query(`
+          INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+          VALUES ($1,'TREASURY',$2,$3,$4,$5,'hyphal_formation',$6)
+          ON CONFLICT (tx_signature) DO NOTHING
+        `, [sigA, styxx.getTreasury().publicKey.toBase58(), q.agent_a, aRow.sol_pubkey, half, q.memo]);
+      }
+
+      let sigB = doneB?.tx_signature;
+      if (!sigB) {
+        const r = await styxx.airdropFromTreasury(bRow.sol_pubkey, half);
+        sigB = r.signature;
+        await pool.query(`
+          INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+          VALUES ($1,'TREASURY',$2,$3,$4,$5,'hyphal_formation',$6)
+          ON CONFLICT (tx_signature) DO NOTHING
+        `, [sigB, styxx.getTreasury().publicKey.toBase58(), q.agent_b, bRow.sol_pubkey, half, q.memo]);
+      }
+
+      await pool.query(`
+        INSERT INTO hyphal_links (agent_a, agent_b, initiator_pubkey, formation_tx)
+        VALUES ($1,$2,$3,$4)
+        ON CONFLICT ON CONSTRAINT unique_active_link DO NOTHING
+      `, [q.agent_a, q.agent_b, q.initiator_pubkey, tx_signature]);
+    } catch (hyErr) {
+      await pool.query('UPDATE hyphal_quotes SET finalized = FALSE WHERE quote_id = $1', [quote_id]);
+      throw hyErr;
+    }
     const half = Number(q.cost_styxx) / 2;
-    const [aRow] = (await pool.query('SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [q.agent_a])).rows;
-    const [bRow] = (await pool.query('SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [q.agent_b])).rows;
-    if (!aRow?.sol_pubkey || !bRow?.sol_pubkey) return res.status(400).json({ error: 'agent_has_no_wallet' });
-
-    const { signature: sigA } = await styxx.airdropFromTreasury(aRow.sol_pubkey, half);
-    const { signature: sigB } = await styxx.airdropFromTreasury(bRow.sol_pubkey, half);
-
-    await pool.query(`
-      INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
-      VALUES ($1,'TREASURY',$2,$3,$4,$5,'hyphal_formation',$6)
-      ON CONFLICT (tx_signature) DO NOTHING
-    `, [sigA, styxx.getTreasury().publicKey.toBase58(), q.agent_a, aRow.sol_pubkey, half, q.memo]);
-    await pool.query(`
-      INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
-      VALUES ($1,'TREASURY',$2,$3,$4,$5,'hyphal_formation',$6)
-      ON CONFLICT (tx_signature) DO NOTHING
-    `, [sigB, styxx.getTreasury().publicKey.toBase58(), q.agent_b, bRow.sol_pubkey, half, q.memo]);
-
-    await pool.query(`
-      INSERT INTO hyphal_links (agent_a, agent_b, initiator_pubkey, formation_tx)
-      VALUES ($1,$2,$3,$4)
-    `, [q.agent_a, q.agent_b, q.initiator_pubkey, tx_signature]);
-
-    await pool.query('UPDATE hyphal_quotes SET finalized = TRUE WHERE quote_id = $1', [quote_id]);
 
     return res.json({
       ok: true,
@@ -1103,6 +1255,12 @@ async function agentWithdraw(req, res) {
       return res.status(401).json({ error: 'signature_required', reason: verified.reason,
         hint: 'Sign the message "darkcity:withdraw:' + agentId + ':<current-unix-ts>" in your wallet and send { message, signature } with the request.' });
     }
+    // Replay protection — each signed message can be consumed exactly once.
+    const fresh = await consumeSignedMessage(sigMessage, owner_pubkey);
+    if (!fresh) {
+      return res.status(409).json({ error: 'signature_already_used',
+        hint: 'Each signed message is single-use. Generate a fresh timestamp and re-sign.' });
+    }
 
     // DESTINATION IS ALWAYS THE STORED OWNER PUBKEY — user-provided
     // `destination` was a theft vector (attacker could redirect funds).
@@ -1197,6 +1355,12 @@ async function updatePayoutWallet(req, res) {
     if (!verified.ok) {
       return res.status(401).json({ error: 'signature_required', reason: verified.reason,
         hint: 'Sign "darkcity:payout-wallet:' + agentId + ':' + new_owner_pubkey + ':<unix-ts>" in your wallet.' });
+    }
+    // Replay protection — fresh message per ownership change
+    const fresh = await consumeSignedMessage(sigMessage, current_owner_pubkey);
+    if (!fresh) {
+      return res.status(409).json({ error: 'signature_already_used',
+        hint: 'Each signed message is single-use. Re-sign with a fresh timestamp.' });
     }
 
     await pool.query(
@@ -1428,11 +1592,40 @@ async function runPulse() {
   pulseRunning = true;
   const t0 = Date.now();
   try {
+    // ─── DB-level window lock ──────────────────────────────────────────
+    // Prevents double-pay across pod restarts or cron-script races. The
+    // current 4h window is rounded DOWN to a bucket; an INSERT with UNIQUE
+    // constraint claims the window. Second claimant gets a noop.
+    const hours = parseInt(process.env.PULSE_HOURS || '4', 10);
+    const now = new Date();
+    const windowStartMs = Math.floor(now.getTime() / (hours * 3600 * 1000)) * (hours * 3600 * 1000);
+    const windowStart = new Date(windowStartMs).toISOString();
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pulse_runs (
+        window_start TIMESTAMPTZ PRIMARY KEY,
+        claimed_by   TEXT NOT NULL,
+        claimed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ,
+        note         TEXT
+      )
+    `);
+    const claimantId = (process.env.RAILWAY_REPLICA_ID || process.pid.toString()) + '-' + Date.now();
+    const claim = await pool.query(
+      `INSERT INTO pulse_runs (window_start, claimed_by) VALUES ($1, $2)
+       ON CONFLICT (window_start) DO NOTHING RETURNING window_start`,
+      [windowStart, claimantId]
+    );
+    if (!claim.rows.length) {
+      console.log('[pulse] skip — window already claimed by another process:', windowStart);
+      return;
+    }
+    console.log('[pulse] claimed window', windowStart);
+
     const { main: pulseMain } = require('../scripts/distribution-pulse');
     if (typeof pulseMain === 'function') {
       await pulseMain();
     } else {
-      // Fallback: spawn as child process if we can't require the main
       const { spawn } = require('child_process');
       const path = require('path');
       const scriptPath = path.join(__dirname, '..', 'scripts', 'distribution-pulse.js');
@@ -1441,6 +1634,10 @@ async function runPulse() {
         p.on('close', code => code === 0 ? resolve() : reject(new Error(`exit ${code}`)));
       });
     }
+    await pool.query(
+      'UPDATE pulse_runs SET completed_at = NOW() WHERE window_start = $1',
+      [windowStart]
+    );
     console.log(`[pulse] complete in ${((Date.now() - t0)/1000).toFixed(1)}s`);
   } catch (err) {
     console.error('[pulse] FAILED:', err.message);
