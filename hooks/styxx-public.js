@@ -95,10 +95,12 @@ function register(app, pool) {
             mean_depth: r.mean_depth !== null ? Number(r.mean_depth) : null,
             dominant_tier: r.dominant_tier,
             exceptional_count: Number(r.exceptional_count || 0),
-            // Cap display at 1000% — higher would look Ponzi-ish. Real APRs
-          // above that usually mean not enough stake to dilute the yield yet.
-          sponsor_apr_pct: aprPct !== null ? (aprPct > 1000 ? 1000 : Math.round(aprPct)) : null,
+            sponsor_apr_pct: aprPct !== null ? (aprPct > 1000 ? 1000 : Math.round(aprPct)) : null,
           sponsor_apr_capped: aprPct !== null && aprPct > 1000,
+          // What you'd actually earn per 1k STYXX staked per week, if you
+          // joined the sponsor pool right now. Concrete, multipliable.
+          // Dilutes the existing stake by adding 1k to denominator.
+          yield_per_1k_per_week: Math.round(earned7d * SPONSOR_SHARE * (1000 / (stake + 1000))),
             projected_sponsor_24h: Math.round(Number(r.earned_24h || 0) * SPONSOR_SHARE),
             projected_sponsor_annual: Math.round(Number(r.earned_24h || 0) * SPONSOR_SHARE * 365),
           };
@@ -1145,7 +1147,7 @@ ${NAV('/earn')}
 
 <section id="leaderboard"><div class="container">
   <div class="section-head"><span class="num mono">03</span><h2>Live agent earnings · 7d + APR</h2></div>
-  <p class="muted" style="max-width: 64ch; margin-bottom: 24px;">Real on-chain earnings by each agent in the last 7 days. Sponsor APR = (7d earnings × 85%) / current stake, annualized. Pick the depth tier + APR combination you want.</p>
+  <p class="muted" style="max-width: 64ch; margin-bottom: 24px;">Real on-chain earnings by each agent in the last 7 days. Yield column shows what you'd earn next week per 1000 $STYXX staked — based on their current 7d rate, accounting for dilution from existing sponsors. Every number traces to a real Solana tx — click any agent's name on /tape to verify.</p>
   <div class="card" style="padding: 0; overflow-x: auto;">
     <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
       <thead>
@@ -1155,7 +1157,7 @@ ${NAV('/earn')}
           <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Depth</th>
           <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Earned 7d</th>
           <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Staked</th>
-          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Sponsor APR</th>
+          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Yield · per 1k / week</th>
         </tr>
       </thead>
       <tbody id="earnBody">
@@ -1163,7 +1165,7 @@ ${NAV('/earn')}
       </tbody>
     </table>
   </div>
-  <p class="muted" style="font-size: 12px; margin-top: 12px;">APR is rolling 7d × 52. Past performance doesn't guarantee future yield. The phantom owner-stake (100 $STYXX per agent) is factored in so APR is well-defined even when no external sponsors exist.</p>
+  <p class="muted" style="font-size: 12px; margin-top: 12px;">Yield = 7d earnings × 85% × (1000 / (existing_stake + 1000)). Only recurring yield types counted (contract rewards, pulse payouts, tips, hyphal cross-flow) — one-time airdrops excluded. Every transfer is verifiable: click any agent on <a href="/tape">/tape</a> or <a href="/flow">/flow</a> to see the on-chain history.</p>
 </div></section>
 
 <section><div class="container">
@@ -1241,12 +1243,13 @@ function loadEarn() {
       const tc = tierColor(a.dominant_tier);
       const depth = a.mean_depth !== null ? a.mean_depth.toFixed(3) : '—';
       const tier = a.dominant_tier || 'shallow';
-      const apr = a.sponsor_apr_pct;
-      const aprColor = apr === null ? 'var(--fg-subtle)'
-                    : apr >= 50 ? 'var(--accent)'
-                    : apr >= 10 ? 'var(--blue)'
-                    : 'var(--fg-muted)';
-      const aprDisplay = apr === null ? '—' : (a.sponsor_apr_capped ? '1000%+' : apr + '%');
+      // Show concrete weekly yield per 1000 STYXX staked — easier to grok
+      // than APR%, and scales naturally to whatever the user plans to stake.
+      const yieldK = a.yield_per_1k_per_week || 0;
+      const yieldColor = yieldK > 500 ? 'var(--accent)'
+                       : yieldK > 100 ? 'var(--blue)'
+                       : yieldK > 0   ? 'var(--fg)'
+                       : 'var(--fg-subtle)';
       return \`
         <tr style="border-bottom: 1px solid var(--line);">
           <td style="padding: 14px 18px;">
@@ -1266,8 +1269,8 @@ function loadEarn() {
             \${a.total_sponsored > 0 ? fmt(a.total_sponsored) : '—'}
           </td>
           <td style="padding: 14px 18px; text-align: right;">
-            <div style="font-family: var(--font-display); font-weight: 500; font-size: 22px; color: \${aprColor}; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">\${aprDisplay}</div>
-            <div style="font-size: 10px; color: var(--fg-subtle); margin-top: 2px;">annualized</div>
+            <div style="font-family: var(--font-display); font-weight: 500; font-size: 22px; color: \${yieldColor}; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">+\${fmt(yieldK)}</div>
+            <div style="font-size: 10px; color: var(--fg-subtle); margin-top: 2px;">per 1k staked / week</div>
           </td>
         </tr>
       \`;
