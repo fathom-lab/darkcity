@@ -155,6 +155,98 @@ window.dcAutoSign = async function({ destination, amount, memo, decimals = 6 }) 
   const { signature } = await window.solana.signAndSendTransaction(tx);
   return { signature };
 };
+
+// ─── Global wallet state + nav pill ─────────────────────────────────────
+// One connection. All pages share it. Pill reflects current state.
+const WALLET_KEY = 'dc_wallet_connected';
+async function fetchBalance(pubkey) {
+  try {
+    const r = await fetch('/api/wallet/' + pubkey + '/balance');
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d?.styxx ?? null;
+  } catch { return null; }
+}
+function shortAddr(a) { return a.slice(0, 4) + '…' + a.slice(-4); }
+function renderPill() {
+  const el = document.getElementById('dcWalletPill');
+  if (!el) return;
+  const w = window.dcWallet.state;
+  if (w.pubkey) {
+    const bal = w.balance != null ? Number(w.balance).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—';
+    el.innerHTML = '<span class="wp-bal">' + bal + '</span><span class="wp-sep">·</span>' + shortAddr(w.pubkey);
+    el.classList.add('connected');
+    el.title = 'Click to copy address · balance: ' + bal + ' STYXX';
+  } else {
+    el.textContent = 'Connect';
+    el.classList.remove('connected');
+    el.title = 'Connect Phantom wallet';
+  }
+}
+window.dcWallet = {
+  state: { pubkey: null, balance: null },
+  async connect() {
+    if (!window.solana?.isPhantom) {
+      window.dcToast('Install Phantom at phantom.com', 'err');
+      window.open('https://phantom.com', '_blank');
+      return null;
+    }
+    try {
+      const r = await window.solana.connect();
+      this.state.pubkey = r.publicKey.toString();
+      localStorage.setItem(WALLET_KEY, '1');
+      this.state.balance = await fetchBalance(this.state.pubkey);
+      renderPill();
+      window.dcToast('Connected · ' + shortAddr(this.state.pubkey));
+      return this.state.pubkey;
+    } catch (e) { if (e.code !== 4001) window.dcToast('Connect failed', 'err'); return null; }
+  },
+  async disconnect() {
+    try { await window.solana?.disconnect(); } catch {}
+    this.state = { pubkey: null, balance: null };
+    localStorage.removeItem(WALLET_KEY);
+    renderPill();
+  },
+  async toggle() {
+    if (this.state.pubkey) {
+      // Already connected → copy addr on click. Hold shift to disconnect.
+      if (window.event?.shiftKey) return this.disconnect();
+      try { await navigator.clipboard.writeText(this.state.pubkey); window.dcToast('Address copied · shift-click to disconnect'); }
+      catch { window.dcToast(this.state.pubkey); }
+    } else {
+      return this.connect();
+    }
+  },
+  async refreshBalance() {
+    if (!this.state.pubkey) return;
+    this.state.balance = await fetchBalance(this.state.pubkey);
+    renderPill();
+  },
+};
+// Toast helper — one-line success/error feedback
+window.dcToast = function(msg, kind) {
+  const el = document.getElementById('dcToast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle('err', kind === 'err');
+  el.classList.add('show');
+  clearTimeout(window._dcToastT);
+  window._dcToastT = setTimeout(() => el.classList.remove('show'), 3500);
+};
+// Auto-reconnect if they connected before (trust-only, no popup)
+(async () => {
+  if (localStorage.getItem(WALLET_KEY) === '1' && window.solana?.isPhantom) {
+    try {
+      const r = await window.solana.connect({ onlyIfTrusted: true });
+      window.dcWallet.state.pubkey = r.publicKey.toString();
+      window.dcWallet.state.balance = await fetchBalance(window.dcWallet.state.pubkey);
+      renderPill();
+    } catch {}
+  }
+})();
+// Initial pill render (before Phantom resolves)
+document.addEventListener('DOMContentLoaded', renderPill);
+renderPill();
 </script>
 <style>
 /* ═══ DarkCity design system v2 — editorial noir ═══ */
@@ -293,6 +385,30 @@ p { color: var(--fg-muted); margin-bottom: 14px; max-width: 62ch; }
   .nav-brand { font-size: 17px; }
   .nav-links a { font-size: 12px; }
 }
+
+/* Wallet pill — persistent connect state in nav */
+.wallet-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-left: 8px; padding: 7px 14px;
+  border: 1px solid var(--line-hi); border-radius: 999px;
+  background: transparent; color: var(--fg-muted);
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.wallet-pill:hover { border-color: var(--accent); color: var(--accent); }
+.wallet-pill.connected { border-color: rgba(67,255,180,.3); color: var(--accent); }
+.wallet-pill.connected::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.wallet-pill .wp-bal { color: var(--fg); font-weight: 500; }
+.wallet-pill .wp-sep { color: var(--fg-subtle); margin: 0 2px; }
+@media (max-width: 720px) {
+  .wallet-pill { font-size: 10.5px; padding: 6px 10px; }
+  .wallet-pill .wp-bal { display: none; }
+  .wallet-pill .wp-sep { display: none; }
+}
+/* Toast — success/error feedback */
+#dcToast { position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-20px); opacity: 0; pointer-events: none; padding: 14px 22px; border-radius: 8px; background: var(--bg-elev); border: 1px solid var(--accent); color: var(--accent); font-family: var(--font-mono); font-size: 13px; font-weight: 500; z-index: 1000; box-shadow: 0 8px 32px rgba(0,0,0,.6); transition: transform .3s ease, opacity .3s ease; max-width: 90vw; text-align: center; }
+#dcToast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+#dcToast.err { border-color: var(--loss); color: var(--loss); }
 
 /* ═══ Hero ═══ */
 .hero { padding: 104px 0 56px; }
@@ -471,8 +587,10 @@ const NAV = (active) => {
       ${item('/live', 'Dashboard')}
       ${item('/how', 'How it works')}
       <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
+      <button id="dcWalletPill" class="wallet-pill" onclick="window.dcWallet && window.dcWallet.toggle()" title="Connect Phantom">Connect</button>
     </nav>
-  </div></header>`;
+  </div></header>
+  <div id="dcToast"></div>`;
 };
 
 // ─── Landing page ────────────────────────────────────────────────────────
