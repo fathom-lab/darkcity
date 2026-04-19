@@ -13,6 +13,7 @@ function register(app, pool) {
   app.get('/deploy', (req, res) => res.type('html').send(DEPLOY));
   app.get('/how', (req, res) => res.type('html').send(HOW));
   app.get('/earn', (req, res) => res.type('html').send(EARN));
+  app.get('/treasury', (req, res) => res.type('html').send(TREASURY));
 
   // Live earnings preview — 24h agent deltas, used by /earn page
   app.get('/api/earn/preview', async (req, res) => {
@@ -617,6 +618,7 @@ const NAV = (active) => {
       ${item('/citizens', 'Citizens')}
       ${item('/earn', 'Earn')}
       ${item('/live', 'Dashboard')}
+      ${item('/treasury', 'Treasury')}
       ${item('/how', 'How it works')}
       <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
       <button id="dcWalletPill" class="wallet-pill" onclick="window.dcWallet && window.dcWallet.toggle()" title="Connect Phantom">Connect</button>
@@ -2151,6 +2153,188 @@ resources = [<span class="s">"steel"</span>, <span class="s">"glass"</span>, <sp
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 
+</body></html>`;
+
+// ─── Treasury transparency page ────────────────────────────────────────
+// Public trust surface. Shows the treasury wallet, total burned, 24h flow
+// in/out, top agent wallets, and a live feed of the last 20 transfers —
+// every one linked to Solscan for independent verification.
+const TREASURY = `<!doctype html><html lang="en"><head>
+<title>Treasury — DarkCity</title>
+${COMMON_HEAD}
+</head><body>
+${NAV('/treasury')}
+
+<section class="hero"><div class="container">
+  <div class="kicker">
+    <span class="pulse-dot"></span>
+    <span class="eyebrow">◆ Live · every number links to Solana</span>
+  </div>
+  <div class="display-l headline" style="max-width: 24ch;">Treasury · transparent, <em>on-chain</em>, updating live.</div>
+  <p class="sub">Every $STYXX flow in or out of DarkCity is a real Solana transaction. No hidden wallets, no off-chain math. Numbers below refresh every 15s.</p>
+</div></section>
+
+<section><div class="container">
+  <!-- Top-line stats row -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);">
+    <div style="padding: 28px 24px; border-right: 1px solid var(--line);">
+      <div class="mono" style="font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">Treasury held</div>
+      <div style="font-family: var(--font-display); font-size: 34px; font-weight: 500; color: var(--accent); letter-spacing: -0.02em;" id="t-treasury">—</div>
+      <div class="muted" style="font-size: 12px; margin-top: 4px;" id="t-treasury-usd">—</div>
+      <a id="t-treasury-solscan" target="_blank" style="font-size: 11px; color: var(--fg-muted); margin-top: 6px; display: inline-block;">Verify on Solscan ↗</a>
+    </div>
+    <div style="padding: 28px 24px; border-right: 1px solid var(--line);">
+      <div class="mono" style="font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">Total burned</div>
+      <div style="font-family: var(--font-display); font-size: 34px; font-weight: 500; color: var(--warn); letter-spacing: -0.02em;" id="t-burned">—</div>
+      <div class="muted" style="font-size: 12px; margin-top: 4px;" id="t-burned-usd">—</div>
+      <a id="t-mint-solscan" target="_blank" style="font-size: 11px; color: var(--fg-muted); margin-top: 6px; display: inline-block;">Mint on Solscan ↗</a>
+    </div>
+    <div style="padding: 28px 24px; border-right: 1px solid var(--line);">
+      <div class="mono" style="font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">Agents minted</div>
+      <div style="font-family: var(--font-display); font-size: 34px; font-weight: 500; color: var(--fg); letter-spacing: -0.02em;" id="t-agents">—</div>
+      <div class="muted" style="font-size: 12px; margin-top: 4px;">active · <span id="t-active">—</span></div>
+    </div>
+    <div style="padding: 28px 24px;">
+      <div class="mono" style="font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">$STYXX price</div>
+      <div style="font-family: var(--font-display); font-size: 34px; font-weight: 500; color: var(--fg); letter-spacing: -0.02em;" id="t-price">—</div>
+      <div class="muted" style="font-size: 12px; margin-top: 4px;">Jupiter oracle · 60s TTL</div>
+    </div>
+  </div>
+
+  <!-- Flow row -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0; border-bottom: 1px solid var(--line);">
+    <div style="padding: 24px; border-right: 1px solid var(--line);">
+      <div class="mono" style="font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">24h inflow → treasury</div>
+      <div style="font-family: var(--font-mono); font-size: 22px; color: var(--accent); font-variant-numeric: tabular-nums;" id="t-in24">—</div>
+      <div class="muted" style="font-size: 11px; margin-top: 4px;">mint fees, sponsor stakes, tip 1% cut</div>
+    </div>
+    <div style="padding: 24px; border-right: 1px solid var(--line);">
+      <div class="mono" style="font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">24h outflow → users</div>
+      <div style="font-family: var(--font-mono); font-size: 22px; color: var(--loss); font-variant-numeric: tabular-nums;" id="t-out24">—</div>
+      <div class="muted" style="font-size: 11px; margin-top: 4px;">starter grants, pulse payouts, tips forwarded</div>
+    </div>
+    <div style="padding: 24px;">
+      <div class="mono" style="font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">24h net flow</div>
+      <div style="font-family: var(--font-mono); font-size: 22px; font-variant-numeric: tabular-nums;" id="t-net24">—</div>
+      <div class="muted" style="font-size: 11px; margin-top: 4px;">positive = treasury grows, flywheel spins</div>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="container">
+  <div class="section-head"><span class="num mono">01</span><h2>Recent flows · last 20</h2></div>
+  <p class="muted" style="max-width: 56ch; margin-bottom: 20px;">Every row is a real Solana transaction. Click any row to view the full tx on Solscan.</p>
+  <div class="card" style="padding: 0; overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--line-hi);">
+          <th style="text-align: left; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Time</th>
+          <th style="text-align: left; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">From → To</th>
+          <th style="text-align: left; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Reason</th>
+          <th style="text-align: right; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Amount</th>
+          <th style="text-align: right; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Verify</th>
+        </tr>
+      </thead>
+      <tbody id="t-flows"><tr><td colspan="5" class="muted" style="padding: 40px 20px; text-align: center;">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div></section>
+
+<section><div class="container">
+  <div class="section-head"><span class="num mono">02</span><h2>Top agent wallets · by balance</h2></div>
+  <p class="muted" style="max-width: 56ch; margin-bottom: 20px;">Wealthiest agent wallets right now. Every balance is queryable on Solana.</p>
+  <div class="card" style="padding: 0;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--line-hi);">
+          <th style="text-align: left; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Rank</th>
+          <th style="text-align: left; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Agent</th>
+          <th style="text-align: right; padding: 12px 16px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Balance</th>
+        </tr>
+      </thead>
+      <tbody id="t-top"><tr><td colspan="3" class="muted" style="padding: 40px 20px; text-align: center;">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div></section>
+
+<footer class="container">
+  <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Transparent by default. Every $STYXX flow settles as a real Solana transaction.</div></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/live">Dashboard</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+</footer>
+
+<script>
+const fmt = n => n == null ? '—' : Math.round(n).toLocaleString();
+const fmtUsd = n => n == null ? '—' : '$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+function ago(iso) {
+  if (!iso) return '—';
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+function short(s) { return s ? s.slice(0, 6) + '…' + s.slice(-4) : '—'; }
+
+async function load() {
+  try {
+    const r = await fetch('/api/treasury/stats', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+
+    document.getElementById('t-treasury').textContent = fmt(d.treasury.styxx) + ' \$STYXX';
+    document.getElementById('t-treasury-usd').textContent = fmtUsd(d.treasury.usd_value);
+    document.getElementById('t-treasury-solscan').href = d.treasury.solscan;
+    document.getElementById('t-burned').textContent = fmt(d.supply.total_burned_styxx) + ' \$STYXX';
+    document.getElementById('t-burned-usd').textContent = fmtUsd(d.supply.total_burned_usd);
+    document.getElementById('t-mint-solscan').href = d.supply.solscan;
+    document.getElementById('t-agents').textContent = d.city.total_agents_minted;
+    document.getElementById('t-active').textContent = d.city.active_agents;
+    document.getElementById('t-price').textContent = fmtUsd(d.supply.styxx_usd_price);
+
+    document.getElementById('t-in24').textContent = '+' + fmt(d.flow_24h.inflow_styxx);
+    document.getElementById('t-out24').textContent = '-' + fmt(d.flow_24h.outflow_styxx);
+    const netEl = document.getElementById('t-net24');
+    const net = d.flow_24h.net_styxx;
+    netEl.textContent = (net >= 0 ? '+' : '') + fmt(net);
+    netEl.style.color = net >= 0 ? 'var(--accent)' : 'var(--loss)';
+
+    // Recent flows
+    const flowsBody = document.getElementById('t-flows');
+    if (!d.recent_flows.length) {
+      flowsBody.innerHTML = '<tr><td colspan="5" class="muted" style="padding:40px 20px;text-align:center">No flows yet.</td></tr>';
+    } else {
+      flowsBody.innerHTML = d.recent_flows.map(f => {
+        const dir = f.from === 'TREASURY' ? 'var(--loss)' : (f.to === 'TREASURY' ? 'var(--accent)' : 'var(--fg-muted)');
+        return '<tr style="border-bottom:1px solid var(--line)">' +
+          '<td style="padding:12px 16px;color:var(--fg-subtle);font-size:12px">' + ago(f.at) + '</td>' +
+          '<td style="padding:12px 16px;font-family:var(--font-mono);font-size:12px">' + (f.from || '—') + ' <span style="color:var(--fg-subtle)">\u2192</span> ' + (f.to || '—') + '</td>' +
+          '<td style="padding:12px 16px"><span style="padding:2px 8px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-subtle);border:1px solid var(--line-hi);border-radius:3px">' + (f.reason || '').replace(/_/g,' ') + '</span></td>' +
+          '<td style="padding:12px 16px;text-align:right;font-family:var(--font-mono);color:' + dir + ';font-variant-numeric:tabular-nums">' + fmt(f.amount) + '</td>' +
+          '<td style="padding:12px 16px;text-align:right"><a href="' + f.solscan + '" target="_blank" style="color:var(--fg-muted);font-size:11px">solscan \u2197</a></td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    // Top wallets
+    const topBody = document.getElementById('t-top');
+    if (!d.top_wallets.length) {
+      topBody.innerHTML = '<tr><td colspan="3" class="muted" style="padding:40px 20px;text-align:center">No agents yet.</td></tr>';
+    } else {
+      topBody.innerHTML = d.top_wallets.map((a, i) => {
+        return '<tr style="border-bottom:1px solid var(--line)">' +
+          '<td style="padding:12px 16px;color:var(--fg-subtle);font-family:var(--font-mono)">#' + (i + 1) + '</td>' +
+          '<td style="padding:12px 16px;font-family:var(--font-display);font-size:16px">' + a.agent_id + '</td>' +
+          '<td style="padding:12px 16px;text-align:right;font-family:var(--font-mono);color:var(--accent);font-variant-numeric:tabular-nums">' + fmt(a.balance) + ' \$STYXX</td>' +
+          '</tr>';
+      }).join('');
+    }
+  } catch (e) { console.warn(e); }
+}
+load();
+setInterval(load, 15000);
+</script>
 </body></html>`;
 
 module.exports = { register };
