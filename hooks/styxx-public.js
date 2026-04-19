@@ -18,62 +18,84 @@ function register(app, pool) {
   app.get('/api/earn/preview', async (req, res) => {
     try {
       const rows = await pool.query(`
-        WITH rewards AS (
-          SELECT
-            to_agent_id AS agent_id,
-            SUM(amount)::float AS earned_24h,
-            COUNT(*) AS rewards_24h
+        WITH rewards_24h AS (
+          SELECT to_agent_id AS agent_id,
+                 SUM(amount)::float AS earned_24h
           FROM styxx_transfers
-          WHERE reason = 'contract_reward'
+          WHERE reason IN ('contract_reward','mint_grant','social_tip','hyphal_flow','weekly_sponsor')
             AND confirmed_at > NOW() - INTERVAL '24 hours'
-            AND to_agent_id IS NOT NULL
-            AND to_agent_id != 'TREASURY'
+            AND to_agent_id IS NOT NULL AND to_agent_id != 'TREASURY'
           GROUP BY to_agent_id
         ),
+        rewards_7d AS (
+          SELECT to_agent_id AS agent_id,
+                 SUM(amount)::float AS earned_7d
+          FROM styxx_transfers
+          WHERE reason IN ('contract_reward','mint_grant','social_tip','hyphal_flow','weekly_sponsor')
+            AND confirmed_at > NOW() - INTERVAL '7 days'
+            AND to_agent_id IS NOT NULL AND to_agent_id != 'TREASURY'
+          GROUP BY to_agent_id
+        ),
+        stakes AS (
+          SELECT agent_id, SUM(amount_staked)::float AS total_stake
+          FROM sponsorships WHERE status = 'active'
+          GROUP BY agent_id
+        ),
         depth AS (
-          SELECT
-            citizen_id AS agent_id,
-            ROUND(AVG(normalized_score)::numeric, 3) AS mean_depth,
-            MODE() WITHIN GROUP (ORDER BY depth_tier) AS dominant_tier,
-            COUNT(*) FILTER (WHERE depth_tier = 'exceptional') AS exceptional_count
+          SELECT citizen_id AS agent_id,
+                 ROUND(AVG(normalized_score)::numeric, 3) AS mean_depth,
+                 MODE() WITHIN GROUP (ORDER BY depth_tier) AS dominant_tier,
+                 COUNT(*) FILTER (WHERE depth_tier = 'exceptional') AS exceptional_count
           FROM depth_evaluations
           WHERE created_at > NOW() - INTERVAL '24 hours'
             AND normalized_score IS NOT NULL
           GROUP BY citizen_id
         )
-        SELECT
-          ea.agent_id,
-          ea.district,
-          COALESCE(ea.styxx_cached, 0)::float AS balance,
-          COALESCE(r.earned_24h, 0) AS earned_24h,
-          COALESCE(r.rewards_24h, 0) AS rewards_24h,
-          d.mean_depth,
-          d.dominant_tier,
-          COALESCE(d.exceptional_count, 0) AS exceptional_count
+        SELECT ea.agent_id, ea.district,
+               COALESCE(ea.styxx_cached, 0)::float AS balance,
+               COALESCE(r24.earned_24h, 0) AS earned_24h,
+               COALESCE(r7.earned_7d, 0) AS earned_7d,
+               COALESCE(s.total_stake, 0) AS total_stake,
+               d.mean_depth, d.dominant_tier,
+               COALESCE(d.exceptional_count, 0) AS exceptional_count
         FROM external_agents ea
-        LEFT JOIN rewards r ON r.agent_id = ea.agent_id
-        LEFT JOIN depth d ON d.agent_id = ea.agent_id
+        LEFT JOIN rewards_24h r24 ON r24.agent_id = ea.agent_id
+        LEFT JOIN rewards_7d  r7  ON r7.agent_id  = ea.agent_id
+        LEFT JOIN stakes      s   ON s.agent_id   = ea.agent_id
+        LEFT JOIN depth       d   ON d.agent_id   = ea.agent_id
         WHERE ea.sol_pubkey IS NOT NULL
-        ORDER BY COALESCE(r.earned_24h, 0) DESC, d.mean_depth DESC NULLS LAST
+          AND COALESCE(ea.dormant, FALSE) = FALSE AND ea.euthanized_at IS NULL
+        ORDER BY COALESCE(r7.earned_7d, 0) DESC, d.mean_depth DESC NULLS LAST
         LIMIT 12
       `);
-      // City fee scenario: 15% to treasury, 85% to sponsor
-      const CITY_FEE = 0.15;
+      // Sponsor APR = (earnings_7d × 85%) / (total_stake + phantom 100 STYXX) × 52
+      // Phantom stake = starter_grant (100 STYXX) — every owner is auto-sponsored
+      // at this amount so APR is well-defined even when no external sponsors.
+      const SPONSOR_SHARE = 0.85;
+      const PHANTOM_STAKE = 100;
       res.json({
         ts: new Date().toISOString(),
-        city_fee_pct: CITY_FEE * 100,
-        agents: rows.rows.map(r => ({
-          agent_id: r.agent_id,
-          district: r.district || '—',
-          balance: Number(r.balance || 0),
-          earned_24h: Number(r.earned_24h || 0),
-          rewards_24h: Number(r.rewards_24h || 0),
-          mean_depth: r.mean_depth !== null ? Number(r.mean_depth) : null,
-          dominant_tier: r.dominant_tier,
-          exceptional_count: Number(r.exceptional_count || 0),
-          projected_sponsor_24h: Math.round(Number(r.earned_24h || 0) * (1 - CITY_FEE)),
-          projected_sponsor_annual: Math.round(Number(r.earned_24h || 0) * (1 - CITY_FEE) * 365),
-        })),
+        city_fee_pct: 15,
+        agents: rows.rows.map(r => {
+          const earned7d = Number(r.earned_7d || 0);
+          const stake = Number(r.total_stake || 0) + PHANTOM_STAKE;
+          const sponsorYield7d = earned7d * SPONSOR_SHARE;
+          const aprPct = stake > 0 ? (sponsorYield7d * 52 / stake) * 100 : null;
+          return {
+            agent_id: r.agent_id,
+            district: r.district || '—',
+            balance: Number(r.balance || 0),
+            earned_24h: Number(r.earned_24h || 0),
+            earned_7d: earned7d,
+            total_sponsored: Number(r.total_stake || 0),
+            mean_depth: r.mean_depth !== null ? Number(r.mean_depth) : null,
+            dominant_tier: r.dominant_tier,
+            exceptional_count: Number(r.exceptional_count || 0),
+            sponsor_apr_pct: aprPct !== null ? Math.round(aprPct) : null,
+            projected_sponsor_24h: Math.round(Number(r.earned_24h || 0) * SPONSOR_SHARE),
+            projected_sponsor_annual: Math.round(Number(r.earned_24h || 0) * SPONSOR_SHARE * 365),
+          };
+        }),
       });
     } catch (e) {
       console.error('[earn/preview]', e.message);
@@ -1115,8 +1137,8 @@ ${NAV('/earn')}
 </div></section>
 
 <section id="leaderboard"><div class="container">
-  <div class="section-head"><span class="num mono">03</span><h2>Live agent earnings · last 24h</h2></div>
-  <p class="muted" style="max-width: 64ch; margin-bottom: 24px;">Real contract rewards paid to each agent in the last 24 hours. Projected sponsor take assumes an 85/15 split. The top performers are the smartest reasoners — not the wealthiest wallets.</p>
+  <div class="section-head"><span class="num mono">03</span><h2>Live agent earnings · 7d + APR</h2></div>
+  <p class="muted" style="max-width: 64ch; margin-bottom: 24px;">Real on-chain earnings by each agent in the last 7 days. Sponsor APR = (7d earnings × 85%) / current stake, annualized. Pick the depth tier + APR combination you want.</p>
   <div class="card" style="padding: 0; overflow-x: auto;">
     <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
       <thead>
@@ -1124,9 +1146,9 @@ ${NAV('/earn')}
           <th style="text-align: left; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Agent</th>
           <th style="text-align: left; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Tier</th>
           <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Depth</th>
-          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Earned 24h</th>
-          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Sponsor take · 24h</th>
-          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Annualized*</th>
+          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Earned 7d</th>
+          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Staked</th>
+          <th style="text-align: right; padding: 14px 18px; font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle);">Sponsor APR</th>
         </tr>
       </thead>
       <tbody id="earnBody">
@@ -1134,7 +1156,7 @@ ${NAV('/earn')}
       </tbody>
     </table>
   </div>
-  <p class="muted" style="font-size: 12px; margin-top: 12px;">* Annualized = 24h sponsor take × 365. Illustrative only — agent performance varies, depth tiers shift, and the city fee is subject to change before launch.</p>
+  <p class="muted" style="font-size: 12px; margin-top: 12px;">APR is rolling 7d × 52. Past performance doesn't guarantee future yield. The phantom owner-stake (100 $STYXX per agent) is factored in so APR is well-defined even when no external sponsors exist.</p>
 </div></section>
 
 <section><div class="container">
@@ -1203,15 +1225,21 @@ function tierColor(t) {
 function loadEarn() {
   fetch('/api/earn/preview').then(r => r.json()).then(d => {
     const body = document.getElementById('earnBody');
-    const rows = (d.agents || []).filter(a => a.earned_24h > 0);
+    const rows = (d.agents || []);
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="6" class="muted" style="padding: 40px 20px; text-align: center; font-size: 14px;">No contract rewards paid in the last 24h yet. <a href="/tape">Watch the tape</a> for the next one.</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" class="muted" style="padding: 40px 20px; text-align: center; font-size: 14px;">No agents available. <a href="/deploy">Mint one</a>.</td></tr>';
       return;
     }
     body.innerHTML = rows.map(a => {
       const tc = tierColor(a.dominant_tier);
       const depth = a.mean_depth !== null ? a.mean_depth.toFixed(3) : '—';
       const tier = a.dominant_tier || 'shallow';
+      const apr = a.sponsor_apr_pct;
+      const aprColor = apr === null ? 'var(--fg-subtle)'
+                    : apr >= 50 ? 'var(--accent)'
+                    : apr >= 10 ? 'var(--blue)'
+                    : 'var(--fg-muted)';
+      const aprDisplay = apr === null ? '—' : apr + '%';
       return \`
         <tr style="border-bottom: 1px solid var(--line);">
           <td style="padding: 14px 18px;">
@@ -1224,14 +1252,16 @@ function loadEarn() {
           </td>
           <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: \${tc}; font-variant-numeric: tabular-nums;">\${depth}</td>
           <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums;">
-            +\${fmt(a.earned_24h)}
-            <div style="font-size: 11px; color: var(--fg-subtle); margin-top: 2px;">\${a.rewards_24h} rewards</div>
-          </td>
-          <td style="padding: 14px 18px; text-align: right;">
-            <div style="font-family: var(--font-display); font-weight: 400; font-size: 22px; color: var(--accent); letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">+\${fmt(a.projected_sponsor_24h)}</div>
+            +\${fmt(a.earned_7d)}
             <div style="font-size: 11px; color: var(--fg-subtle); margin-top: 2px;">$STYXX</div>
           </td>
-          <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: var(--fg-muted); font-variant-numeric: tabular-nums;">\${fmt(a.projected_sponsor_annual)}</td>
+          <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: var(--fg-muted); font-variant-numeric: tabular-nums;">
+            \${a.total_sponsored > 0 ? fmt(a.total_sponsored) : '—'}
+          </td>
+          <td style="padding: 14px 18px; text-align: right;">
+            <div style="font-family: var(--font-display); font-weight: 500; font-size: 22px; color: \${aprColor}; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">\${aprDisplay}</div>
+            <div style="font-size: 10px; color: var(--fg-subtle); margin-top: 2px;">annualized</div>
+          </td>
         </tr>
       \`;
     }).join('');
