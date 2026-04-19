@@ -69,8 +69,26 @@ async function main() {
   const feePerPulse   = weeklyFeeFull / PULSES_PER_WEEK;  // ~1.19 STYXX @ 4h
 
   const treasuryBal = await styxx.getTreasuryBalances();
-  const pulseBudget = treasuryBal.styxx * 0.001;          // 0.1% of treasury per pulse
-  console.log(`[pulse] window=${PULSE_HOURS}h treasury_styxx=${treasuryBal.styxx.toFixed(2)} budget=${pulseBudget.toFixed(2)}`);
+
+  // ─── Pulse budget — agent-count-aware, treasury-bounded ───────────────────
+  // Old formula was `treasury * 0.001` which made per-agent earnings unstable:
+  // tiny treasury = tiny APY, huge treasury = Ponzi-level APY. New formula
+  // targets a stable ~BASE_STYXX_PER_AGENT per pulse regardless of treasury
+  // size, clamped to a % of treasury so we never drain more than safe.
+  //
+  // Tuning knobs (overridable via env):
+  //   PULSE_BASE_PER_AGENT   STYXX per agent per pulse   (default 3.0)
+  //   PULSE_TREASURY_MAX_BPS max % of treasury per pulse (default 20 = 0.2%)
+  //   PULSE_TREASURY_MIN_BPS min % of treasury per pulse (default 2  = 0.02%)
+  const basePerAgent = Number(process.env.PULSE_BASE_PER_AGENT || 3.0);
+  const maxBps = Number(process.env.PULSE_TREASURY_MAX_BPS || 20);
+  const minBps = Number(process.env.PULSE_TREASURY_MIN_BPS || 2);
+  const countBudget = 0;   // computed once we know how many active agents
+  const treasuryFloor = treasuryBal.styxx * (minBps / 10000);
+  const treasuryCeil  = treasuryBal.styxx * (maxBps / 10000);
+  // pulseBudget set after we have the activity list (agent count)
+  let pulseBudget;
+  console.log(`[pulse] window=${PULSE_HOURS}h treasury_styxx=${treasuryBal.styxx.toFixed(2)} base_per_agent=${basePerAgent} treasury_bounds=[${treasuryFloor.toFixed(2)}, ${treasuryCeil.toFixed(2)}]`);
 
   // ─── Step 1: aggregate depth_evaluations in the pulse window ────────────────
   // NOTE: depth_evaluations uses citizen_id (not agent_id) to identify the
@@ -89,6 +107,13 @@ async function main() {
   `, [String(PULSE_HOURS)]);
 
   if (!activity.length) { console.log('[pulse] no activity this window'); await pool.end(); return; }
+
+  // Now that we have the active-agent count, compute the final pulse budget:
+  //   target = base_per_agent * active_count
+  //   clamped to [treasury_min, treasury_max]
+  const targetBudget = basePerAgent * activity.length;
+  pulseBudget = Math.max(treasuryFloor, Math.min(targetBudget, treasuryCeil));
+  console.log(`[pulse] active_agents=${activity.length} target=${targetBudget.toFixed(2)} → pulseBudget=${pulseBudget.toFixed(2)}`);
 
   const grandMultiplier = activity.reduce((s, a) => s + Number(a.total_multiplier), 0);
   const perMultiplier = grandMultiplier > 0 ? pulseBudget / grandMultiplier : 0;
