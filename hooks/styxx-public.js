@@ -17,12 +17,16 @@ function register(app, pool) {
   // Live earnings preview — 24h agent deltas, used by /earn page
   app.get('/api/earn/preview', async (req, res) => {
     try {
+      // Only count RECURRING yield — exclude one-time mint grants and welcome
+      // bonuses so APR reflects real sustainable sponsor yield, not a single
+      // airdrop spiking the number.
+      const RECURRING = "('contract_reward','social_tip','hyphal_flow','weekly_sponsor','fruiting_dividend')";
       const rows = await pool.query(`
         WITH rewards_24h AS (
           SELECT to_agent_id AS agent_id,
                  SUM(amount)::float AS earned_24h
           FROM styxx_transfers
-          WHERE reason IN ('contract_reward','mint_grant','social_tip','hyphal_flow','weekly_sponsor')
+          WHERE reason IN ${RECURRING}
             AND confirmed_at > NOW() - INTERVAL '24 hours'
             AND to_agent_id IS NOT NULL AND to_agent_id != 'TREASURY'
           GROUP BY to_agent_id
@@ -31,7 +35,7 @@ function register(app, pool) {
           SELECT to_agent_id AS agent_id,
                  SUM(amount)::float AS earned_7d
           FROM styxx_transfers
-          WHERE reason IN ('contract_reward','mint_grant','social_tip','hyphal_flow','weekly_sponsor')
+          WHERE reason IN ${RECURRING}
             AND confirmed_at > NOW() - INTERVAL '7 days'
             AND to_agent_id IS NOT NULL AND to_agent_id != 'TREASURY'
           GROUP BY to_agent_id
@@ -91,7 +95,10 @@ function register(app, pool) {
             mean_depth: r.mean_depth !== null ? Number(r.mean_depth) : null,
             dominant_tier: r.dominant_tier,
             exceptional_count: Number(r.exceptional_count || 0),
-            sponsor_apr_pct: aprPct !== null ? Math.round(aprPct) : null,
+            // Cap display at 1000% — higher would look Ponzi-ish. Real APRs
+          // above that usually mean not enough stake to dilute the yield yet.
+          sponsor_apr_pct: aprPct !== null ? (aprPct > 1000 ? 1000 : Math.round(aprPct)) : null,
+          sponsor_apr_capped: aprPct !== null && aprPct > 1000,
             projected_sponsor_24h: Math.round(Number(r.earned_24h || 0) * SPONSOR_SHARE),
             projected_sponsor_annual: Math.round(Number(r.earned_24h || 0) * SPONSOR_SHARE * 365),
           };
@@ -1239,7 +1246,7 @@ function loadEarn() {
                     : apr >= 50 ? 'var(--accent)'
                     : apr >= 10 ? 'var(--blue)'
                     : 'var(--fg-muted)';
-      const aprDisplay = apr === null ? '—' : apr + '%';
+      const aprDisplay = apr === null ? '—' : (a.sponsor_apr_capped ? '1000%+' : apr + '%');
       return \`
         <tr style="border-bottom: 1px solid var(--line);">
           <td style="padding: 14px 18px;">
