@@ -1153,15 +1153,28 @@ function drawNet(t) {
       netCtx.stroke();
     }
 
-    // Label
+    // Label — with simple collision avoidance so ECHO+WRAITH etc.
+    // don't stack into "ECHOWRAITH" when their nodes are close
     const showLbl = isH || rad > 9 || a.online;
     if (showLbl) {
       netCtx.font = (isH ? '600 11px' : '500 10px') + ' "Inter", sans-serif';
       netCtx.fillStyle = isH ? '#ffffff' : a.online ? 'rgba(237,237,239,.78)' : 'rgba(115,115,125,.5)';
       netCtx.textAlign = 'center';
-      netCtx.fillText(id, a.x, a.y - rr - 10);
+      // Candidate position: above the node. If too close to any previous
+      // label this frame, flip below.
+      let lx = a.x, ly = a.y - rr - 10;
+      const collides = (window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22);
+      if (collides) ly = a.y + rr + 16;
+      // Check collision again with below position; if still colliding, nudge +12 more px
+      if ((window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22)) {
+        ly += 14;
+      }
+      (window.__frameLabels = window.__frameLabels || []).push({ x: lx, y: ly });
+      netCtx.fillText(id, lx, ly);
     }
   }
+  // Reset the per-frame label collision set for the next frame
+  window.__frameLabels = [];
 
   // Pulses
   pulses = pulses.filter(p => {
