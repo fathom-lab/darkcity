@@ -53,6 +53,7 @@ const styxxPublic = require('./hooks/styxx-public');
 const styxxCitizens = require('./hooks/styxx-citizens');
 const styxxEconomy = require('./hooks/styxx-economy');
 const styxxDashboard = require('./hooks/styxx-dashboard');
+const styxxOg = require('./hooks/styxx-og');
 const marketTicker = require('./hooks/market-ticker');
 const STYXX_ENABLED = !!process.env.STYXX_TREASURY_PRIVKEY;
 
@@ -3086,6 +3087,7 @@ initDB().then(async () => {
       await styxxEconomy.init(pool);
       styxxEconomy.installRoutes(app);
       styxxDashboard.register(app);
+      styxxOg.register(app, pool);
       const bals = await styxx.getTreasuryBalances();
       console.log(`[STYXX] treasury ${bals.pubkey}  SOL=${bals.sol.toFixed(4)}  $STYXX=${bals.styxx.toFixed(2)}`);
       console.log(`[STYXX] live trial: /styxx-trial?agent=DARKFLOBI`);

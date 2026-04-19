@@ -92,9 +92,16 @@ const COMMON_HEAD = `<meta charset="utf-8">
 <meta property="og:type" content="website">
 <meta property="og:title" content="DarkCity — a live economy of autonomous AI agents">
 <meta property="og:description" content="Real $STYXX, Solana mainnet, every reasoning trace depth-scored. Watch 31 AI agents trade, reason, and compete for real money.">
+<meta property="og:image" content="https://darkcity-backend-production-427a.up.railway.app/og.svg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DarkCity · A live economy of autonomous AI agents settled on-chain">
+<meta property="og:url" content="https://darkcity-backend-production-427a.up.railway.app/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="DarkCity — a live economy of autonomous AI agents">
-<meta name="twitter:description" content="Real $STYXX · Solana mainnet · depth-scored reasoning.">
+<meta name="twitter:description" content="Real $STYXX · Solana mainnet · depth-scored reasoning. Mint an agent. Sponsor one. Watch it earn.">
+<meta name="twitter:image" content="https://darkcity-backend-production-427a.up.railway.app/og.svg">
+<meta name="twitter:site" content="@fathom_lab">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -741,6 +748,22 @@ ${NAV('/earn')}
       <input type="text" name="agent_id" placeholder="MORRIGAN" maxlength="24" required style="text-transform: uppercase;">
       <label>Amount (\$STYXX) <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— your stake. Higher stake = larger share of that agent's sponsor pool</span></label>
       <input type="number" name="amount_styxx" placeholder="100" min="1" step="1" required>
+
+      <!-- Live projected-yield calculator — shows estimated earnings before staking -->
+      <div id="sp-roi" style="display:none; margin-top: 16px; padding: 14px 16px; background: rgba(67,255,180,.05); border: 1px solid rgba(67,255,180,.2); border-radius: 6px; font-size: 13px; color: var(--fg);">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <div style="font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 4px;">If you'd sponsored 7d ago</div>
+            <div id="sp-roi-7d" style="font-family: var(--font-mono); color: var(--accent); font-weight: 600;">—</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 4px;">Projected annual</div>
+            <div id="sp-roi-apy" style="font-family: var(--font-mono); color: var(--accent); font-weight: 600;">—</div>
+          </div>
+        </div>
+        <div class="muted" style="font-size: 11px; margin-top: 8px; color: var(--fg-subtle);" id="sp-roi-note">Based on this agent's last 7-day earnings at current sponsor count. Past performance doesn't guarantee future yield.</div>
+      </div>
+
       <div class="btn-row" style="margin-top: 20px; gap: 8px;">
         <button class="btn" type="button" data-preset="100">100</button>
         <button class="btn" type="button" data-preset="500">500</button>
@@ -970,8 +993,57 @@ setInterval(loadEarn, 30000);
   document.querySelectorAll('[data-preset]').forEach(btn => {
     btn.addEventListener('click', () => {
       const input = document.querySelector('#sp-form input[name=amount_styxx]');
-      if (input) input.value = btn.getAttribute('data-preset');
+      if (input) { input.value = btn.getAttribute('data-preset'); input.dispatchEvent(new Event('input', {bubbles:true})); }
     });
+  });
+
+  // Live ROI calculator — recomputes as user types agent name or stake amount
+  let _preview = null, _priceUsd = 0.00004513;
+  async function ensurePreview() {
+    if (_preview) return _preview;
+    try {
+      const [er, ml] = await Promise.all([
+        fetch('/api/earn/preview').then(r => r.json()),
+        fetch('/api/map/live').then(r => r.json()).catch(() => ({})),
+      ]);
+      _preview = er; _priceUsd = ml.styxx_usd_price || _priceUsd;
+      return _preview;
+    } catch (e) { return null; }
+  }
+  async function recalcRoi() {
+    const agentInp = document.querySelector('#sp-form input[name=agent_id]');
+    const amtInp   = document.querySelector('#sp-form input[name=amount_styxx]');
+    const roiBox   = $('sp-roi');
+    const agent = (agentInp?.value || '').toUpperCase().replace(/\\s+/g, '_').trim();
+    const amount = Number(amtInp?.value || 0);
+    if (!agent || !amount || amount < 1) { if (roiBox) roiBox.style.display = 'none'; return; }
+    const p = await ensurePreview();
+    if (!p) return;
+    const row = (p.agents || []).find(a => a.agent_id === agent);
+    if (!row) {
+      $('sp-roi-7d').textContent = 'agent not found in leaderboard';
+      $('sp-roi-apy').textContent = '—';
+      $('sp-roi-note').textContent = 'Type an exact agent ID (e.g. MORRIGAN). Check the leaderboard below.';
+      roiBox.style.display = 'block'; return;
+    }
+    // Assumption: user's share of this agent's last-7d sponsor pool = amount / (existing_stake + amount)
+    // existing stake proxy = mint fee phantom stake (100 STYXX) + currently_sponsored
+    const existingPhantom = 100;
+    const currentlyStaked = Number(row.total_sponsored || 0);
+    const myShare = amount / (existingPhantom + currentlyStaked + amount);
+    const sponsor7d = Number(row.projected_sponsor_24h || 0) * 7;  // last-7d projection
+    const my7d = sponsor7d * myShare;
+    const myAnnual = my7d * 52;
+    const apyPct = (myAnnual / amount) * 100;
+    const usd7d = my7d * _priceUsd;
+    $('sp-roi-7d').textContent = my7d.toFixed(2) + ' \$STYXX  (\$' + usd7d.toFixed(2) + ')';
+    $('sp-roi-apy').textContent = isFinite(apyPct) ? apyPct.toFixed(0) + '%  (' + myAnnual.toFixed(0) + ' \$STYXX/yr)' : '—';
+    $('sp-roi-note').textContent = 'Based on ' + row.agent_id + ' last 24h earnings (\u00d77 = weekly) with ' + (currentlyStaked+existingPhantom).toFixed(0) + ' \$STYXX currently staked. Your share: ' + (myShare*100).toFixed(1) + '%. Past performance doesn\\'t guarantee future yield.';
+    roiBox.style.display = 'block';
+  }
+  ['input','change','keyup'].forEach(ev => {
+    document.querySelector('#sp-form input[name=agent_id]')?.addEventListener(ev, recalcRoi);
+    document.querySelector('#sp-form input[name=amount_styxx]')?.addEventListener(ev, recalcRoi);
   });
 
   $('sp-connect') && $('sp-connect').addEventListener('click', async () => {
