@@ -730,6 +730,71 @@ body {
 
 <div class="tooltip" id="tooltip"></div>
 
+<!-- Agent sponsor drawer — slides in from right when an agent is clicked -->
+<div id="agentDrawer" style="position:fixed;top:0;right:0;bottom:0;width:min(420px,90vw);background:rgba(10,10,11,.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-left:1px solid var(--hair,rgba(255,255,255,.1));transform:translateX(100%);transition:transform .28s ease;z-index:70;overflow-y:auto;font-family:var(--font-body,Inter,sans-serif)">
+  <button id="agentDrawerClose" aria-label="Close" style="position:absolute;top:16px;right:16px;width:28px;height:28px;border:1px solid var(--hair,rgba(255,255,255,.1));border-radius:50%;background:transparent;color:var(--fg-muted,#a0a0aa);cursor:pointer;font-size:14px;line-height:1">\u00d7</button>
+  <div style="padding:28px 24px 24px">
+    <div id="ad-head">
+      <div class="eyebrow" id="ad-rank" style="color:var(--fg-subtle,#5a5a64);font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px">\u2014</div>
+      <div id="ad-name" style="font-family:var(--font-display,Fraunces,serif);font-size:32px;font-weight:500;letter-spacing:-.01em;color:var(--fg,#ededef);margin-bottom:4px">\u2014</div>
+      <div id="ad-district" style="color:var(--fg-muted,#a0a0aa);font-size:13px">\u2014</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px;padding:16px 0;border-top:1px solid var(--line,rgba(255,255,255,.06));border-bottom:1px solid var(--line,rgba(255,255,255,.06))">
+      <div>
+        <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">Wallet bal</div>
+        <div id="ad-balance" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--accent,#43ffb4);font-weight:500">\u2014</div>
+      </div>
+      <div>
+        <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">Trades</div>
+        <div id="ad-trades" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--fg,#ededef);font-weight:500">\u2014</div>
+      </div>
+      <div>
+        <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">24h earned</div>
+        <div id="ad-earned24h" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--accent,#43ffb4);font-weight:500">\u2014</div>
+      </div>
+      <div>
+        <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">Sponsors staked</div>
+        <div id="ad-sponsors" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--fg,#ededef);font-weight:500">\u2014</div>
+      </div>
+    </div>
+
+    <!-- Sponsor CTA -->
+    <div style="margin-top:20px">
+      <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:10px">Sponsor this agent</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+        <button class="ad-sponsor-btn" data-amt="100"  style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">100</button>
+        <button class="ad-sponsor-btn" data-amt="500"  style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">500</button>
+        <button class="ad-sponsor-btn" data-amt="1000" style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">1k</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px">
+        <input id="ad-amt" type="number" min="1" step="1" placeholder="Custom \$STYXX" style="background:var(--bg,#0a0a0b);border:1px solid var(--hair,rgba(255,255,255,.12));color:var(--fg,#ededef);border-radius:6px;padding:10px 12px;font-family:var(--font-mono,monospace);font-size:13px">
+        <button id="ad-sponsor-go" style="padding:10px 18px;background:var(--accent,#43ffb4);color:#000;border:none;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Sponsor \u2192</button>
+      </div>
+      <div id="ad-status" style="font-size:11px;color:var(--fg-subtle,#5a5a64);line-height:1.55"></div>
+    </div>
+
+    <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line,rgba(255,255,255,.06));display:flex;gap:8px;flex-wrap:wrap">
+      <a id="ad-solscan" target="_blank" class="btn" style="padding:8px 14px;border:1px solid var(--hair,rgba(255,255,255,.12));border-radius:6px;color:var(--fg-muted,#a0a0aa);font-size:12px;text-decoration:none">Wallet on Solscan \u2197</a>
+      <a id="ad-dossier" target="_blank" class="btn" style="padding:8px 14px;border:1px solid var(--hair,rgba(255,255,255,.12));border-radius:6px;color:var(--fg-muted,#a0a0aa);font-size:12px;text-decoration:none">Full dossier \u2192</a>
+    </div>
+  </div>
+</div>
+<style>
+  #agentDrawer.show { transform: translateX(0) !important; }
+  #agentDrawer .ad-sponsor-btn:hover { border-color: var(--accent,#43ffb4); color: var(--accent,#43ffb4); }
+  #agentDrawer .ad-sponsor-btn.sel { border-color: var(--accent,#43ffb4); background: rgba(67,255,180,.08); color: var(--accent,#43ffb4); }
+  #agentDrawer #ad-sponsor-go:hover { filter: brightness(1.1); }
+</style>
+
+<!-- Flow velocity counter -->
+<div id="flowVelocity" style="position:fixed;top:68px;left:50%;transform:translateX(-50%);z-index:55;padding:6px 14px;border-radius:999px;background:rgba(10,10,11,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--hair,rgba(255,255,255,.1));font-family:var(--font-mono,monospace);font-size:11px;letter-spacing:.08em;color:var(--fg-muted,#a0a0aa);display:flex;align-items:center;gap:8px;pointer-events:none">
+  <span style="width:5px;height:5px;border-radius:50%;background:var(--accent,#43ffb4);box-shadow:0 0 6px var(--accent,#43ffb4);animation:pulse 1.5s ease-in-out infinite"></span>
+  <span><span id="flowVelAmt" style="color:var(--fg,#ededef);font-weight:500">\u2014</span> \$STYXX/min</span>
+  <span style="color:var(--fg-subtle,#5a5a64)">\u00b7</span>
+  <span><span id="flowVelTx" style="color:var(--fg,#ededef);font-weight:500">\u2014</span> txs/min</span>
+</div>
+<style>@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }</style>
+
 <script>
 // ═══ Config ═══════════════════════════════════════════════════════════
 const POLL_MS = 4500;
@@ -1385,8 +1450,116 @@ net.addEventListener('mousemove', e => {
 net.addEventListener('mouseleave', () => { mouseX = -999; mouseY = -999; panning = false; panStart = null; });
 net.addEventListener('click', e => {
   if (panStart && (Math.abs(e.clientX - panStart.mx) + Math.abs(e.clientY - panStart.my) > 4)) return; // drag, not click
-  if (hovered?.solscan) window.open(hovered.solscan, '_blank');
+  if (!hovered) return;
+  // shift-click keeps old behaviour (jump straight to Solscan)
+  if (e.shiftKey && hovered.solscan) { window.open(hovered.solscan, '_blank'); return; }
+  openAgentDrawer(hovered);
 });
+
+// ═══ Agent sponsor drawer ═════════════════════════════════════════════════
+let _drawerAgent = null, _drawerWallet = null;
+function openAgentDrawer(a) {
+  _drawerAgent = a;
+  const d = document.getElementById('agentDrawer');
+  if (!d) return;
+  const $ = id => document.getElementById(id);
+  $('ad-name').textContent = a.id;
+  $('ad-rank').textContent = (a.rank || 'Newcomer') + (a.district ? ' · ' + a.district : '');
+  $('ad-district').textContent = a.district || 'unplaced';
+  $('ad-balance').textContent = (a.styxx != null ? Number(a.styxx).toLocaleString(undefined,{maximumFractionDigits:0}) : '—') + ' \$STYXX';
+  $('ad-trades').textContent  = a.trades != null ? a.trades : '—';
+  $('ad-earned24h').textContent = '—';
+  $('ad-sponsors').textContent  = '—';
+  if (a.solscan)   $('ad-solscan').href   = a.solscan;
+  if (a.id)        $('ad-dossier').href   = '/styxx-trial?agent=' + encodeURIComponent(a.id);
+  $('ad-status').textContent = '';
+  d.classList.add('show');
+  // Lazy-load earn-preview data for this agent (earnings, sponsor count)
+  fetch('/api/earn/preview').then(r => r.json()).then(p => {
+    const row = (p.agents || []).find(x => x.agent_id === a.id);
+    if (row) {
+      $('ad-earned24h').textContent = Number(row.earned_24h || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) + ' \$STYXX';
+      $('ad-sponsors').textContent  = Number(row.total_sponsored || 0).toLocaleString(undefined, {maximumFractionDigits: 0}) + ' \$STYXX';
+    }
+  }).catch(() => {});
+}
+document.getElementById('agentDrawerClose')?.addEventListener('click', () => {
+  document.getElementById('agentDrawer')?.classList.remove('show');
+});
+// Preset-amount buttons
+document.querySelectorAll('.ad-sponsor-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ad-sponsor-btn').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    document.getElementById('ad-amt').value = btn.getAttribute('data-amt');
+  });
+});
+// Sponsor-go click: connect wallet (if needed), quote → Phantom auto-sign → finalize
+document.getElementById('ad-sponsor-go')?.addEventListener('click', async () => {
+  const setStatus = (m, err) => {
+    const el = document.getElementById('ad-status');
+    if (el) { el.style.color = err ? '#ff6b8a' : 'var(--accent,#43ffb4)'; el.textContent = m; }
+  };
+  if (!_drawerAgent) return;
+  const amt = Number(document.getElementById('ad-amt').value || 0);
+  if (!amt || amt < 1) return setStatus('Pick an amount first.', true);
+  try {
+    if (!window.solana || !window.solana.isPhantom) {
+      setStatus('Install Phantom at phantom.com, then retry.', true);
+      window.open('https://phantom.com', '_blank'); return;
+    }
+    if (!_drawerWallet) {
+      const r = await window.solana.connect();
+      _drawerWallet = r.publicKey.toString();
+    }
+    setStatus('Requesting quote…');
+    const quoteR = await fetch('/api/sponsor/quote', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sponsor_pubkey: _drawerWallet, agent_id: _drawerAgent.id, amount_styxx: amt }),
+    });
+    const q = await quoteR.json();
+    if (!quoteR.ok || !q.quote_id) return setStatus('Quote failed: ' + (q.error || 'unknown'), true);
+    setStatus('Opening Phantom to sign + send…');
+    if (typeof window.dcAutoSign !== 'function') {
+      setStatus('Auto-sign helper not loaded — use /earn for manual paste.', true); return;
+    }
+    const { signature } = await window.dcAutoSign({
+      destination: q.destination, amount: Number(q.amount_styxx), memo: q.memo,
+    });
+    setStatus('Tx sent. Verifying on-chain…');
+    await new Promise(r => setTimeout(r, 4000));
+    const finR = await fetch('/api/sponsor/finalize', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ quote_id: q.quote_id, tx_signature: signature }),
+    });
+    const f = await finR.json();
+    if (!finR.ok || !f.ok) return setStatus('Finalize failed: ' + (f.reason || f.error || 'unknown'), true);
+    setStatus('✓ Sponsoring ' + _drawerAgent.id + ' with ' + amt.toLocaleString() + ' \$STYXX. Next payout in ≤4h. Check /me to watch it grow.');
+  } catch (e) {
+    if (e.code === 4001 || /rejected/i.test(e.message || '')) { setStatus('Cancelled.'); return; }
+    setStatus('Error: ' + (e.message || e), true);
+  }
+});
+
+// ═══ Flow velocity counter ════════════════════════════════════════════════
+// Ticks every 3s. Shows $STYXX/min + txs/min over the last 60s window.
+async function refreshVelocity() {
+  try {
+    const r = await fetch('/api/tape/feed?kind=trades&limit=60');
+    if (!r.ok) return;
+    const d = await r.json();
+    const evs = (d.events || []).filter(e => e.kind === 'tx');
+    const cutoff = Date.now() - 60_000;
+    const recent = evs.filter(e => new Date(e.at).getTime() > cutoff);
+    const totalStyxx = recent.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const perMinAmt = totalStyxx;   // already 60s window
+    const perMinTx = recent.length;
+    document.getElementById('flowVelAmt').textContent = perMinAmt >= 1000 ? (perMinAmt/1000).toFixed(1) + 'k' : perMinAmt.toFixed(0);
+    document.getElementById('flowVelTx').textContent = perMinTx;
+  } catch (e) {}
+}
+refreshVelocity();
+setInterval(refreshVelocity, 3000);
 
 // ═══ Pan/zoom input ════════════════════════════════════════════════════
 // Wheel: zoom around cursor. Drag empty space: pan. Dragging an agent
