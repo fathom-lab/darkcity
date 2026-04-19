@@ -1661,7 +1661,49 @@ ${NAV('/deploy')}
       $('m-quote-card').style.display = 'block';
       $('m-quote-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-      // Try auto-sign via Phantom — one click, done. Fallback to paste on failure.
+      // RESUME MODE — if the backend returned an existing quote (same owner
+      // + same name), we must NOT auto-sign again. The user may have already
+      // paid against this quote; re-signing would charge them twice. Show a
+      // clear choice: paste their existing tx sig, OR sign fresh manually.
+      if (j.resumed === true) {
+        status('Resumed your pending mint. If you already paid, paste your tx signature below and click Finalize. Otherwise, click "Sign + pay now" to pay fresh.', 'err');
+        // Add a one-shot "sign fresh" button if not already present
+        let payBtn = $('m-resume-pay');
+        if (!payBtn) {
+          payBtn = document.createElement('button');
+          payBtn.id = 'm-resume-pay';
+          payBtn.textContent = 'Sign + pay now →';
+          payBtn.style.cssText = 'margin-top:12px;padding:10px 18px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;font-family:var(--font-body);';
+          const sigInput = $('m-sig');
+          if (sigInput && sigInput.parentNode) sigInput.parentNode.insertBefore(payBtn, sigInput);
+          payBtn.addEventListener('click', async () => {
+            if (typeof window.dcAutoSign !== 'function') {
+              status('Auto-sign not available — send the fee in Phantom manually, then paste the tx sig.', 'err');
+              return;
+            }
+            payBtn.disabled = true; payBtn.textContent = 'Signing…';
+            try {
+              const { signature } = await window.dcAutoSign({
+                destination: j.destination, amount: Number(j.fee_styxx), memo: j.memo,
+              });
+              status('Tx sent. Verifying…');
+              $('m-sig').value = signature;
+              $('m-solscan').href = 'https://solscan.io/tx/' + signature;
+              $('m-solscan').style.display = 'inline-flex';
+              payBtn.style.display = 'none';
+              setTimeout(() => $('m-finalize').click(), 4000);
+            } catch (err) {
+              payBtn.disabled = false; payBtn.textContent = 'Sign + pay now →';
+              status('Cancelled or failed: ' + (err.message || 'unknown'), 'err');
+            }
+          });
+        }
+        $('m-get-quote').disabled = false;
+        $('m-get-quote').textContent = 'Get mint quote →';
+        return;
+      }
+
+      // Fresh quote — safe to auto-sign
       if (typeof window.dcAutoSign === 'function') {
         status('Opening Phantom to sign + send…');
         try {
