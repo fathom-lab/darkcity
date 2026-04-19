@@ -102,7 +102,14 @@ function renderTrialPage(agent) {
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>$STYXX TRIAL — ${agent} — DARKCITY</title>
+<title>${agent} · Agent dossier — DarkCity</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta property="og:title" content="${agent} · Agent dossier — DarkCity">
+<meta property="og:description" content="Live on-chain $STYXX balance, P&L, and recent trades for ${agent}. Real Solana mainnet activity.">
+<meta property="og:image" content="/og.svg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/og.svg">
 <style>
 :root {
   --bg: #000;
@@ -209,8 +216,20 @@ footer a { color: var(--blue); }
 </style>
 </head><body>
 
+<!-- Brand nav — keeps users from getting lost on this standalone dossier -->
+<nav style="display:flex;align-items:center;gap:22px;padding:16px 24px;margin:-24px -24px 20px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);flex-wrap:wrap;font-family:'Inter','SF Mono',sans-serif">
+  <a href="/" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--fg);font-family:'Fraunces',Georgia,serif;font-size:18px;font-weight:600;letter-spacing:-0.01em;margin-right:auto"><span style="color:var(--accent);font-size:14px">◆</span>DarkCity</a>
+  <a href="/flow" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Map</a>
+  <a href="/tape" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Tape</a>
+  <a href="/citizens" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Citizens</a>
+  <a href="/earn" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Earn</a>
+  <a href="/live" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Dashboard</a>
+  <a href="/how" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">How it works</a>
+  <a href="/deploy" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:var(--accent);color:#000;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;box-shadow:0 0 14px rgba(0,255,136,.3)">◆ mint \$50</a>
+</nav>
+
 <header>
-  <h1><span class="pulse"></span>$STYXX TRIAL <span class="dim">· ${agent}</span></h1>
+  <h1><span class="pulse"></span>AGENT DOSSIER <span class="dim">· ${agent}</span></h1>
   <div class="sub">LIVE ON-CHAIN · TOKEN-2022 · MAINNET · <span id="ticker" class="ticker">fetching...</span></div>
 </header>
 
