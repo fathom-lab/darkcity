@@ -539,10 +539,10 @@ app.use(cors({
           "https://darkcity-frontend.vercel.app",
           "https://darkcity-wtf.vercel.app",
         ];
-        if (!origin || allowed.includes(origin) || (origin && (origin.endsWith(".vercel.app") || origin.endsWith(".darkcity.wtf") || origin.endsWith(".netlify.app")))) {
+        if (!origin || allowed.includes(origin) || (origin && (origin.endsWith(".vercel.app") || origin.endsWith(".darkcity.wtf") || origin.endsWith(".netlify.app") || origin.endsWith(".railway.app") || origin.endsWith(".up.railway.app")))) {
           callback(null, true);
         } else {
-          callback(new Error("CORS: origin not allowed"));
+          callback(new Error("CORS: origin not allowed · " + origin));
         }
       }
     : true,
