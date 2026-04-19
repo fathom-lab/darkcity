@@ -1924,17 +1924,23 @@ function installRoutes(app) {
         ON CONFLICT (tx_signature) DO NOTHING
       `, [signature, styxx.getTreasury().publicKey.toBase58(), a.agent_id, a.sol_pubkey, Number(amount), reason, memo]);
 
-      await pool.query(`
-        INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT DO NOTHING
-      `, [a.agent_id, Number(amount), reason, memo]);
-
-      await pool.query(`
-        INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT DO NOTHING
-      `, [reason, a.agent_id, a.sol_pubkey, Number(amount), signature]);
+      // agent_earnings + distribution_events have CHECK constraints on their
+      // source/kind columns — best-effort inserts only. The authoritative
+      // record is in styxx_transfers which has no such constraint.
+      try {
+        await pool.query(`
+          INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
+          VALUES ($1, $2, 'social_tip', $3, NOW())
+          ON CONFLICT DO NOTHING
+        `, [a.agent_id, Number(amount), memo]);
+      } catch (earnErr) { console.warn('[admin/bonus] agent_earnings insert skipped:', earnErr.message); }
+      try {
+        await pool.query(`
+          INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature)
+          VALUES ('referral_bonus', $1, $2, $3, $4)
+          ON CONFLICT DO NOTHING
+        `, [a.agent_id, a.sol_pubkey, Number(amount), signature]);
+      } catch (distErr) { console.warn('[admin/bonus] distribution_events insert skipped:', distErr.message); }
 
       return res.json({ ok: true, agent_id: a.agent_id, amount, signature,
         explorer: 'https://solscan.io/tx/' + signature });
