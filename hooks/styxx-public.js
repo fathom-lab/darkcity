@@ -55,7 +55,7 @@ function register(app, pool) {
             AND normalized_score IS NOT NULL
           GROUP BY citizen_id
         )
-        SELECT ea.agent_id, ea.district,
+        SELECT ea.agent_id, ea.district, ea.sol_pubkey,
                COALESCE(ea.styxx_cached, 0)::float AS balance,
                COALESCE(r24.earned_24h, 0) AS earned_24h,
                COALESCE(r7.earned_7d, 0) AS earned_7d,
@@ -88,6 +88,7 @@ function register(app, pool) {
           return {
             agent_id: r.agent_id,
             district: r.district || '—',
+            wallet: r.sol_pubkey,
             balance: Number(r.balance || 0),
             earned_24h: Number(r.earned_24h || 0),
             earned_7d: earned7d,
@@ -1253,7 +1254,10 @@ function loadEarn() {
       return \`
         <tr style="border-bottom: 1px solid var(--line);">
           <td style="padding: 14px 18px;">
-            <div style="font-family: var(--font-display); font-weight: 500; font-size: 17px; color: var(--fg); letter-spacing: -0.01em;">\${a.agent_id}</div>
+            <div style="font-family: var(--font-display); font-weight: 500; font-size: 17px; color: var(--fg); letter-spacing: -0.01em;">
+              \${a.agent_id}
+              \${a.wallet ? '<a href="https://solscan.io/account/' + a.wallet + '" target="_blank" title="Verify on Solscan" style="color:var(--fg-subtle);font-size:12px;margin-left:6px;text-decoration:none">\u2197</a>' : ''}
+            </div>
             <div style="font-size: 12px; color: var(--fg-subtle); margin-top: 2px;">\${a.district}</div>
           </td>
           <td style="padding: 14px 18px;">
