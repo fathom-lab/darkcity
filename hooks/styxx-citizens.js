@@ -200,9 +200,31 @@ function register(app, pool) {
           text: (r.memo || '').slice(0, 280),
           depth: r.depth !== null ? Number(r.depth) : null,
         })),
-      ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, limit);
+      ].sort((a, b) => new Date(b.at) - new Date(a.at));
 
-      res.json({ ts: new Date().toISOString(), events });
+      // Proportional allocation: when 'all' is selected, guarantee at least
+      // half of the limit goes to each kind. NPC brain ticks produce thoughts
+      // at ~4/min but tx events are rarer (~1/min typical, bursts on pulses)
+      // so pure time-sort would starve txs. Split takes min(half_limit,
+      // available_of_that_kind) each, then top-up from whichever has more.
+      let finalEvents;
+      if (kind === 'all') {
+        const half = Math.ceil(limit / 2);
+        const takeTx  = events.filter(e => e.kind === 'tx').slice(0, half);
+        const takeTh  = events.filter(e => e.kind === 'thought').slice(0, half);
+        const merged  = [...takeTx, ...takeTh].sort((a, b) => new Date(b.at) - new Date(a.at));
+        // Backfill any unused slots with the other kind
+        if (merged.length < limit) {
+          const remaining = events.filter(e => !merged.includes(e)).slice(0, limit - merged.length);
+          merged.push(...remaining);
+          merged.sort((a, b) => new Date(b.at) - new Date(a.at));
+        }
+        finalEvents = merged.slice(0, limit);
+      } else {
+        finalEvents = events.slice(0, limit);
+      }
+
+      res.json({ ts: new Date().toISOString(), events: finalEvents });
     } catch (e) {
       console.error('[tape/feed]', e.message);
       res.status(500).json({ error: e.message });
