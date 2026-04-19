@@ -497,6 +497,131 @@ async function mintFinalize(req, res) {
 // Two-step flow same as mint. Sponsor sends STYXX to treasury with
 // memo=sponsor:<quote_id>. Backend verifies + creates the sponsorship row.
 
+// ─── ④ TIP — pay an agent directly for a specific thought ───────────────────
+// Social-micropayment primitive. User sees a thought they value on /tape or
+// /flow, tips X $STYXX straight into that agent's Solana wallet. 99% to the
+// agent, 1% to the city treasury. A twitter-like "like with money" but the
+// recipient is an autonomous AI, and the payment is a real on-chain tx.
+// Optional `thought_id` associates the tip with a specific reasoning event
+// so the dataset captures what kinds of reasoning get rewarded.
+async function tipQuote(req, res) {
+  try {
+    const { tipper_pubkey, agent_id, amount_styxx, thought_id } = req.body || {};
+    if (!tipper_pubkey || !agent_id || !amount_styxx) {
+      return res.status(400).json({ error: 'tipper_pubkey, agent_id, amount_styxx required' });
+    }
+    const amt = Number(amount_styxx);
+    if (!Number.isFinite(amt) || amt < 0.01) {
+      return res.status(400).json({ error: 'amount_styxx must be >= 0.01' });
+    }
+    const { rows: agents } = await pool.query(
+      'SELECT agent_id, sol_pubkey, euthanized_at FROM external_agents WHERE agent_id = $1',
+      [agent_id]
+    );
+    if (!agents.length || !agents[0].sol_pubkey) {
+      return res.status(404).json({ error: 'agent_not_found_or_no_wallet' });
+    }
+    if (agents[0].euthanized_at) return res.status(400).json({ error: 'agent_euthanized' });
+
+    const quote_id = crypto.randomUUID();
+    const memo = 'tip:' + quote_id;
+    const destPubkey = styxx.getTreasury().publicKey.toBase58();
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tip_quotes (
+        quote_id TEXT PRIMARY KEY,
+        tipper_pubkey TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        amount_styxx NUMERIC NOT NULL,
+        thought_id TEXT,
+        memo TEXT NOT NULL,
+        destination TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        finalized BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `INSERT INTO tip_quotes (quote_id, tipper_pubkey, agent_id, amount_styxx, thought_id, memo, destination, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, NOW() + INTERVAL '10 minutes')`,
+      [quote_id, tipper_pubkey, agent_id, amt, thought_id || null, memo, destPubkey]
+    );
+
+    return res.json({
+      quote_id,
+      amount_styxx: amt,
+      destination: destPubkey,
+      memo,
+      agent_id,
+      split: { agent_pct: 99, city_pct: 1 },
+      instructions: 'Send ' + amt + ' STYXX to ' + destPubkey + ' with memo "' + memo + '". Then POST /api/tip/finalize.',
+    });
+  } catch (err) {
+    console.error('[tip/quote]', err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+async function tipFinalize(req, res) {
+  try {
+    const { quote_id, tx_signature } = req.body || {};
+    const { rows } = await pool.query('SELECT * FROM tip_quotes WHERE quote_id = $1', [quote_id]);
+    if (!rows.length) return res.status(404).json({ error: 'quote_not_found' });
+    const q = rows[0];
+    if (q.finalized) return res.status(409).json({ error: 'already_finalized' });
+    if (new Date(q.expires_at).getTime() < Date.now()) return res.status(410).json({ error: 'quote_expired' });
+
+    const ver = await verifyStyxxPayment({
+      tx_signature,
+      expected_from_pubkey: q.tipper_pubkey,
+      expected_to_pubkey: q.destination,
+      expected_amount: Number(q.amount_styxx),
+      expected_memo: q.memo,
+    });
+    if (!ver.ok) return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
+
+    const amt = Number(q.amount_styxx);
+    const cityCut = amt * 0.01;   // 1% to city
+    const agentCut = amt - cityCut;
+
+    // Forward 99% to agent's wallet
+    const { rows: agentRow } = await pool.query(
+      'SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [q.agent_id]
+    );
+    const agentPubkey = agentRow[0]?.sol_pubkey;
+    if (!agentPubkey) return res.status(500).json({ error: 'agent_has_no_wallet' });
+
+    const { signature: fwdSig } = await styxx.airdropFromTreasury(agentPubkey, agentCut);
+    await pool.query(`
+      INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+      VALUES ($1,'TREASURY',$2,$3,$4,$5,'tip_forward',$6)
+      ON CONFLICT (tx_signature) DO NOTHING
+    `, [fwdSig, styxx.getTreasury().publicKey.toBase58(), q.agent_id, agentPubkey, agentCut, 'tip:' + quote_id + ':' + q.thought_id]);
+
+    // Record tip in agent_earnings so it counts toward their stats
+    await pool.query(`
+      INSERT INTO agent_earnings (agent_id, amount, source, source_ref)
+      VALUES ($1, $2, 'social_tip', $3)
+    `, [q.agent_id, agentCut, q.thought_id || quote_id]);
+
+    await pool.query('UPDATE tip_quotes SET finalized = TRUE WHERE quote_id = $1', [quote_id]);
+
+    return res.json({
+      ok: true,
+      agent_id: q.agent_id,
+      amount_tipped: amt,
+      agent_received: agentCut,
+      city_cut: cityCut,
+      forward_tx: fwdSig,
+      explorer: 'https://solscan.io/tx/' + fwdSig,
+      message: 'Tipped ' + agentCut.toFixed(2) + ' $STYXX to ' + q.agent_id + '. Their wallet received it on-chain.',
+    });
+  } catch (err) {
+    console.error('[tip/finalize]', err);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 async function sponsorQuote(req, res) {
   try {
     const { sponsor_pubkey, agent_id, amount_styxx } = req.body || {};
@@ -1317,12 +1442,14 @@ function installRoutes(app) {
   app.post('/api/hyphal/quote',   hyphalQuote);
   app.post('/api/hyphal/finalize', hyphalFinalize);
   app.post('/api/hyphal/sever',   hyphalSever);
+  app.post('/api/tip/quote',      tipQuote);
+  app.post('/api/tip/finalize',   tipFinalize);
   app.get('/api/portfolio',       portfolio);
   app.get('/api/portfolio/:owner', portfolio);
   app.post('/api/agents/:id/withdraw',           agentWithdraw);
   app.post('/api/agents/:id/payout-wallet',      updatePayoutWallet);
   app.get('/api/map/live',                       mapLive);
-  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / portfolio / withdraw / map/live');
+  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live');
 }
 
 module.exports = {
