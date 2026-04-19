@@ -595,21 +595,54 @@ td.right.green { color: var(--accent); }
 
   window.dcWithdraw = async function(agentId) {
     if (!wallet) return alert('no wallet loaded');
-    if (!confirm('Withdraw all available $STYXX from ' + agentId + ' to ' + short(wallet) + '?\\n(A 50 $STYXX reserve stays for cognition fee.)')) return;
+    if (!window.solana || !window.solana.isPhantom) {
+      return alert('Phantom wallet required — install it at phantom.com, then retry.');
+    }
+    if (!confirm('Claim your $STYXX from ' + agentId + ' into your connected wallet?\\n(Phantom will pop up to sign — no transaction fee, just proof of ownership. A 50 $STYXX reserve stays in the agent so it keeps running.)')) return;
     try {
+      // Connect if not already
+      if (!window.solana.publicKey) await window.solana.connect();
+      // Sign the message proving ownership
+      const ts = Date.now();
+      const message = 'darkcity:withdraw:' + agentId + ':' + ts;
+      const encoded = new TextEncoder().encode(message);
+      const signed = await window.solana.signMessage(encoded);
+      // Phantom returns signature as Uint8Array; encode base58
+      const sigB58 = bs58EncodeUint8(signed.signature || signed);
+
       const r = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/withdraw', {
         method: 'POST', headers: {'content-type': 'application/json'},
-        body: JSON.stringify({ owner_pubkey: wallet }),
+        body: JSON.stringify({
+          owner_pubkey: wallet,
+          message,
+          signature: sigB58,
+        }),
       });
       const j = await r.json();
       if (j.ok) {
-        alert('Withdrew ' + j.withdrawn_styxx.toFixed(2) + ' $STYXX\\nTx: ' + j.tx_signature);
+        alert('✓ Claimed ' + j.withdrawn_styxx.toFixed(2) + ' $STYXX\\nTx: ' + j.tx_signature);
         load();
       } else {
-        alert('Withdraw failed: ' + (j.error || JSON.stringify(j)));
+        alert('Withdraw failed: ' + (j.error || j.reason || JSON.stringify(j)));
       }
-    } catch (e) { alert('Withdraw error: ' + e.message); }
+    } catch (e) {
+      if (e.code === 4001 || /rejected/i.test(e.message)) return;  // user cancelled
+      alert('Withdraw error: ' + e.message);
+    }
   };
+
+  // Minimal base58 encoder (Phantom's signMessage returns raw bytes; we
+  // need base58 to match what the backend decoder expects).
+  function bs58EncodeUint8(bytes) {
+    const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    let num = 0n;
+    for (const b of bytes) num = (num << 8n) + BigInt(b);
+    let out = '';
+    while (num > 0n) { out = ALPHABET[Number(num % 58n)] + out; num /= 58n; }
+    // Preserve leading zero bytes
+    for (let i = 0; i < bytes.length && bytes[i] === 0; i++) out = '1' + out;
+    return out;
+  }
 
   async function load() {
     if (!wallet) { showEmpty(); return; }

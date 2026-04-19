@@ -19,8 +19,62 @@
 'use strict';
 
 const crypto = require('crypto');
+const bs58 = require('bs58');
 const styxx  = require('../lib/solana-styxx');
 const payments = require('./styxx-payments');
+
+// ─── Ed25519 ownership-signature verification ──────────────────────────────
+// Used by withdraw + payout-wallet + sponsor unstake to prove the caller
+// controls the private key for a given Solana pubkey. Without this, anyone
+// who knows an owner's public key (which is visible on /api/portfolio)
+// could trigger privileged actions for them.
+//
+// Client-side: user signs the message via window.solana.signMessage(utf8bytes)
+// which returns { signature: Uint8Array }. Client sends base58 encoding.
+//
+// Server-side: we rebuild the DER-wrapped ed25519 public key for Node's
+// crypto.verify — no external deps needed.
+//
+// Safety rails:
+//   - Message MUST include the expectedPrefix (action + resource + params)
+//   - Message MUST include a unix timestamp within ±10 minutes of now
+//     (prevents indefinite replay if a message leaks)
+function verifyOwnershipSignature({ pubkey, signatureB58, message, expectedPrefix }) {
+  if (!pubkey || !signatureB58 || !message) {
+    return { ok: false, reason: 'missing_auth_fields' };
+  }
+  if (!message.startsWith(expectedPrefix)) {
+    return { ok: false, reason: 'prefix_mismatch', expected: expectedPrefix };
+  }
+  // Extract timestamp from end of message (prefix ends with ':' then ts)
+  const tsMatch = message.match(/:(\d{9,13})$/);
+  if (!tsMatch) return { ok: false, reason: 'no_timestamp' };
+  const ts = parseInt(tsMatch[1], 10);
+  const now = Date.now();
+  // Accept either seconds or milliseconds
+  const tsMs = ts < 1e11 ? ts * 1000 : ts;
+  if (Math.abs(now - tsMs) > 10 * 60 * 1000) {
+    return { ok: false, reason: 'timestamp_out_of_window' };
+  }
+  try {
+    const sig = bs58.decode(signatureB58);
+    const pub = bs58.decode(pubkey);
+    if (pub.length !== 32 || sig.length !== 64) {
+      return { ok: false, reason: 'bad_key_or_sig_length' };
+    }
+    // Wrap raw 32-byte ed25519 public key in DER/SPKI so Node crypto can load it
+    const derHeader = Buffer.from([
+      0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65,
+      0x70, 0x03, 0x21, 0x00,
+    ]);
+    const spki = Buffer.concat([derHeader, Buffer.from(pub)]);
+    const pubKey = crypto.createPublicKey({ key: spki, format: 'der', type: 'spki' });
+    const ok = crypto.verify(null, Buffer.from(message, 'utf8'), pubKey, Buffer.from(sig));
+    return ok ? { ok: true } : { ok: false, reason: 'signature_invalid' };
+  } catch (err) {
+    return { ok: false, reason: 'verify_error', detail: err.message };
+  }
+}
 
 let pool = null;
 
@@ -804,7 +858,7 @@ async function portfolio(req, res) {
 async function agentWithdraw(req, res) {
   try {
     const agentId = req.params.id || req.body.agent_id;
-    const { owner_pubkey, amount, destination } = req.body || {};
+    const { owner_pubkey, amount, signature: sigB58, message: sigMessage } = req.body || {};
     if (!agentId || !owner_pubkey) {
       return res.status(400).json({ error: 'agent_id and owner_pubkey required' });
     }
@@ -819,10 +873,24 @@ async function agentWithdraw(req, res) {
       return res.status(403).json({ error: 'not_owner' });
     }
 
-    // Destination: if provided, send to an alternate pubkey; else default to
-    // owner_pubkey. Alternate destination can be used to pay straight into a
-    // hardware wallet / exchange address without updating the owner record.
-    const dest = destination || owner_pubkey;
+    // SECURITY: require signed message from owner_pubkey proving they
+    // own the pubkey (prevents attacker from triggering withdrawal just
+    // because they know the public pubkey, which is discoverable via
+    // /api/portfolio).
+    const verified = verifyOwnershipSignature({
+      pubkey: owner_pubkey, signatureB58: sigB58, message: sigMessage,
+      expectedPrefix: 'darkcity:withdraw:' + agentId + ':',
+    });
+    if (!verified.ok) {
+      return res.status(401).json({ error: 'signature_required', reason: verified.reason,
+        hint: 'Sign the message "darkcity:withdraw:' + agentId + ':<current-unix-ts>" in your wallet and send { message, signature } with the request.' });
+    }
+
+    // DESTINATION IS ALWAYS THE STORED OWNER PUBKEY — user-provided
+    // `destination` was a theft vector (attacker could redirect funds).
+    // Owners who need to pay to an alternate address should first
+    // update their payout-wallet record, then withdraw.
+    const dest = owner_pubkey;
 
     // Check balance. Reserve 1 week of cognition fee so agent doesn't go dormant.
     const { rows: paramRows } = await pool.query(
@@ -888,7 +956,7 @@ async function agentWithdraw(req, res) {
 async function updatePayoutWallet(req, res) {
   try {
     const agentId = req.params.id || req.body.agent_id;
-    const { current_owner_pubkey, new_owner_pubkey } = req.body || {};
+    const { current_owner_pubkey, new_owner_pubkey, signature: sigB58, message: sigMessage } = req.body || {};
     if (!agentId || !current_owner_pubkey || !new_owner_pubkey) {
       return res.status(400).json({ error: 'agent_id, current_owner_pubkey, new_owner_pubkey required' });
     }
@@ -899,6 +967,18 @@ async function updatePayoutWallet(req, res) {
     if (!rows.length) return res.status(404).json({ error: 'agent_not_found' });
     if (rows[0].owner_pubkey !== current_owner_pubkey) {
       return res.status(403).json({ error: 'not_current_owner' });
+    }
+
+    // Signed message required — critical security gate because this changes
+    // the payout destination permanently. Message must bind the new_owner
+    // so an attacker can't substitute a different destination.
+    const verified = verifyOwnershipSignature({
+      pubkey: current_owner_pubkey, signatureB58: sigB58, message: sigMessage,
+      expectedPrefix: 'darkcity:payout-wallet:' + agentId + ':' + new_owner_pubkey + ':',
+    });
+    if (!verified.ok) {
+      return res.status(401).json({ error: 'signature_required', reason: verified.reason,
+        hint: 'Sign "darkcity:payout-wallet:' + agentId + ':' + new_owner_pubkey + ':<unix-ts>" in your wallet.' });
     }
 
     await pool.query(
