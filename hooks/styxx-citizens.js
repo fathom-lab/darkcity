@@ -136,25 +136,32 @@ function register(app, pool) {
   app.get('/api/tape/feed', async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit) || 60, 200);
+      const kind = (req.query.kind || 'all').toLowerCase();  // all|trades|thoughts|rewards
       const sinceParam = req.query.since;
       let since = null;
       if (sinceParam) since = new Date(sinceParam);
 
-      const params = since ? [since, limit] : [limit];
-      const whereClause = since ? 'WHERE confirmed_at > $1' : '';
+      // Per-kind fetch quota — 2× the requested limit each side so after
+      // time-merge we have headroom. Previous bug: both queries returned
+      // exactly limit rows, then ".slice(0,limit)" threw away whichever
+      // kind was older. Result: all thoughts (recent), zero txs (older).
+      const kindLimit = limit * 2;
+      const params = since ? [since, kindLimit] : [kindLimit];
       const txWhere = since ? 'WHERE confirmed_at > $1' : '';
-      const deWhere = since ? 'WHERE created_at > $1 AND raw_output IS NOT NULL AND length(raw_output) > 15'
-                            : 'WHERE raw_output IS NOT NULL AND length(raw_output) > 15';
+
+      // Skip the heavy query if the caller asked for only one kind.
+      const wantsTx     = kind === 'all' || kind === 'trades' || kind === 'rewards';
+      const wantsThought = kind === 'all' || kind === 'thoughts';
 
       const [txs, narr] = await Promise.all([
-        pool.query(`
+        wantsTx ? pool.query(`
           SELECT 'tx' AS kind, tx_signature AS id, from_agent_id AS a, to_agent_id AS b,
                  amount, reason, memo, confirmed_at AS at
           FROM styxx_transfers ${txWhere}
+          ${kind === 'rewards' ? (txWhere ? 'AND' : 'WHERE') + " reason IN ('activity_reward','contract_completion','mint_grant','trade_profit','weekly_sponsor','referral_bonus','hyphal_flow','fruiting_dividend')" : ''}
           ORDER BY confirmed_at DESC LIMIT ${since ? '$2' : '$1'}
-        `, params),
-        // Pull narratives from agent_actions.details (live) instead of stale depth_evaluations.
-        pool.query(`
+        `, params) : { rows: [] },
+        wantsThought ? pool.query(`
           SELECT 'thought' AS kind,
                  created_at::text AS id,
                  agent_id AS a,
@@ -168,7 +175,7 @@ function register(app, pool) {
             AND COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity') IS NOT NULL
             AND length(COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity')) > 20
           ORDER BY created_at DESC LIMIT ${since ? '$2' : '$1'}
-        `, params),
+        `, params) : { rows: [] },
       ]);
 
       const events = [
