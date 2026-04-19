@@ -773,6 +773,21 @@ body {
       <div id="ad-status" style="font-size:11px;color:var(--fg-subtle,#5a5a64);line-height:1.55"></div>
     </div>
 
+    <!-- Tip CTA — direct 99% → agent's wallet, no staking, no wait -->
+    <div style="margin-top:20px;padding-top:16px;border-top:1px dashed var(--line,rgba(255,255,255,.06))">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64)">Tip this agent</div>
+        <div style="font-size:10px;color:var(--fg-subtle,#5a5a64);font-family:var(--font-mono,monospace)">99% \u2192 agent</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr) auto;gap:6px;margin-bottom:8px">
+        <button class="ad-tip-btn" data-amt="1"  style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">1</button>
+        <button class="ad-tip-btn" data-amt="5"  style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">5</button>
+        <button class="ad-tip-btn" data-amt="25" style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">25</button>
+        <button id="ad-tip-go" style="padding:10px 14px;background:transparent;color:var(--accent,#43ffb4);border:1px solid var(--accent,#43ffb4);border-radius:6px;font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Tip \u2192</button>
+      </div>
+      <div id="ad-tip-status" style="font-size:11px;color:var(--fg-subtle,#5a5a64);line-height:1.5"></div>
+    </div>
+
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--line,rgba(255,255,255,.06));display:flex;gap:8px;flex-wrap:wrap">
       <a id="ad-solscan" target="_blank" class="btn" style="padding:8px 14px;border:1px solid var(--hair,rgba(255,255,255,.12));border-radius:6px;color:var(--fg-muted,#a0a0aa);font-size:12px;text-decoration:none">Wallet on Solscan \u2197</a>
       <a id="ad-dossier" target="_blank" class="btn" style="padding:8px 14px;border:1px solid var(--hair,rgba(255,255,255,.12));border-radius:6px;color:var(--fg-muted,#a0a0aa);font-size:12px;text-decoration:none">Full dossier \u2192</a>
@@ -784,6 +799,9 @@ body {
   #agentDrawer .ad-sponsor-btn:hover { border-color: var(--accent,#43ffb4); color: var(--accent,#43ffb4); }
   #agentDrawer .ad-sponsor-btn.sel { border-color: var(--accent,#43ffb4); background: rgba(67,255,180,.08); color: var(--accent,#43ffb4); }
   #agentDrawer #ad-sponsor-go:hover { filter: brightness(1.1); }
+  #agentDrawer .ad-tip-btn:hover { border-color: var(--accent,#43ffb4); color: var(--accent,#43ffb4); }
+  #agentDrawer .ad-tip-btn.sel { border-color: var(--accent,#43ffb4); background: rgba(67,255,180,.08); color: var(--accent,#43ffb4); }
+  #agentDrawer #ad-tip-go:hover { background: rgba(67,255,180,.08); }
 </style>
 
 <!-- Agent search — press "/" or cmd+K to open, type, press enter to fly to agent -->
@@ -1664,6 +1682,57 @@ document.getElementById('ad-sponsor-go')?.addEventListener('click', async () => 
     const f = await finR.json();
     if (!finR.ok || !f.ok) return setStatus('Finalize failed: ' + (f.reason || f.error || 'unknown'), true);
     setStatus('✓ Sponsoring ' + _drawerAgent.id + ' with ' + amt.toLocaleString() + ' \$STYXX. Next payout in ≤4h. Check /me to watch it grow.');
+  } catch (e) {
+    if (e.code === 4001 || /rejected/i.test(e.message || '')) { setStatus('Cancelled.'); return; }
+    setStatus('Error: ' + (e.message || e), true);
+  }
+});
+
+// ─── Tip handler — instant 99% forward to agent's wallet ────────────────
+let _tipAmt = 5;
+document.querySelectorAll('.ad-tip-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ad-tip-btn').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    _tipAmt = Number(btn.getAttribute('data-amt'));
+  });
+});
+document.getElementById('ad-tip-go')?.addEventListener('click', async () => {
+  const setStatus = (m, err) => {
+    const el = document.getElementById('ad-tip-status');
+    if (el) { el.style.color = err ? '#ff6b8a' : 'var(--accent,#43ffb4)'; el.textContent = m; }
+  };
+  if (!_drawerAgent) return;
+  try {
+    if (!window.solana || !window.solana.isPhantom) {
+      setStatus('Install Phantom, then retry.', true);
+      window.open('https://phantom.com', '_blank'); return;
+    }
+    if (!_drawerWallet) {
+      const r = await window.solana.connect();
+      _drawerWallet = r.publicKey.toString();
+    }
+    setStatus('Quoting tip for ' + _tipAmt + ' \$STYXX…');
+    const qR = await fetch('/api/tip/quote', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tipper_pubkey: _drawerWallet, agent_id: _drawerAgent.id, amount_styxx: _tipAmt }),
+    });
+    const q = await qR.json();
+    if (!qR.ok || !q.quote_id) return setStatus('Quote failed: ' + (q.error || 'unknown'), true);
+    if (typeof window.dcAutoSign !== 'function') return setStatus('Auto-sign helper missing.', true);
+    setStatus('Signing in Phantom…');
+    const { signature } = await window.dcAutoSign({
+      destination: q.destination, amount: Number(q.amount_styxx), memo: q.memo,
+    });
+    setStatus('Tx sent. Forwarding to agent…');
+    await new Promise(r => setTimeout(r, 3500));
+    const fR = await fetch('/api/tip/finalize', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ quote_id: q.quote_id, tx_signature: signature }),
+    });
+    const f = await fR.json();
+    if (!fR.ok || !f.ok) return setStatus('Finalize failed: ' + (f.reason || f.error || 'unknown'), true);
+    setStatus('\u2713 Tipped ' + f.agent_received.toFixed(2) + ' \$STYXX to ' + _drawerAgent.id + '. Landed on-chain.');
   } catch (e) {
     if (e.code === 4001 || /rejected/i.test(e.message || '')) { setStatus('Cancelled.'); return; }
     setStatus('Error: ' + (e.message || e), true);
