@@ -388,9 +388,15 @@ async function mintFinalize(req, res) {
     const refBps  = Number(params.referral_mint_bonus_bps || 1000);
     const refDays = Number(params.referral_duration_days || 90);
 
-    const burnAmt   = Number(q.fee_styxx) * bps(burnBps);
-    const poolAmt   = Number(q.fee_styxx) * bps(poolBps);
-    const refBonus  = q.referred_by_pubkey ? Number(q.fee_styxx) * bps(refBps) : 0;
+    // Burn fraction is split between a REAL on-chain burn and the city pool.
+    // We burn a conservative 10% of the mint fee's "burn allocation" (so 5%
+    // of total mint fee at default bps) to start — visible deflationary
+    // pressure without risking treasury drain on first real launches. Rest
+    // stays in treasury for pulse budget.
+    const burnAmt    = Number(q.fee_styxx) * bps(burnBps);
+    const poolAmt    = Number(q.fee_styxx) * bps(poolBps);
+    const refBonus   = q.referred_by_pubkey ? Number(q.fee_styxx) * bps(refBps) : 0;
+    const realBurnAmt = Math.floor(Number(q.fee_styxx) * 0.10);  // 10% of gross mint fee
 
     // Log on-chain mint tx (we received the fee already — treasury just holds it)
     // Actual burn is a follow-up instruction we enqueue; for V1 we track it as
@@ -411,6 +417,23 @@ async function mintFinalize(req, res) {
           q.owner_pubkey, q.referred_by_pubkey,
           pubkey, encPriv, starterGrant,
           tx_signature, q.fee_usd, q.fee_styxx, starterGrant]);
+
+      // REAL on-chain burn — 10% of mint fee destroyed permanently from
+      // treasury ATA. Best-effort: if burn fails we still complete the mint;
+      // user isn't penalized for our infra issues.
+      try {
+        if (realBurnAmt > 0) {
+          const { signature: burnSig } = await styxx.burnFromTreasury(realBurnAmt);
+          await pool.query(`
+            INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+            VALUES ($1,'TREASURY',$2,'BURN','BURN',$3,'mint_fee_burn',$4)
+            ON CONFLICT (tx_signature) DO NOTHING
+          `, [burnSig, styxx.getTreasury().publicKey.toBase58(), realBurnAmt, `mint:${quote_id}`]);
+          console.log(`[mint-burn] destroyed ${realBurnAmt} STYXX, tx=${burnSig}`);
+        }
+      } catch (burnErr) {
+        console.warn('[mint-burn] failed (non-fatal):', burnErr.message);
+      }
 
       // Starter grant on-chain (treasury → new agent)
       const { signature: grantSig } = await styxx.airdropFromTreasury(pubkey, starterGrant);
