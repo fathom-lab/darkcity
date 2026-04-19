@@ -99,13 +99,53 @@ async function getParams(keys) {
 function bps(n) { return Number(n) / 10000; }
 
 // ─── STYXX/USD price oracle ─────────────────────────────────────────────────
-// V1: env var. V2: Jupiter quote. Set STYXX_USD_PRICE in Railway.
-// Fallback 0.0001 (so a $50 fee = 500k STYXX; visible if price oracle fails).
+// Three-tier fallback:
+//   1. Jupiter Price API v2 (refreshes every 60s in the background)
+//   2. STYXX_USD_PRICE env var (manual override, survives Jupiter outages)
+//   3. Hard floor 0.00004 (never zero; a mint will still cost something)
+
+let _priceCache = { usd: null, at: 0 };
+const _PRICE_TTL_MS = 60 * 1000;
+const STYXX_MINT_ADDR = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+
+async function refreshPriceFromJupiter() {
+  try {
+    const r = await fetch('https://lite-api.jup.ag/price/v2?ids=' + STYXX_MINT_ADDR, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) throw new Error('jup http ' + r.status);
+    const j = await r.json();
+    const p = Number(j?.data?.[STYXX_MINT_ADDR]?.price);
+    if (Number.isFinite(p) && p > 0) {
+      _priceCache = { usd: p, at: Date.now() };
+      return p;
+    }
+  } catch (e) {
+    // Swallow — fallback below handles it. Log once-per-minute at most.
+    if (Date.now() - (_priceCache.lastWarnAt || 0) > 60_000) {
+      _priceCache.lastWarnAt = Date.now();
+      console.warn('[price-oracle] Jupiter fetch failed:', e.message);
+    }
+  }
+  return null;
+}
+
+// Fire on module load, then every 60s in background. Non-blocking.
+if (typeof fetch === 'function') {
+  refreshPriceFromJupiter();
+  setInterval(() => { refreshPriceFromJupiter().catch(() => {}); }, _PRICE_TTL_MS);
+}
 
 function getStyxxUsdPrice() {
-  const p = parseFloat(process.env.STYXX_USD_PRICE || '0.0001');
-  if (!Number.isFinite(p) || p <= 0) return 0.0001;
-  return p;
+  // 1. Fresh Jupiter cache
+  if (_priceCache.usd && (Date.now() - _priceCache.at) < _PRICE_TTL_MS * 4) {
+    return _priceCache.usd;
+  }
+  // 2. Env var manual override
+  const env = parseFloat(process.env.STYXX_USD_PRICE || '');
+  if (Number.isFinite(env) && env > 0) return env;
+  // 3. Floor — never zero so mint math always works
+  return 0.00004;
 }
 
 function usdToStyxx(usdAmount) {

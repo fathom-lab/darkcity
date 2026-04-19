@@ -786,6 +786,23 @@ body {
   #agentDrawer #ad-sponsor-go:hover { filter: brightness(1.1); }
 </style>
 
+<!-- Agent search — press "/" or cmd+K to open, type, press enter to fly to agent -->
+<div id="agentSearch" style="position:fixed;top:68px;right:20px;z-index:56;display:none;padding:8px 12px;border-radius:999px;background:rgba(10,10,11,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--hair,rgba(255,255,255,.12));font-family:var(--font-mono,monospace);font-size:12px">
+  <span style="color:var(--fg-subtle,#5a5a64);margin-right:6px">find</span>
+  <input id="agentSearchInput" placeholder="agent name…" autocomplete="off" style="background:transparent;border:none;outline:none;color:var(--fg,#ededef);font-family:inherit;font-size:12px;width:160px">
+  <span id="agentSearchHint" style="color:var(--fg-subtle,#5a5a64);margin-left:6px;font-size:10px">esc</span>
+</div>
+<style>
+  @media (max-width: 720px) {
+    #flowVelocity { display: none !important; }
+    #agentSearch { top: 56px; right: 10px; padding: 6px 10px; }
+    #agentSearchInput { width: 110px; }
+    .nav-cta { padding: 4px 10px !important; font-size: 10px !important; }
+    .nav-cta-ghost { padding: 4px 10px !important; font-size: 10px !important; }
+    .onboard { font-size: 12px; }
+  }
+</style>
+
 <!-- Flow velocity counter -->
 <div id="flowVelocity" style="position:fixed;top:68px;left:50%;transform:translateX(-50%);z-index:55;padding:6px 14px;border-radius:999px;background:rgba(10,10,11,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--hair,rgba(255,255,255,.1));font-family:var(--font-mono,monospace);font-size:11px;letter-spacing:.08em;color:var(--fg-muted,#a0a0aa);display:flex;align-items:center;gap:8px;pointer-events:none">
   <span style="width:5px;height:5px;border-radius:50%;background:var(--accent,#43ffb4);box-shadow:0 0 6px var(--accent,#43ffb4);animation:pulse 1.5s ease-in-out infinite"></span>
@@ -1230,6 +1247,22 @@ function drawNet(t) {
       netCtx.fillRect(a.x - glowR, a.y - glowR, glowR * 2, glowR * 2);
     }
 
+    // Rank aura — Sovereign+ get a second outer stroke ring, Lich_King a
+    // warm-tinted accent. Restrained: thin, low alpha, visible only on online
+    // + high-rank agents. No crown particles, no heavy treatment.
+    const rankStr = (a.rank || '').toString().toUpperCase();
+    if (a.online && (rankStr.includes('SOVEREIGN') || rankStr.includes('ARCHITECT') || rankStr.includes('LICH'))) {
+      const isLich = rankStr.includes('LICH');
+      const rankR = rad * (isLich ? 1.95 : 1.75);
+      netCtx.beginPath();
+      netCtx.arc(a.x, a.y, rankR, 0, 6.28);
+      netCtx.strokeStyle = isLich
+        ? 'rgba(255,107,138,' + (0.30 * breath) + ')'  // warm accent for Lich
+        : 'rgba(240,200,100,' + (0.22 * breath) + ')'; // soft gold for Sovereign/Architect
+      netCtx.lineWidth = isLich ? 1.2 : 0.9;
+      netCtx.stroke();
+    }
+
     // Outer ring — tier color, thin, not solid
     const rr = rad * (isH ? 1.15 : 1);
     netCtx.beginPath();
@@ -1656,6 +1689,67 @@ async function refreshVelocity() {
 }
 refreshVelocity();
 setInterval(refreshVelocity, 3000);
+
+// ═══ Agent search ══════════════════════════════════════════════════════════
+// "/" or cmd+K opens. Type to filter. Enter: fly-to-camera on top match.
+// Esc: close. Autocomplete: first agent id whose normalized name starts with
+// the query, then any that contains it.
+(function(){
+  const box = document.getElementById('agentSearch');
+  const input = document.getElementById('agentSearchInput');
+  if (!box || !input) return;
+  const open = () => { box.style.display = 'block'; setTimeout(() => input.focus(), 20); };
+  const close = () => { box.style.display = 'none'; input.value = ''; };
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      if (e.key === 'Escape' && e.target === input) close();
+      return;
+    }
+    if (e.key === '/' || (e.key === 'k' && (e.metaKey || e.ctrlKey))) {
+      e.preventDefault(); open();
+    }
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = input.value.trim().toUpperCase().replace(/\\s+/g, '_');
+      if (!q) return;
+      // First: startsWith, then includes
+      const ids = [...agents.keys()];
+      let hit = ids.find(id => id.toUpperCase().startsWith(q));
+      if (!hit) hit = ids.find(id => id.toUpperCase().includes(q));
+      if (!hit) {
+        input.style.color = '#ff6b8a';
+        setTimeout(() => input.style.color = '', 700);
+        return;
+      }
+      const a = agents.get(hit);
+      if (!a) return;
+      // Fly camera: set view so agent is at screen center with ~1.4x zoom
+      const targetK = Math.max(1.2, Math.min(2.0, view.k * 1.2));
+      const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+      const animateView = { x: view.x, y: view.y, k: view.k };
+      const goalK = targetK;
+      const goalX = cx - a.x * goalK;
+      const goalY = cy - a.y * goalK;
+      const start = performance.now();
+      const dur = 500;
+      function step(now) {
+        const u = Math.min(1, (now - start) / dur);
+        const ease = u < .5 ? 2*u*u : 1 - Math.pow(-2*u+2, 2)/2;
+        view.x = animateView.x + (goalX - animateView.x) * ease;
+        view.y = animateView.y + (goalY - animateView.y) * ease;
+        view.k = animateView.k + (goalK - animateView.k) * ease;
+        if (u < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+      // Mark hit so it glows via sparkAt
+      a.sparkAt = Date.now() + 800;   // keep highlighted a bit longer
+      close();
+    }
+  });
+})();
 
 // ═══ Pan/zoom input ════════════════════════════════════════════════════
 // Wheel: zoom around cursor. Drag empty space: pan. Dragging an agent
