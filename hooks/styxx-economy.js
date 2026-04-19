@@ -1449,7 +1449,15 @@ function installRoutes(app) {
   app.post('/api/agents/:id/withdraw',           agentWithdraw);
   app.post('/api/agents/:id/payout-wallet',      updatePayoutWallet);
   app.get('/api/map/live',                       mapLive);
-  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live');
+  app.get('/api/wallet/:pubkey/balance', async (req, res) => {
+    try {
+      const pk = req.params.pubkey;
+      if (!pk || pk.length < 32) return res.status(400).json({ error: 'invalid_pubkey' });
+      const bal = await styxx.getStyxxBalance(pk);
+      return res.json({ pubkey: pk, styxx: bal });
+    } catch (err) { return res.status(500).json({ error: err.message }); }
+  });
+  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance');
 }
 
 module.exports = {
