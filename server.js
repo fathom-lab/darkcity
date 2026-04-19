@@ -3002,6 +3002,10 @@ app.get('/favicon.svg', (req, res) => {
 app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
 
 // 404 handler — JSON for /api/* paths, branded HTML for everything else
+// MUST be registered AFTER all other routes (including the async-init ones in
+// styxx-economy / styxx-dashboard). Wrapped so we can call it at the tail of
+// startup, NOT at module-load time.
+function install404Handler(app) {
 app.use((req, res) => {
   const wantsJson = req.path.startsWith('/api/') || (req.headers.accept || '').includes('application/json');
   if (wantsJson) {
@@ -3045,6 +3049,7 @@ p{color:#9fb3c4;font-size:13px;line-height:1.6;margin-bottom:24px;max-width:48ch
 </div>
 </div></body></html>`);
 });
+}
 
 // ═══════════════════════════════════════════════════════════════
 // START
@@ -3090,6 +3095,10 @@ initDB().then(async () => {
   } else {
     console.log('[STYXX] disabled (no STYXX_TREASURY_PRIVKEY env). Set it to enable real SPL transfers.');
   }
+
+  // 404 catch-all MUST come AFTER every route registration above, including
+  // the async-init styxx economy + dashboard routes.
+  install404Handler(app);
 
   // Market price ticker — mean-reverting random walk on resource prices.
   // Without this, prices are static and arbitrage is impossible.
