@@ -1898,7 +1898,53 @@ function installRoutes(app) {
     }
   });
 
-  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover');
+  // ── Admin: founder/bonus airdrop (operator-only) ────────────────────
+  // Bonuses for early users, special events, community rewards, etc.
+  // Protected by ADMIN_TOKEN env var (must match X-Admin-Token header).
+  app.post('/api/admin/bonus', async (req, res) => {
+    try {
+      const tok = req.headers['x-admin-token'];
+      if (!tok || tok !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+      const { agent_id, amount, reason = 'founding_citizen', note = '' } = req.body || {};
+      if (!agent_id || !amount) return res.status(400).json({ error: 'agent_id and amount required' });
+
+      const { rows } = await pool.query(
+        'SELECT agent_id, sol_pubkey FROM external_agents WHERE agent_id = $1', [agent_id]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'agent_not_found' });
+      const a = rows[0];
+      if (!a.sol_pubkey) return res.status(400).json({ error: 'agent_has_no_wallet' });
+
+      const { signature } = await styxx.airdropFromTreasury(a.sol_pubkey, Number(amount));
+      const memo = reason + ':' + agent_id + (note ? ':' + note : '');
+
+      await pool.query(`
+        INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+        VALUES ($1,'TREASURY',$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (tx_signature) DO NOTHING
+      `, [signature, styxx.getTreasury().publicKey.toBase58(), a.agent_id, a.sol_pubkey, Number(amount), reason, memo]);
+
+      await pool.query(`
+        INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT DO NOTHING
+      `, [a.agent_id, Number(amount), reason, memo]);
+
+      await pool.query(`
+        INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT DO NOTHING
+      `, [reason, a.agent_id, a.sol_pubkey, Number(amount), signature]);
+
+      return res.json({ ok: true, agent_id: a.agent_id, amount, signature,
+        explorer: 'https://solscan.io/tx/' + signature });
+    } catch (err) {
+      console.error('[admin/bonus]', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover / admin/bonus');
 }
 
 module.exports = {
