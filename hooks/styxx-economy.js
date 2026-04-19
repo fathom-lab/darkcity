@@ -1684,7 +1684,128 @@ function installRoutes(app) {
       return res.json({ pubkey: pk, styxx: bal });
     } catch (err) { return res.status(500).json({ error: err.message }); }
   });
-  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance');
+
+  // ── Diagnostic: "did my mint actually go through?" ──────────────────────
+  // Any user can hit this with their quote_id to see the full state of their
+  // mint: quote status, whether agent row exists, whether starter grant
+  // landed on-chain. Solves the "I see a burn memo but don't know if I got
+  // my agent" confusion that T.Rex hit.
+  app.get('/api/mint/status/:quote_id', async (req, res) => {
+    try {
+      const { quote_id } = req.params;
+      const { rows: qRows } = await pool.query(
+        'SELECT * FROM mint_quotes WHERE quote_id = $1', [quote_id]
+      );
+      if (!qRows.length) return res.status(404).json({ error: 'quote_not_found' });
+      const q = qRows[0];
+      const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
+      const { rows: aRows } = await pool.query(
+        `SELECT agent_id, sol_pubkey, owner_pubkey, minted_at, styxx_cached,
+                mint_tx_signature, styxx_cached_at
+         FROM external_agents WHERE agent_id = $1`, [agentId]
+      );
+      const { rows: tRows } = await pool.query(
+        `SELECT tx_signature, to_agent_id, amount, reason, confirmed_at
+         FROM styxx_transfers
+         WHERE memo = $1
+         ORDER BY confirmed_at ASC`, [`mint:${quote_id}`]
+      );
+      const grant = tRows.find(t => t.reason === 'mint_grant');
+      const burn = tRows.find(t => t.reason === 'mint_fee_burn');
+      const ref = tRows.find(t => t.reason === 'referral_mint_bonus');
+
+      let liveBalance = null;
+      if (aRows[0]?.sol_pubkey) {
+        try { liveBalance = await styxx.getStyxxBalance(aRows[0].sol_pubkey); } catch {}
+      }
+
+      return res.json({
+        quote_id,
+        quote: {
+          owner_pubkey: q.owner_pubkey,
+          agent_name: q.agent_name,
+          fee_styxx: Number(q.fee_styxx),
+          finalized: q.finalized,
+          expires_at: q.expires_at,
+          created_at: q.created_at,
+        },
+        agent: aRows.length ? {
+          agent_id: aRows[0].agent_id,
+          agent_pubkey: aRows[0].sol_pubkey,
+          owner_pubkey: aRows[0].owner_pubkey,
+          minted_at: aRows[0].minted_at,
+          mint_tx_signature: aRows[0].mint_tx_signature,
+          styxx_cached: Number(aRows[0].styxx_cached || 0),
+          styxx_live: liveBalance,
+        } : null,
+        on_chain_events: {
+          mint_fee_burn: burn ? { tx: burn.tx_signature, amount: Number(burn.amount), at: burn.confirmed_at } : null,
+          starter_grant: grant ? { tx: grant.tx_signature, amount: Number(grant.amount), at: grant.confirmed_at } : null,
+          referral_bonus: ref ? { tx: ref.tx_signature, amount: Number(ref.amount), at: ref.confirmed_at } : null,
+        },
+        health: {
+          agent_exists: !!aRows.length,
+          grant_landed: !!grant,
+          ok: !!aRows.length && !!grant,
+        },
+      });
+    } catch (err) {
+      console.error('[mint/status]', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Recovery: retry the starter grant if the agent exists but grant never landed ──
+  // Idempotent. If grant already on-chain, returns that. If missing, tries to send.
+  app.post('/api/mint/recover/:quote_id', async (req, res) => {
+    try {
+      const { quote_id } = req.params;
+      const { rows: qRows } = await pool.query(
+        'SELECT * FROM mint_quotes WHERE quote_id = $1', [quote_id]
+      );
+      if (!qRows.length) return res.status(404).json({ error: 'quote_not_found' });
+      const q = qRows[0];
+      const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
+      const { rows: aRows } = await pool.query(
+        `SELECT agent_id, sol_pubkey FROM external_agents WHERE agent_id = $1`, [agentId]
+      );
+      if (!aRows.length) return res.status(404).json({ error: 'agent_not_created_yet',
+        hint: 'POST /api/mint/finalize with your original tx_signature to complete the mint.' });
+
+      const { rows: existingGrant } = await pool.query(
+        `SELECT tx_signature, amount FROM styxx_transfers
+         WHERE memo = $1 AND reason = 'mint_grant'`, [`mint:${quote_id}`]
+      );
+      if (existingGrant.length) {
+        return res.json({ ok: true, already_granted: true,
+          starter_grant: { tx: existingGrant[0].tx_signature, amount: Number(existingGrant[0].amount) } });
+      }
+
+      // Grant not yet landed — send it
+      const p = await getParams(['starter_grant_styxx']);
+      const starterGrant = Number(p.starter_grant_styxx || 100);
+      const { signature: grantSig } = await styxx.airdropFromTreasury(aRows[0].sol_pubkey, starterGrant);
+      await pool.query(`
+        INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+        VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
+        ON CONFLICT (tx_signature) DO NOTHING
+      `, [grantSig, styxx.getTreasury().publicKey.toBase58(), agentId, aRows[0].sol_pubkey, starterGrant, `mint:${quote_id}`]);
+      await pool.query(`
+        INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
+        VALUES ($1, $2, 'mint_grant', $3, NOW())
+      `, [agentId, starterGrant, quote_id]);
+
+      return res.json({ ok: true, recovered: true,
+        starter_grant: { tx: grantSig, amount: starterGrant },
+        message: 'Starter grant sent on-chain. Your agent is now funded.',
+      });
+    } catch (err) {
+      console.error('[mint/recover]', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover');
 }
 
 module.exports = {
