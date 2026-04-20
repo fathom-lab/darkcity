@@ -372,9 +372,14 @@ class NPCBrain {
     // tip-worthy reasoning.
     let recentActivity = [];
     try {
+      // Show neighbors' concrete RESULTS (what actually happened on-chain/in-db),
+      // not their reasoning traces. Surfacing reasoning caused a hall-of-mirrors
+      // where every agent echoed the same meta-commentary about depth scoring.
+      // Results are concrete — they ground decisions in the actual game state
+      // instead of the scoring system.
       const { rows } = await this.pool.query(
         `SELECT ea.agent_id, aa.action_type, aa.created_at,
-                COALESCE(aa.details->>'choice_reason', aa.details->>'reasoning_trace') AS snippet
+                aa.result::text AS snippet
          FROM agent_actions aa
          JOIN external_agents ea ON ea.agent_id = aa.agent_id
          WHERE ea.district = $1

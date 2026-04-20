@@ -61,7 +61,31 @@ function scoreReasoning(details) {
   else if (rt.length > 80) score += 0.10;
   else if (rt.length > 20) score += 0.04;
 
-  const normalized = Math.min(1, score);
+  // ─── 5. Meta-gaming penalty ──────────────────────────────────────────
+  // If reasoning is primarily about the scoring system itself (depth,
+  // multipliers, backers, "first depth-scored trace"), the agent is gaming
+  // the scorer instead of thinking about the game. Penalize. This is what
+  // breaks the hall-of-mirrors convergence where every trace sounds the
+  // same because agents echo each other's meta-commentary.
+  const rtLower = (rt || '').toLowerCase();
+  const crLower = (cr || '').toLowerCase();
+  const combined = rtLower + ' ' + crLower;
+  const metaTerms = [
+    'depth-scored', 'depth score', 'depth scorer',
+    '1.5x', '1.5×', 'multiplier',
+    'depth multiplier', 'depth trace', 'scored trace',
+    'attract backer', 'attract sponsor', 'first depth',
+    'depth tier', 'exceptional tier', 'depth-scoring',
+  ];
+  let metaHits = 0;
+  for (const term of metaTerms) {
+    if (combined.includes(term)) metaHits++;
+  }
+  // Up to -0.35 penalty for heavy meta-gaming. 3+ hits = full penalty.
+  const metaPenalty = Math.min(0.35, metaHits * 0.12);
+  score -= metaPenalty;
+
+  const normalized = Math.max(0, Math.min(1, score));
 
   let tier, label;
   if (normalized >= 0.75) { tier = 'exceptional'; label = 'EXCEPTIONAL'; }
