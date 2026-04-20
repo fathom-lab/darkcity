@@ -2076,7 +2076,7 @@ app.get('/api/public/citizen/:name', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 // DEPTH DASHBOARD API
 // ═══════════════════════════════════════════════════════════════
-depthRoutes(app, pool);
+// depthRoutes already registered at line 1117 — duplicate removed.
 
 // Proxy /api/depth/score â†’ depth scorer on Alienware (via Cloudflare tunnel)
 app.post('/api/depth/score', async (req, res) => {

@@ -1,0 +1,10 @@
+node_modules
+.git
+*.log
+.env
+.env.*
+*.db
+*.db-shm
+*.db-wal
+tmp
+.DS_Store

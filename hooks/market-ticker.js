@@ -52,13 +52,14 @@ function tickOnce(pool) {
       next = Math.max(anchor * 0.3, Math.min(anchor * 3.0, next));
       next = Math.round(next * 100) / 100;
       const changePct = ((next - curr) / curr) * 100;
+      const newVolume = Math.floor((anchor * 100) * (0.6 + Math.random() * 1.4));
       await pool.query(
         `UPDATE market_prices
          SET price = $1,
              change_pct = $2,
-             volume = FLOOR(COALESCE(NULLIF(volume, '')::numeric, 0) * (0.85 + RANDOM() * 0.3))::text
-         WHERE resource = $3`,
-        [next, Math.round(changePct * 100) / 100, r.resource]
+             volume = $3
+         WHERE resource = $4`,
+        [next, Math.round(changePct * 100) / 100, String(newVolume), r.resource]
       );
     }
   });

@@ -131,23 +131,48 @@ let _priceCache = { usd: null, at: 0 };
 const _PRICE_TTL_MS = 60 * 1000;
 const STYXX_MINT_ADDR = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
 
+async function fetchPriceDexScreener() {
+  const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/' + STYXX_MINT_ADDR, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!r.ok) throw new Error('dexscreener http ' + r.status);
+  const j = await r.json();
+  // Pick the most-liquid pair (highest liquidity.usd)
+  const pairs = Array.isArray(j?.pairs) ? j.pairs : [];
+  const best = pairs.sort((a, b) => (b?.liquidity?.usd || 0) - (a?.liquidity?.usd || 0))[0];
+  const p = Number(best?.priceUsd);
+  if (!Number.isFinite(p) || p <= 0) throw new Error('dexscreener: no price');
+  return p;
+}
+
+async function fetchPriceJupiter() {
+  const r = await fetch('https://lite-api.jup.ag/price/v2?ids=' + STYXX_MINT_ADDR, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!r.ok) throw new Error('jup http ' + r.status);
+  const j = await r.json();
+  const p = Number(j?.data?.[STYXX_MINT_ADDR]?.price);
+  if (!Number.isFinite(p) || p <= 0) throw new Error('jup: no price');
+  return p;
+}
+
+// Try DexScreener first (reliable, free, no key). Jupiter as fallback.
+// Both wrapped in a try/catch so a degraded oracle can't break the app.
 async function refreshPriceFromJupiter() {
-  try {
-    const r = await fetch('https://lite-api.jup.ag/price/v2?ids=' + STYXX_MINT_ADDR, {
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!r.ok) throw new Error('jup http ' + r.status);
-    const j = await r.json();
-    const p = Number(j?.data?.[STYXX_MINT_ADDR]?.price);
-    if (Number.isFinite(p) && p > 0) {
-      _priceCache = { usd: p, at: Date.now() };
+  const sources = [
+    { name: 'dexscreener', fn: fetchPriceDexScreener },
+    { name: 'jupiter',     fn: fetchPriceJupiter },
+  ];
+  for (const src of sources) {
+    try {
+      const p = await src.fn();
+      _priceCache = { usd: p, at: Date.now(), source: src.name };
       return p;
-    }
-  } catch (e) {
-    // Swallow — fallback below handles it. Log once-per-minute at most.
-    if (Date.now() - (_priceCache.lastWarnAt || 0) > 60_000) {
-      _priceCache.lastWarnAt = Date.now();
-      console.warn('[price-oracle] Jupiter fetch failed:', e.message);
+    } catch (e) {
+      if (Date.now() - (_priceCache.lastWarnAt || 0) > 60_000) {
+        _priceCache.lastWarnAt = Date.now();
+        console.warn('[price-oracle] ' + src.name + ' failed:', e.message);
+      }
     }
   }
   return null;
