@@ -13,6 +13,7 @@ const { buildAgentPrompt, parseAgentResponse, hashPrompt } = require('./agent-pr
 const { enrichAction, writeEnrichment } = require('./data-pipeline');
 const { handleConversation } = require('./conversation-wiring');
 const { scoreReasoning, writeDepthRow } = require('./depth-scorer');
+const { buildAgentContext, invalidateAgentContext } = require('./agent-context');
 const styxxPay = require('./styxx-payments');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -343,6 +344,12 @@ class NPCBrain {
         [agent.agent_id]
       );
 
+      // Force the self-report to re-query next tick. The agent just earned
+      // (or lost) credits and its depth score for this reasoning has just
+      // landed — if the cache serves stale data, the agent won't see its own
+      // feedback, which defeats the whole point.
+      invalidateAgentContext(agent.agent_id);
+
       console.log(`[NPC-BRAIN] ${agent.agent_id} -> ${result.action_type}: ${actionResult.streamMessage.substring(0, 80)}`);
     } catch (err) {
       console.error(`[NPC-BRAIN] Agent ${agent.agent_id} error:`, err.message);
@@ -350,6 +357,15 @@ class NPCBrain {
   }
 
   async _gatherPerception(agent, allAgentNames) {
+    // Self-report — identity, owner, sponsors, performance, depth signal,
+    // last move, standing. This is what the agent reads first every tick so
+    // every decision is grounded in "I have an owner paying real money for
+    // my performance" rather than blind improvisation. See agent-context.js
+    // for what's in the report and why.
+    let selfReport = '';
+    try { selfReport = await buildAgentContext(this.pool, agent.agent_id); }
+    catch (_) { /* never block reasoning on self-report failure */ }
+
     // Recent actions in agent's district — WITH thought snippets so this
     // agent can react to what neighbors actually said/reasoned about.
     // Without this, agents only see "X performed trade" and can't recognize
@@ -423,7 +439,11 @@ class NPCBrain {
       }
     } catch { /* contracts table may not exist yet */ }
 
-    return lines.join('\n');
+    const districtBlock = lines.join('\n');
+    // Self-report goes FIRST. It frames the agent's purpose and feedback
+    // loop so everything below (district activity, market, contracts) is
+    // read through the lens of "what should I do to earn for my owner".
+    return selfReport ? (selfReport + '\n\n' + districtBlock) : districtBlock;
   }
 
   async _callLLM(systemPrompt, userMessage, retries = 0) {
