@@ -1700,12 +1700,24 @@ function startPulseScheduler() {
     return;
   }
   const hours = parseInt(process.env.PULSE_HOURS || '4', 10);
-  const intervalMs = hours * 3600 * 1000;
-  console.log(`[pulse] in-process scheduler armed — firing every ${hours}h`);
+  console.log(`[pulse] window-aware scheduler armed — firing once per ${hours}h UTC window`);
 
-  // Skip the first immediate fire on cold start — wait one full interval
-  // so users mid-action don't get surprised by an instant pulse.
-  setInterval(runPulse, intervalMs);
+  // Window-aware scheduling. Previous setInterval(runPulse, 4h) never fired
+  // because every deploy restarts the container and the 4h countdown resets
+  // from zero. We ship multiple commits per hour while iterating, so the
+  // timer literally never reached 4h uninterrupted — meaning NO pulse had
+  // fired for days and sponsors hadn't been paid.
+  //
+  // New model: every 5 minutes check if a pulse is due for the current UTC
+  // window. runPulse() has DB-level window-lock idempotency (pulse_runs
+  // unique on window_start), so calling it in a tight loop is safe — it
+  // noops after the first successful claim. On restart we pick up wherever
+  // the last successful window left off.
+  setInterval(runPulse, 5 * 60 * 1000);
+  // First check 30s after boot so users don't get surprised mid-action by
+  // an instant pulse, but the system also isn't dark for 5 minutes if a
+  // window was missed during downtime.
+  setTimeout(runPulse, 30_000);
 
   // Dormancy check weekly (Sundays 02:00 UTC via day-of-week + hour gate)
   setInterval(runDormancyCheck, 60 * 60 * 1000);  // check hourly if it's time
