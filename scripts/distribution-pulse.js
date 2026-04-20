@@ -367,6 +367,32 @@ async function main() {
   console.log(`  dust payouts skipped: ${totals.dust_skipped}`);
 
   // Snapshot — treasury balance read directly from Solana (not DB subquery)
+  // ── Holder Pool: tap this pulse's net earnings (5% by default) BEFORE
+  // distribution. Ensures holder rewards keep flowing even in windows with
+  // no new mints — ongoing city activity itself funds the pool.
+  try {
+    const holderPool = require('../hooks/holder-pool');
+    const pulseId = 'pulse-' + new Date().toISOString().slice(0, 13);
+    const netPulseEarnings = Number(totals?.paid || 0);
+    if (netPulseEarnings > 0) {
+      const rTap = await holderPool.accrueFromPulse(pool, {
+        pulse_id: pulseId, net_earnings_styxx: netPulseEarnings,
+      });
+      if (rTap?.ok && rTap.accrued) console.log('[pulse] holder-pool pulse tap:', rTap.accrued);
+    }
+    // Then settle all pending pool events (mint taps + this pulse tap) —
+    // pro-rata on-chain push to every qualifying holder. Non-fatal: the
+    // pool rolls forward if anything fails.
+    const r = await holderPool.runDistribution(pool);
+    if (r?.ok) {
+      console.log('[pulse] holder pool settled:', r);
+    } else {
+      console.warn('[pulse] holder pool skipped:', r?.reason || 'unknown');
+    }
+  } catch (e) {
+    console.warn('[pulse] holder-pool distribution error (non-fatal):', e.message);
+  }
+
   try {
     const tBalPost = await styxx.getTreasuryBalances();
     const { rows: sCounts } = await pool.query(`

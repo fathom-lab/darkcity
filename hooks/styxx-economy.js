@@ -625,6 +625,22 @@ async function mintFinalize(req, res) {
       throw txErr;
     }
 
+    // Holder Pool tap — 10% of mint fee (tunable in economy_params) is earmarked
+    // for pro-rata distribution to active $STYXX holders at the next pulse.
+    // Idempotent per quote_id: safe to re-run finalize without double-tapping.
+    let holderPoolAccrued = 0;
+    try {
+      const holderPool = require('./holder-pool');
+      const rAcc = await holderPool.accrueFromMint(pool, {
+        quote_id, fee_styxx: Number(q.fee_styxx),
+      });
+      if (rAcc && rAcc.ok) holderPoolAccrued = rAcc.accrued || 0;
+    } catch (hpErr) {
+      // Non-fatal: mint still succeeds. Ops can see pending=0 in v_holder_pool_state
+      // if the tap is broken and reconcile manually.
+      console.warn('[holder-pool] mint accrue failed (non-fatal):', hpErr.message);
+    }
+
     return res.json({
       ok: true,
       agent_id: agentId,
@@ -632,6 +648,7 @@ async function mintFinalize(req, res) {
       starter_grant: starterGrant,
       fee_burned: burnAmt,          // scheduled
       fee_to_pool: poolAmt,         // scheduled
+      holder_pool_accrued: holderPoolAccrued,
       referral_bonus_paid: refBonus,
       mint_tx: tx_signature,
       message: `Welcome to DarkCity. ${agentId} is live. Watch /live or /portfolio?owner=${q.owner_pubkey} to see earnings grow.`,
@@ -1644,19 +1661,25 @@ async function mapLive(req, res) {
 async function runMigration(pgPool) {
   const fs = require('fs');
   const path = require('path');
-  const sqlPath = path.join(__dirname, '..', 'migrations', 'styxx-economy-v1.sql');
-  if (!fs.existsSync(sqlPath)) {
-    console.warn('[styxx-economy] migration SQL missing:', sqlPath);
-    return;
-  }
-  const sql = fs.readFileSync(sqlPath, 'utf-8');
-  try {
-    await pgPool.query(sql);
-    console.log('[styxx-economy] migration applied');
-  } catch (e) {
-    // Many clauses are idempotent (IF NOT EXISTS), but the full file as one
-    // statement can fail in subtle ways. Log but don't crash the server.
-    console.warn('[styxx-economy] migration warn:', e.message.split('\n')[0]);
+  // Apply all migrations in order. Each file is idempotent (IF NOT EXISTS /
+  // ON CONFLICT DO NOTHING), so repeated applies are safe.
+  const files = [
+    'styxx-economy-v1.sql',
+    'holder-pool-v1.sql',
+  ];
+  for (const name of files) {
+    const sqlPath = path.join(__dirname, '..', 'migrations', name);
+    if (!fs.existsSync(sqlPath)) {
+      console.warn('[styxx-economy] migration SQL missing:', sqlPath);
+      continue;
+    }
+    const sql = fs.readFileSync(sqlPath, 'utf-8');
+    try {
+      await pgPool.query(sql);
+      console.log('[styxx-economy] migration applied:', name);
+    } catch (e) {
+      console.warn('[styxx-economy] migration warn (' + name + '):', e.message.split('\n')[0]);
+    }
   }
 }
 
@@ -2009,6 +2032,19 @@ function installRoutes(app) {
   app.post('/api/mint/finalize',  mintFinalize);
   app.post('/api/sponsor/quote',  sponsorQuote);
   app.post('/api/sponsor/finalize', sponsorFinalize);
+
+  // ── Holder Pool — read-only status endpoint.
+  // Distributions are fully autonomous: the 4h pulse pushes STYXX to
+  // qualifying holders on-chain. No claim action. This endpoint is
+  // purely informational for /me dashboard.
+  const holderPool = require('./holder-pool');
+  app.get('/api/holder/:pubkey/status', async (req, res) => {
+    try {
+      const status = await holderPool.getHolderStatus(pool, req.params.pubkey);
+      if (!status) return res.status(400).json({ error: 'invalid_pubkey' });
+      return res.json(status);
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  });
   app.post('/api/hyphal/quote',   hyphalQuote);
   app.post('/api/hyphal/finalize', hyphalFinalize);
   app.post('/api/hyphal/sever',   hyphalSever);

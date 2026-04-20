@@ -380,6 +380,33 @@ td.right.green { color: var(--accent); }
       <div id="sealsRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px"></div>
     </section>
 
+    <!-- Holder Rewards card — autonomous payouts, zero friction.
+         A slice of every mint fee is automatically distributed to $STYXX
+         holders pro-rata at each 4h pulse. No claim button, no participation
+         gate. You hold — STYXX lands in your Phantom wallet. Card surfaces
+         lifetime earned + last auto-payout tx for transparency. -->
+    <section class="section" id="sec-holder" style="padding-top:0;border-top:none">
+      <div style="background:linear-gradient(135deg,rgba(182,241,255,.07) 0%,rgba(127,229,176,.03) 100%);border:1px solid rgba(182,241,255,.28);border-radius:10px;padding:24px 28px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="flex:1;min-width:260px">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:#b6f1ff;text-transform:uppercase;margin-bottom:8px">\u25c6 Holder rewards \u00b7 autonomous</div>
+            <div style="font-family:var(--font-display);font-size:24px;font-weight:500;line-height:1.2;color:var(--fg);margin-bottom:6px">Every mint pays you. <em style="color:#b6f1ff;font-style:normal">Straight to your wallet. Nothing to click.</em></div>
+            <div style="color:var(--fg-muted);font-size:13px;line-height:1.5">10% of every mint fee in DarkCity is auto-distributed to \$STYXX holders pro-rata at each 4h pulse. Hold above 100 \$STYXX, and the treasury airdrops your share \u2014 no claim, no form, no wait.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:4px">Lifetime earned</div>
+            <div style="font-family:var(--font-display);font-size:30px;font-weight:500;color:#b6f1ff;line-height:1" id="hp-lifetime">\u2014</div>
+            <div style="font-size:11px;color:var(--fg-subtle);margin-top:4px"><span id="hp-holding">\u2014</span> \$STYXX held now</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--fg-subtle);font-family:var(--font-mono)">
+          <span id="hp-last-paid">\u2014 no payouts to this wallet yet</span>
+          <a id="hp-last-tx" target="_blank" rel="noopener" style="display:none;color:#b6f1ff;text-decoration:underline">last payout tx \u2197</a>
+          <span style="margin-left:auto">next pulse: <span id="hp-next-pulse">\u2014</span></span>
+        </div>
+      </div>
+    </section>
+
     <!-- Prominent referral card — the primary viral loop. Always visible.
          10% of their mint fee + 5% of their yield for 90d → straight to this wallet. -->
     <section class="section" id="sec-invite" style="padding-top:0;border-top:none">
@@ -719,6 +746,44 @@ td.right.green { color: var(--accent); }
         </div>
       </div>
     \`).join('');
+  }
+
+  // Holder Rewards card — fully autonomous. Pulls /api/holder/:pubkey/status
+  // and populates: lifetime earned, current holdings, last paid-out tx.
+  // No claim button, no action — just transparency on what the city paid
+  // this wallet (and when the next pulse fires).
+  async function renderHolderRewards(wallet, nextPulse) {
+    const sec = document.getElementById('sec-holder');
+    if (!sec) return;
+    try {
+      const r = await fetch('/api/holder/' + wallet + '/status');
+      if (!r.ok) return;  // card stays in its default "— no payouts yet" state
+      const d = await r.json();
+      const lifetime = Number(d.lifetime_earned || 0);
+      const holding  = Number(d.holding_styxx || 0);
+      document.getElementById('hp-lifetime').textContent = styxxFmt(lifetime) + ' $STYXX';
+      document.getElementById('hp-holding').textContent  = styxxFmt(holding);
+      if (d.last_paid_at) {
+        const when = new Date(d.last_paid_at);
+        const ago = Math.max(0, Math.floor((Date.now() - when.getTime()) / 60000));
+        const agoTxt = ago < 60 ? ago + 'm ago' : Math.floor(ago / 60) + 'h ago';
+        document.getElementById('hp-last-paid').textContent = 'last autopay: ' + agoTxt;
+      } else if (holding < 100) {
+        document.getElementById('hp-last-paid').innerHTML = 'hold \u2265 100 $STYXX to start earning \u2014 <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#b6f1ff">top up \u2197</a>';
+      } else {
+        document.getElementById('hp-last-paid').textContent = 'eligible \u2014 next pulse will pay you';
+      }
+      if (d.last_paid_tx) {
+        const tx = document.getElementById('hp-last-tx');
+        tx.href = 'https://solscan.io/tx/' + d.last_paid_tx;
+        tx.style.display = 'inline';
+      }
+      if (nextPulse?.seconds_until) {
+        const rem = Math.max(0, nextPulse.seconds_until);
+        const h = Math.floor(rem / 3600), m = Math.floor((rem % 3600) / 60);
+        document.getElementById('hp-next-pulse').textContent = h > 0 ? (h + 'h ' + m + 'm') : (m + 'm');
+      }
+    } catch { /* silent — card stays in default state */ }
   }
 
   // Welcome / momentum card — shows for users whose first agent was minted
@@ -1114,6 +1179,7 @@ td.right.green { color: var(--accent); }
       renderLedger(p.recent_payouts || []);
       renderSeals(p.agents || []);
       renderWelcome(p.agents || [], np);
+      renderHolderRewards(wallet, np);
     } catch (e) {
       console.error(e);
       document.getElementById('s-net').textContent = 'error';
