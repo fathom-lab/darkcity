@@ -1664,6 +1664,13 @@ async function runBrainWatchdog() {
          JSON.stringify({ choice_reason: reason, source: 'watchdog', agent_state: { district: a.district } }),
          JSON.stringify({ ok: true, source: 'watchdog' })]
       );
+      // Touch last_active so these agents register as online on the map.
+      // Without this, the watchdog emits thoughts but online-count stays 0 —
+      // confusing UX (you see thoughts flowing + 0 online simultaneously).
+      await pool.query(
+        'UPDATE external_agents SET last_active = NOW() WHERE agent_id = $1',
+        [a.agent_id]
+      );
     }
     console.log('[watchdog] brain silent — emitted ' + picks.length + ' fallback thoughts');
   } catch (err) {
