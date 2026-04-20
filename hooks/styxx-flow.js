@@ -1469,51 +1469,51 @@ function assignTask(agent, action) {
   if (!agent || agent.homeX == null) return;
   // Don't override an active task — let it play out before starting next
   if (agent.task) return;
+  // Every task is a small wobble within 10-30px of home. The map should
+  // show agents BUSY at their positions, not MIGRATING across the map.
+  // With ~60 narratives per 15 min, agents get retasked faster than they
+  // can travel — previous "social heads to other's home" / "market heads
+  // to treasury" systems meant agents were permanently in transit, never
+  // at home, and the mycelium tree was visually lost.
+  //
+  // Now: action-type only changes the wobble DIRECTION, not the distance.
+  // Map reads as a living field of agents humming in place.
   const act = (action || '').toLowerCase();
-  let targetX, targetY, kind;
+  let ang, r, kind;
   if (act.includes('social') || act.includes('outreach')) {
-    // Head toward another online agent's home — conversation/meeting motif
+    // Social → bias toward neighbors (angle toward a random other agent,
+    // but only wobble a short distance in that direction)
     const others = [...agents.values()].filter(x => x.id !== agent.id && x.online && x.homeX != null);
-    if (!others.length) return;
-    const pick = others[Math.floor(Math.random() * others.length)];
-    targetX = pick.homeX; targetY = pick.homeY;
+    if (others.length) {
+      const pick = others[Math.floor(Math.random() * others.length)];
+      ang = Math.atan2(pick.homeY - agent.homeY, pick.homeX - agent.homeX);
+    } else ang = Math.random() * Math.PI * 2;
+    r = 22 + Math.random() * 12;
     kind = 'social';
   } else if (act.includes('trade') || act.includes('contract') || act.includes('resource') || act.includes('claim') || act.includes('market')) {
-    // Short step TOWARD treasury but not all the way — otherwise with 33
-    // agents constantly claiming contracts they all pile into the center.
-    // 20-35% of the vector toward treasury + small tangential jitter so
-    // siblings don't overlap on return paths. Reads as "I'm working on a
-    // contract" without reflowing the whole map into the treasury zone.
-    if (!treasury) return;
-    const dx = treasury.homeX - agent.homeX, dy = treasury.homeY - agent.homeY;
-    const dist = Math.hypot(dx, dy) || 1;
-    const t = 0.20 + Math.random() * 0.15;
-    const jitterAng = Math.random() * Math.PI * 2;
-    const jitterR = 20 + Math.random() * 14;
-    targetX = agent.homeX + dx * t + Math.cos(jitterAng) * jitterR;
-    targetY = agent.homeY + dy * t + Math.sin(jitterAng) * jitterR;
+    // Market → bias toward treasury direction
+    if (treasury) {
+      ang = Math.atan2(treasury.homeY - agent.homeY, treasury.homeX - agent.homeX);
+    } else ang = Math.random() * Math.PI * 2;
+    r = 18 + Math.random() * 12;
     kind = 'market';
   } else if (act.includes('build') || act.includes('reason') || act.includes('think')) {
-    // Short wobble at home — heads-down work
-    const r = 18 + Math.random() * 12;
-    const ang = Math.random() * Math.PI * 2;
-    targetX = agent.homeX + Math.cos(ang) * r;
-    targetY = agent.homeY + Math.sin(ang) * r;
+    ang = Math.random() * Math.PI * 2;
+    r = 14 + Math.random() * 8;
     kind = 'local';
   } else {
-    // Default: mild orbit
-    const r = 22;
-    const ang = Math.random() * Math.PI * 2;
-    targetX = agent.homeX + Math.cos(ang) * r;
-    targetY = agent.homeY + Math.sin(ang) * r;
+    ang = Math.random() * Math.PI * 2;
+    r = 18 + Math.random() * 8;
     kind = 'local';
   }
+  const targetX = agent.homeX + Math.cos(ang) * r;
+  const targetY = agent.homeY + Math.sin(ang) * r;
   agent.task = {
     kind, targetX, targetY, phase: 'outbound',
     startedAt: Date.now(), phaseStartedAt: Date.now(),
-    outboundMs: 3200 + Math.random() * 1800,
-    dwellMs:    1500 + Math.random() * 1200,
-    returnMs:   3200 + Math.random() * 1800,
+    outboundMs: 2200 + Math.random() * 1200,
+    dwellMs:    1000 + Math.random() * 800,
+    returnMs:   2200 + Math.random() * 1200,
   };
 }
 
