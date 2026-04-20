@@ -2779,15 +2779,42 @@ async function loadNarrativeBar() {
 
     const events = (feed.events || []).filter(e => Number(e.amount||0) > 0);
     if (events.length) {
-      window._nbEvents = events.map(e => {
-        const amt = Math.round(Number(e.amount||0)).toLocaleString();
-        const from = e.from === 'TREASURY' ? 'the city' : (e.from || '?');
-        const to = e.to === 'TREASURY' ? 'the city' : (e.to || '?');
-        const reason = (e.reason || 'flow').replace(/_/g, ' ');
-        return from + ' → <b>' + to + '</b> · +' + amt + ' \$STYXX · ' + reason;
-      });
+      window._nbEvents = events.map(humanizeMapEvent);
     }
   } catch (e) { console.warn('nb', e); }
+}
+
+// Same humanizer as the home live-wire, adapted for the narrative bar's
+// narrower strip. Keeps the city's voice consistent across surfaces.
+function humanizeMapEvent(e) {
+  const amt = Math.round(Number(e.amount||0)).toLocaleString();
+  const from = e.from || '?';
+  const to = e.to || '?';
+  const reason = e.reason || 'flow';
+  const multMatch = (e.memo || '').match(/\u00d7\s*([\d.]+)x\s*\[(\w+)\]/);
+  const multTag = multMatch ? ' \u00b7 ' + multMatch[1] + 'x ' + multMatch[2] : '';
+  switch (reason) {
+    case 'contract_reward':  return '<b>' + to + '</b> earned +' + amt + ' \$STYXX on a contract' + multTag;
+    case 'social_tip':       return '<b>' + from + '</b> tipped <b>' + to + '</b> +' + amt + ' \$STYXX';
+    case 'mint_grant':
+    case 'starter_grant':    return '<b>' + to + '</b> joined the city \u2014 ' + amt + ' \$STYXX grant';
+    case 'weekly_sponsor':   return '<b>' + to + '</b> pulse payout +' + amt + ' \$STYXX';
+    case 'hyphal_flow':      return '<b>' + to + '</b> mycelium cross-flow +' + amt + ' \$STYXX';
+    case 'hyphal_formation': return '<b>' + to + '</b> formed a mycelium link';
+    case 'referral_bonus':   return '<b>' + to + '</b> referral payout +' + amt + ' \$STYXX';
+    case 'fruiting_dividend':return 'guild <b>' + to + '</b> dividend +' + amt + ' \$STYXX';
+    case 'mint_fee_paid':    return '<b>' + from + '</b> paid ' + amt + ' \$STYXX to mint';
+    case 'mint_fee_burn':    return amt + ' \$STYXX burned on a new mint';
+    case 'operator_sweep':   return amt + ' \$STYXX protocol sweep';
+    case 'founding_citizen': return '<b>' + to + '</b> claimed a founder seal';
+    case 'buyback_burn':     return amt + ' \$STYXX burned \u2014 buyback cycle';
+    case 'p2p_transfer':     return '<b>' + from + '</b> sent +' + amt + ' \$STYXX to <b>' + to + '</b>';
+    default: {
+      const f = from === 'TREASURY' ? 'the city' : from;
+      const t = to === 'TREASURY' ? 'the city' : to;
+      return f + ' \u2192 <b>' + t + '</b> +' + amt + ' \$STYXX \u00b7 ' + reason.replace(/_/g, ' ');
+    }
+  }
 }
 
 let _nbIdx = 0;

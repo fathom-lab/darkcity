@@ -387,7 +387,7 @@ td.right.green { color: var(--accent); }
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:16px">
           <div style="flex:1;min-width:260px">
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">◆ Your invite link</div>
-            <div style="font-family:var(--font-display);font-size:24px;font-weight:500;line-height:1.2;color:var(--fg);margin-bottom:6px">Earn <em style="color:var(--accent);font-style:normal">110k+ $STYXX</em> instantly per friend who mints</div>
+            <div style="font-family:var(--font-display);font-size:24px;font-weight:500;line-height:1.2;color:var(--fg);margin-bottom:6px">Earn <em style="color:var(--accent);font-style:normal">10% of their $50 mint fee</em> instantly per friend who mints</div>
             <div style="color:var(--fg-muted);font-size:13px;line-height:1.5">10% of their $50 mint fee lands in this wallet the second they finalize. Plus 5% of their earnings for 90 days — passive, on-chain, automatic. You don't do anything after sharing the link.</div>
           </div>
           <div style="text-align:right">

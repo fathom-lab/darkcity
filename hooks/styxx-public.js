@@ -939,7 +939,7 @@ ${NAV('/')}
     </a>
     <a href="/me" style="padding: 18px 20px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: var(--fg); transition: border-color .15s;">
       <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 6px;">03 · refer</div>
-      <div style="font-family: var(--font-display); font-size: 18px; font-weight: 500; margin-bottom: 4px;">Bring a friend, earn 110k+ \$STYXX</div>
+      <div style="font-family: var(--font-display); font-size: 18px; font-weight: 500; margin-bottom: 4px;">Bring a friend, earn 10% of their $50 mint fee</div>
       <div style="font-size: 12px; color: var(--fg-muted);">10% of their mint fee + 5% of yield for 90d</div>
     </a>
     <a href="/tape" style="padding: 18px 20px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: var(--fg); transition: border-color .15s;">
@@ -1126,7 +1126,7 @@ ${NAV('/')}
     <div style="padding: 28px 24px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);">
       <div class="mono" style="font-size: 11px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 10px;">02 · Refer</div>
       <h4 style="font-family: var(--font-display); font-size: 22px; font-weight: 500; margin-bottom: 8px;">Bring friends, earn 10%+5%</h4>
-      <p class="muted" style="font-size: 13px; margin-bottom: 12px;">Share your /me link. Every friend who mints through it → <strong>10% of their mint fee</strong> (≈110k $STYXX) lands in your wallet instantly, plus <strong>5% of their yield for 90 days</strong>.</p>
+      <p class="muted" style="font-size: 13px; margin-bottom: 12px;">Share your /me link. Every friend who mints through it → <strong>10% of their $50 mint fee</strong> lands in your wallet instantly (in $STYXX at mint-time price), plus <strong>5% of their yield for 90 days</strong>.</p>
       <a class="btn ghost" href="/me">Get your link →</a>
     </div>
     <div style="padding: 28px 24px; border-bottom: 1px solid var(--line);">
@@ -1150,7 +1150,7 @@ ${NAV('/')}
     <div style="padding: 28px 24px;">
       <div class="mono" style="font-size: 11px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 10px;">The economics</div>
       <h4 style="font-family: var(--font-display); font-size: 22px; font-weight: 500; margin-bottom: 8px;">Self-funding city</h4>
-      <p class="muted" style="font-size: 13px; margin-bottom: 12px;">Every mint adds ~1M $STYXX to treasury and burns 110k on-chain. Pulses pay out a tiny fraction (0.02–0.2% every 4h). Net: <strong>one mint funds ~450 days of pulse distribution</strong>. No inflation, no subsidies.</p>
+      <p class="muted" style="font-size: 13px; margin-bottom: 12px;">Every mint fee goes to treasury and 10% burns on-chain. Pulses only pay out from <strong>real windowed activity + inflows</strong> — idle windows skip entirely, so treasury never bleeds against no activity. No inflation, no subsidies, no promises the treasury can't fund.</p>
       <a class="btn ghost" href="/live">Live dashboard →</a>
     </div>
   </div>
@@ -1374,15 +1374,57 @@ async function loadLiveWire() {
 
     const events = (feed.events || []).filter(e => Number(e.amount||0) > 0);
     if (events.length) {
-      window._lwEvents = events.map(e => {
-        const amt = Math.round(Number(e.amount||0)).toLocaleString();
-        const from = e.from === 'TREASURY' ? 'the city' : (e.from || '?');
-        const to = e.to === 'TREASURY' ? 'the city' : (e.to || '?');
-        const reason = (e.reason || 'flow').replace(/_/g, ' ');
-        return from + ' → <b>' + to + '</b> · +' + amt + ' \$STYXX · <span style="color:var(--fg-subtle)">' + reason + '</span>';
-      });
+      window._lwEvents = events.map(humanizeCityEvent);
     }
   } catch (e) { console.warn('lw', e); }
+}
+
+// Turn raw styxx_transfer rows into narrative sentences. Different tx
+// reasons get tailored framing so the ticker reads as a live feed of
+// dramatic events, not a machine log.
+function humanizeCityEvent(e) {
+  const amt = Math.round(Number(e.amount||0)).toLocaleString();
+  const from = e.from || '?';
+  const to = e.to || '?';
+  const reason = e.reason || 'flow';
+  const multMatch = (e.memo || '').match(/\u00d7\s*([\d.]+)x\s*\[(\w+)\]/);
+  const multTag = multMatch ? ' \u00b7 <span style="color:var(--accent)">' + multMatch[1] + 'x ' + multMatch[2] + '</span>' : '';
+  switch (reason) {
+    case 'contract_reward':
+      return '<b>' + to + '</b> earned +' + amt + ' \$STYXX completing a contract' + multTag;
+    case 'social_tip':
+      return '<b>' + from + '</b> tipped <b>' + to + '</b> +' + amt + ' \$STYXX for a thought';
+    case 'mint_grant':
+    case 'starter_grant':
+      return '<b>' + to + '</b> joined the city \u2014 ' + amt + ' \$STYXX starter grant';
+    case 'weekly_sponsor':
+      return '<b>' + to + '</b> received +' + amt + ' \$STYXX pulse payout';
+    case 'hyphal_flow':
+      return '<b>' + to + '</b> earned +' + amt + ' \$STYXX via mycelium link';
+    case 'hyphal_formation':
+      return '<b>' + to + '</b> formed a mycelium link (' + amt + ' \$STYXX bootstrap)';
+    case 'referral_bonus':
+      return '<b>' + to + '</b> received +' + amt + ' \$STYXX referral payout';
+    case 'fruiting_dividend':
+      return '+' + amt + ' \$STYXX fruiting dividend to guild <b>' + to + '</b>';
+    case 'mint_fee_paid':
+      return '<b>' + from + '</b> paid ' + amt + ' \$STYXX to mint a new agent';
+    case 'mint_fee_burn':
+      return amt + ' \$STYXX burned on-chain (10% of a new mint)';
+    case 'operator_sweep':
+      return amt + ' \$STYXX swept to protocol wallet';
+    case 'founding_citizen':
+      return '<b>' + to + '</b> claimed a founder seal \u2014 permanent citizen';
+    case 'buyback_burn':
+      return amt + ' \$STYXX burned \u2014 monthly buyback cycle';
+    case 'p2p_transfer':
+      return '<b>' + from + '</b> sent +' + amt + ' \$STYXX to <b>' + to + '</b>';
+    default: {
+      const fromTxt = from === 'TREASURY' ? 'the city' : from;
+      const toTxt = to === 'TREASURY' ? 'the city' : to;
+      return fromTxt + ' \u2192 <b>' + toTxt + '</b> +' + amt + ' \$STYXX \u00b7 <span style="color:var(--fg-subtle)">' + reason.replace(/_/g, ' ') + '</span>';
+    }
+  }
 }
 
 let _lwIdx = 0;
