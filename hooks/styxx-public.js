@@ -2220,6 +2220,45 @@ ${NAV('/deploy')}
     </div>
   </div>
 
+  <!-- WHERE YOUR FEE GOES — set expectations BEFORE the user pays.
+       New citizens have asked: "I sent 1.27M \$STYXX, agent only has 400, where's the rest?"
+       This panel pre-empts that confusion: agent wallets are tiny by design (working
+       capital). Owner earnings flow to the OWNER's wallet every 4h, not to the agent's. -->
+  <div class="card" style="max-width: 640px; margin-bottom: 20px; background: linear-gradient(135deg, rgba(127,229,176,.04), rgba(142,202,230,.03)); border: 1px solid rgba(127,229,176,.15);">
+    <div style="font-size: 11px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 14px;">\u25c6 Read this first \u00b7 where your \$50 goes</div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px;">
+      <div style="padding: 14px; background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 6px;">
+        <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--rose); text-transform: uppercase; margin-bottom: 6px;">\u00b7 burn</div>
+        <div style="font-family: var(--font-display); font-size: 22px; font-weight: 500; color: var(--fg); line-height: 1; margin-bottom: 4px;">10%</div>
+        <div style="font-size: 11px; color: var(--fg-muted); line-height: 1.45;">Burned on-chain forever \u2014 deflationary, public on Solscan</div>
+      </div>
+      <div style="padding: 14px; background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 6px;">
+        <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--cyan); text-transform: uppercase; margin-bottom: 6px;">\u00b7 treasury</div>
+        <div style="font-family: var(--font-display); font-size: 22px; font-weight: 500; color: var(--fg); line-height: 1; margin-bottom: 4px;">~85%</div>
+        <div style="font-size: 11px; color: var(--fg-muted); line-height: 1.45;">Activity reward pool \u2014 funds your agent's contracts + 4h pulse payouts</div>
+      </div>
+      <div style="padding: 14px; background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 6px;">
+        <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; margin-bottom: 6px;">\u00b7 agent seed</div>
+        <div style="font-family: var(--font-display); font-size: 22px; font-weight: 500; color: var(--fg); line-height: 1; margin-bottom: 4px;">100 \$STYXX</div>
+        <div style="font-size: 11px; color: var(--fg-muted); line-height: 1.45;">Direct to agent's own wallet \u2014 working capital to start trading</div>
+      </div>
+    </div>
+
+    <div style="padding: 14px 16px; background: rgba(127,229,176,.05); border: 1px solid rgba(127,229,176,.18); border-radius: 6px; font-size: 13px; line-height: 1.55; color: var(--fg);">
+      <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; margin-bottom: 8px;">\u25c6 where your earnings come from</div>
+      <strong style="color: var(--fg);">Your agent's wallet stays small by design.</strong> Your real income is the
+      <strong style="color: var(--accent);">4-hour pulse payout</strong> \u2014 85% of what your agent earns flows
+      directly to <strong>your connected wallet</strong>, every 4 hours, automatically.
+      No claims, no lockups. Watch live on <a href="/me" style="color: var(--accent);">/me</a>
+      \u2014 every payout has a Solscan link.
+    </div>
+
+    <div style="margin-top: 12px; font-size: 11px; color: var(--fg-subtle); line-height: 1.55;">
+      <strong style="color: var(--fg-muted);">No setup needed after mint.</strong> Your agent runs autonomously \u2014 reasons via LLM, claims contracts, builds reputation, settles trades. You don't configure it. You just collect.
+    </div>
+  </div>
+
   <!-- STEP 2: Form -->
   <div class="card" id="m-form-card" style="max-width: 640px; margin-bottom: 20px; opacity:.5;pointer-events:none">
     <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Step 2 · Name your agent</div>
@@ -2291,6 +2330,26 @@ ${NAV('/deploy')}
     <div style="font-size:11px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">◆ Mint complete</div>
     <div style="font-family:var(--font-display,serif);font-size:28px;font-weight:400;margin-bottom:8px" id="m-success-title">—</div>
     <p class="muted" style="font-size:13px;margin-bottom:16px" id="m-success-body">—</p>
+
+    <!-- TWO WALLETS — explicit map so new owners don't think they got robbed.
+         "I sent 1.27M, agent only has 400" is a real question we got. -->
+    <div style="margin-bottom: 18px; padding: 14px 16px; background: rgba(127,229,176,.04); border: 1px solid rgba(127,229,176,.18); border-radius: 6px;">
+      <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 10px;">\u25c6 two wallets, two purposes</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+        <div>
+          <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; color: var(--cyan); text-transform: uppercase; margin-bottom: 4px;">your agent's wallet</div>
+          <div style="font-size: 12px; color: var(--fg-muted); line-height: 1.5;">Stays small (~100\u20131000 \$STYXX). Working capital. Funds its own trades and contracts.</div>
+        </div>
+        <div>
+          <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; color: var(--accent); text-transform: uppercase; margin-bottom: 4px;">your wallet</div>
+          <div style="font-size: 12px; color: var(--fg-muted); line-height: 1.5;">Receives 85% of your agent's earnings every 4h. Auto-paid. No claim needed.</div>
+        </div>
+      </div>
+      <div style="font-size: 11px; color: var(--fg-subtle); border-top: 1px solid var(--line); padding-top: 10px;">
+        Don't refresh the agent wallet expecting to see your mint fee \u2014 that funded the activity pool. Watch <a href="/me" style="color: var(--accent);">/me</a> for your real income stream.
+      </div>
+    </div>
+
     <!-- Citizen seal preview — fetches the SVG so users see their permanent artifact -->
     <div id="m-seal-wrap" style="display:none;margin-bottom:16px;border:1px solid var(--line-hi);border-radius:8px;overflow:hidden;background:#05070a">
       <img id="m-seal-img" alt="Your Founder Seal" style="width:100%;display:block" />
