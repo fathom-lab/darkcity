@@ -1390,8 +1390,8 @@ function layoutAgents() {
   // that only spreads overlapping nodes, never reflows the tree. MIN_DIST
   // = 2×node_radius + label padding, small enough that the mycelium shape
   // stays intact.
-  const MIN_DIST = 52;
-  for (let pass = 0; pass < 3; pass++) {
+  const MIN_DIST = 62;
+  for (let pass = 0; pass < 4; pass++) {
     for (let i = 0; i < placed.length; i++) {
       for (let j = i + 1; j < placed.length; j++) {
         const a = placed[i], b = placed[j];
@@ -1854,29 +1854,29 @@ function drawNet(t) {
     // to a viewer catching it in peripheral vision.
     const sparkAlpha = sparkAge < 1800 ? Math.pow(1 - sparkAge / 1800, 1.6) : 0;
 
-    // Depth tier → ring color. Cognitive-aurora palette:
-    //   exceptional = sage-mint (the city's signature "thinking well" color)
-    //   deep        = celestial blue
-    //   moderate    = antique gold
-    //   shallow     = dusk grey-warm
-    //   untiered    = agent's district hue, desaturated (lets the district
-    //                 watercolor show through rather than painting everyone
-    //                 the same neutral grey).
+    // The agent's RING uses their district hue — gives every node a unique
+    // color and restores the "20 overlapping watercolor washes" composition.
+    // Tier information is now encoded in alpha + saturation instead of a
+    // blanket universal color: exceptional tier boosts ring brightness and
+    // adds a tiny mint accent; deep tier adds celestial; moderate adds
+    // gold; shallow desaturates. This way the map reads as a polychrome
+    // field, not a sea of mint dots.
     const tier = a.depth_tier;
-    let ringR, ringG, ringB, ringA;
-    if      (tier === 'exceptional') { ringR = 127; ringG = 229; ringB = 176; ringA = .92; }
-    else if (tier === 'deep')        { ringR = 142; ringG = 202; ringB = 230; ringA = .75; }
-    else if (tier === 'moderate')    { ringR = 212; ringG = 165; ringB = 116; ringA = .58; }
-    else if (tier === 'shallow')     { ringR = 165; ringG = 165; ringB = 180; ringA = .32; }
-    else {
-      // No tier yet — paint in desaturated district hue so the map doesn't
-      // default to a sea of identical grey rings.
-      ringR = Math.round(color[0] * 0.85 + 25);
-      ringG = Math.round(color[1] * 0.85 + 25);
-      ringB = Math.round(color[2] * 0.85 + 25);
-      ringA = .38;
+    let ringR = color[0], ringG = color[1], ringB = color[2], ringA = .55;
+    if      (tier === 'exceptional') { ringA = .92; /* boost visibility */ }
+    else if (tier === 'deep')        { ringA = .78; }
+    else if (tier === 'moderate')    { ringA = .62; }
+    else if (tier === 'shallow')     {
+      // Desaturate the district color toward neutral for shallow-tier
+      ringR = Math.round(ringR * 0.55 + 150 * 0.45);
+      ringG = Math.round(ringG * 0.55 + 155 * 0.45);
+      ringB = Math.round(ringB * 0.55 + 170 * 0.45);
+      ringA = .34;
     }
     const isException = tier === 'exceptional';
+    // Accent color — subtle hint of tier layered on top of district.
+    // Only used for the exceptional-tier secondary ring.
+    let accentR = 127, accentG = 229, accentB = 176;  // sage-mint
 
     // Subtle glow only for online + exceptional (restraint)
     if (a.online && (isException || isH)) {
@@ -1944,7 +1944,7 @@ function drawNet(t) {
       }
     }
 
-    // Outer ring — tier color, thin, not solid
+    // Outer ring — DISTRICT color (primary identity). Thin, not solid.
     const rr = rad * (isH ? 1.15 : 1);
     netCtx.beginPath();
     netCtx.arc(a.ax, a.ay, rr, 0, 6.28);
@@ -1953,6 +1953,18 @@ function drawNet(t) {
       : \`rgba(\${ringR},\${ringG},\${ringB},\${.18})\`;
     netCtx.lineWidth = 1.5;
     netCtx.stroke();
+
+    // Exceptional-tier accent: a thin sage-mint inner ring sits just inside
+    // the district ring as a depth marker. Only on exceptional agents,
+    // readable as "this one is thinking at peak tier" without painting all
+    // exceptional agents the same color.
+    if (a.online && isException) {
+      netCtx.beginPath();
+      netCtx.arc(a.ax, a.ay, rr - 2.8, 0, 6.28);
+      netCtx.strokeStyle = \`rgba(\${accentR},\${accentG},\${accentB},\${0.55 * breath})\`;
+      netCtx.lineWidth = 1;
+      netCtx.stroke();
+    }
 
     // Sponsor rings — one whisper-quiet ring per active sponsor. Capped at 8
     // to keep agents legible. Each ring offset by 2.2px, alpha attenuates with
@@ -3272,11 +3284,13 @@ function drawMentionHalo(ctx, a, t) {
   const freshness = Math.max(0, 1 - age / 120_000);
   // Intensity scales with mention count — an agent mentioned 10x is
   // visibly more "hot" than one mentioned 3x.
-  const weight = Math.min(1, (m.count - 2) / 6);
+  // Weight curve capped so a heavily-mentioned agent doesn't dominate
+  // the composition. 3 mentions = 0.15, 8 = 0.55, 15+ = plateau at 0.65.
+  const weight = Math.min(0.65, (m.count - 2) / 15 + 0.1);
   const r = nodeRadius(a.styxx, a.online);
   const pulse = 0.5 + 0.5 * Math.sin(t * 0.004);
-  const haloR = r + 12 + pulse * 6;
-  const alpha = 0.22 * freshness * weight * (0.6 + 0.4 * pulse);
+  const haloR = r + 10 + pulse * 5;
+  const alpha = 0.18 * freshness * weight * (0.6 + 0.4 * pulse);
   ctx.beginPath();
   ctx.arc(a.ax, a.ay, haloR, 0, 6.28);
   ctx.strokeStyle = 'rgba(232,216,176,' + alpha + ')';  // champagne — rare & precious
