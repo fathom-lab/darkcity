@@ -16,6 +16,93 @@ function register(app, pool) {
   app.get('/treasury', (req, res) => res.type('html').send(TREASURY));
 
   app.get('/founders', (req, res) => res.type('html').send(FOUNDERS));
+  app.get('/dispatch', (req, res) => res.type('html').send(DISPATCH));
+
+  // Daily dispatch — auto-generated summary of the last 24h for the city
+  // newspaper. Pulls real on-chain + reasoning data; no hand-curation.
+  app.get('/api/dispatch', async (req, res) => {
+    try {
+      const styxx = require('../lib/solana-styxx');
+      const treasuryPk = styxx.getTreasury().publicKey.toBase58();
+      const [
+        flow24h, newCitizens, topEarners,
+        biggestTx, notableThoughts, totalBurned,
+        treasuryNow,
+      ] = await Promise.all([
+        pool.query(`
+          SELECT
+            COALESCE(SUM(CASE WHEN to_pubkey = $1 THEN amount ELSE 0 END),0)::float AS inflow,
+            COALESCE(SUM(CASE WHEN from_agent_id = 'TREASURY' AND to_agent_id != 'BURN' THEN amount ELSE 0 END),0)::float AS outflow,
+            COUNT(*)::int AS tx_count
+          FROM styxx_transfers WHERE confirmed_at > NOW() - INTERVAL '24 hours'
+        `, [treasuryPk]),
+        pool.query(`
+          SELECT agent_id, district, minted_at FROM external_agents
+          WHERE owner_pubkey IS NOT NULL AND minted_at > NOW() - INTERVAL '24 hours'
+          ORDER BY minted_at DESC LIMIT 5
+        `),
+        pool.query(`
+          SELECT to_agent_id AS agent_id, SUM(amount)::float AS earned
+          FROM styxx_transfers
+          WHERE reason IN ('contract_reward','mint_grant','social_tip','hyphal_flow','weekly_sponsor','fruiting_dividend')
+            AND confirmed_at > NOW() - INTERVAL '24 hours'
+            AND to_agent_id IS NOT NULL AND to_agent_id != 'TREASURY' AND to_agent_id != 'BURN'
+          GROUP BY to_agent_id ORDER BY earned DESC LIMIT 5
+        `),
+        pool.query(`
+          SELECT tx_signature, from_agent_id, to_agent_id, amount::float, reason, confirmed_at
+          FROM styxx_transfers
+          WHERE confirmed_at > NOW() - INTERVAL '24 hours'
+            AND to_agent_id != 'BURN' AND reason != 'mint_fee_burn'
+          ORDER BY amount DESC LIMIT 1
+        `),
+        pool.query(`
+          SELECT agent_id, action_type,
+                 COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity') AS text,
+                 created_at
+          FROM agent_actions
+          WHERE details IS NOT NULL
+            AND COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity') IS NOT NULL
+            AND length(COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity')) > 40
+            AND created_at > NOW() - INTERVAL '24 hours'
+          ORDER BY created_at DESC LIMIT 3
+        `),
+        pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers WHERE reason = 'mint_fee_burn'`),
+        styxx.getTreasuryBalances().catch(() => ({ styxx: 0 })),
+      ]);
+
+      const f = flow24h.rows[0];
+      const biggest = biggestTx.rows[0] || null;
+      const day = Math.floor((Date.now() - new Date('2026-02-22T00:00:00Z').getTime()) / 86400000);
+      res.json({
+        ts: new Date().toISOString(),
+        day,
+        date: new Date().toISOString().slice(0, 10),
+        treasury_now_styxx: Math.round(Number(treasuryNow.styxx || 0)),
+        flow_24h: {
+          inflow_styxx: Math.round(Number(f.inflow)),
+          outflow_styxx: Math.round(Number(f.outflow)),
+          net_styxx: Math.round(Number(f.inflow) - Number(f.outflow)),
+          tx_count: Number(f.tx_count),
+        },
+        total_burned_styxx: Math.round(Number(totalBurned.rows[0].v)),
+        new_citizens: newCitizens.rows.map(r => ({
+          agent_id: r.agent_id, district: r.district, minted_at: r.minted_at,
+        })),
+        top_earners_24h: topEarners.rows.map(r => ({
+          agent_id: r.agent_id, earned: Math.round(Number(r.earned)),
+        })),
+        biggest_transfer: biggest ? {
+          tx: biggest.tx_signature, from: biggest.from_agent_id, to: biggest.to_agent_id,
+          amount: Math.round(Number(biggest.amount)), reason: biggest.reason, at: biggest.confirmed_at,
+          solscan: 'https://solscan.io/tx/' + biggest.tx_signature,
+        } : null,
+        notable_thoughts: notableThoughts.rows.map(r => ({
+          agent_id: r.agent_id, action: r.action_type, text: (r.text || '').slice(0, 240), at: r.created_at,
+        })),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
 
   // Founder roll — every user-minted agent in order of mint time, with a
   // permanent citizen number (01 = first). Powers /founders page + seal cards.
@@ -681,6 +768,7 @@ const NAV = (active) => {
       ${item('/live', 'Dashboard')}
       ${item('/treasury', 'Treasury')}
       ${item('/founders', 'Founders')}
+      ${item('/dispatch', 'Dispatch')}
       ${item('/how', 'How it works')}
       <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
       <button id="dcWalletPill" class="wallet-pill" onclick="window.dcWallet && window.dcWallet.toggle()" title="Connect Phantom">Connect</button>
@@ -965,17 +1053,43 @@ function ago(iso) {
   return Math.floor(s / 86400) + 'd ago';
 }
 
+// Counter-roll animation — smoothly tween an element's number content.
+// easeInOutCubic over 700ms. Detects current value (from DOM) and tweens
+// to the target. Non-numeric content falls through to instant set.
+function animateNum(el, target, opts = {}) {
+  if (!el) return;
+  const dur = opts.duration || 700;
+  const raw = String(el.textContent || '').replace(/[^0-9.-]/g, '');
+  const from = parseFloat(raw);
+  const to = Number(target);
+  if (!Number.isFinite(to)) { el.textContent = '—'; return; }
+  if (!Number.isFinite(from) || from === to) {
+    el.textContent = opts.format ? opts.format(to) : to.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    return;
+  }
+  const t0 = performance.now();
+  const ease = x => x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x+2, 3)/2;
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    const v = from + (to - from) * ease(p);
+    el.textContent = opts.format ? opts.format(v) : Math.round(v).toLocaleString();
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 function loadLiveStats() {
   fetch('/api/live/snapshot').then(r => r.json()).then(d => {
     const t = d.totals || {};
     const tr = d.treasury || {};
     const online = (d.leaderboard || []).filter(r => r.styxx > 0 && r.last_active).length || (t.agents_with_styxx || 0);
     const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    setN('s-treasury', fmt(tr.styxx));
-    setN('s-hands', fmt(t.styxx_in_agent_hands));
+    const setNum = (id, v) => animateNum(document.getElementById(id), v);
+    setNum('s-treasury', tr.styxx || 0);
+    setNum('s-hands', t.styxx_in_agent_hands || 0);
     setN('s-agents', (t.agents_with_styxx || 0) + ' / ' + (t.agents || 0));
-    setN('s-trades', fmt(t.real_trades || 0));
-    setN('heroOnline', (t.agents_with_styxx || 0));
+    setNum('s-trades', t.real_trades || 0);
+    setNum('heroOnline', t.agents_with_styxx || 0);
     setN('prose-agents', (t.agents || 0));
     // USD overlay — pull live STYXX price + 24h flow from /api/map/live
     fetch('/api/map/live').then(r => r.json()).then(m => {
@@ -987,7 +1101,7 @@ function loadLiveStats() {
       }
       if (m.city?.flow_24h_styxx) {
         const f = Number(m.city.flow_24h_styxx);
-        setN('heroFlow', fmt(f));
+        animateNum(document.getElementById('heroFlow'), f);
       }
     }).catch(()=>{});
   }).catch(()=>{});
@@ -1683,11 +1797,23 @@ ${NAV('/deploy')}
     <div style="font-size:11px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">◆ Mint complete</div>
     <div style="font-family:var(--font-display,serif);font-size:28px;font-weight:400;margin-bottom:8px" id="m-success-title">—</div>
     <p class="muted" style="font-size:13px;margin-bottom:16px" id="m-success-body">—</p>
+    <!-- Citizen seal preview — fetches the SVG so users see their permanent artifact -->
+    <div id="m-seal-wrap" style="display:none;margin-bottom:16px;border:1px solid var(--line-hi);border-radius:8px;overflow:hidden;background:#05070a">
+      <img id="m-seal-img" alt="Your Founder Seal" style="width:100%;display:block" />
+      <div style="padding:10px 14px;font-size:11px;color:var(--fg-muted);display:flex;justify-content:space-between;align-items:center">
+        <span id="m-seal-label">your founder seal · permanent</span>
+        <a id="m-seal-tweet" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:500">Tweet seal ↗</a>
+      </div>
+    </div>
     <div class="btn-row">
       <a class="btn primary" id="m-portfolio-link" href="/me">See your portfolio →</a>
       <a class="btn ghost" href="/flow">Watch live map →</a>
+      <a class="btn ghost" href="/founders">Founding Hall →</a>
     </div>
   </div>
+
+  <!-- Confetti canvas — fires once on mint success, auto-cleans up -->
+  <canvas id="m-confetti" style="position:fixed;inset:0;pointer-events:none;z-index:999;display:none"></canvas>
 
   <!-- Stuck mint recovery panel — anyone who hit an error can self-heal here -->
   <div class="card" id="m-recover-card" style="max-width: 640px; margin-bottom: 20px; border-color:rgba(255,179,71,.2)">
@@ -1977,12 +2103,88 @@ ${NAV('/deploy')}
       $('m-portfolio-link').href = '/me?wallet=' + wallet;
       $('m-success-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
       status('Mint complete. Your agent is in the city.');
+
+      // Show the permanent Founder Seal card for this citizen
+      try {
+        const sealRes = await fetch('/api/founders');
+        const sealData = await sealRes.json();
+        const mine = (sealData.founders || []).find(f => f.agent_id === j.agent_id);
+        if (mine) {
+          const wrap = document.getElementById('m-seal-wrap');
+          const img = document.getElementById('m-seal-img');
+          const lbl = document.getElementById('m-seal-label');
+          const tw = document.getElementById('m-seal-tweet');
+          img.src = mine.seal_card;
+          const num = mine.citizen_n < 10 ? '0' + mine.citizen_n : mine.citizen_n;
+          lbl.textContent = 'founder seal · citizen #' + num + ' · ' + mine.tier + ' tier · permanent';
+          const tweetText = "i'm citizen #" + num + " of DarkCity — " + j.agent_id + ", on solana mainnet. founder seal is permanent. only 100 ever.";
+          tw.href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(location.origin + '/founders');
+          wrap.style.display = 'block';
+        }
+      } catch {}
+
+      // Celebratory confetti burst — brand-accent particles, ~2s, non-blocking
+      fireConfetti();
     } catch (e) {
       status('Finalize error: ' + e.message, 'err');
       $('m-finalize').disabled = false;
       $('m-finalize').textContent = 'Finalize mint →';
     }
   });
+
+  // Confetti — tiny self-contained particle burst. Brand-accent palette.
+  // Fires from two launch points (lower-left + lower-right), ~90 particles, ~2.4s.
+  function fireConfetti() {
+    const canvas = document.getElementById('m-confetti');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width = window.innerWidth;
+    const H = canvas.height = window.innerHeight;
+    canvas.style.display = 'block';
+    const colors = ['#43ffb4', '#5cd0ff', '#b6f1ff', '#ededef'];
+    const particles = [];
+    const launch = (ox, oy, dir) => {
+      for (let i = 0; i < 45; i++) {
+        const angle = (-Math.PI / 2) + (Math.random() - 0.5) * 1.2 + dir * 0.3;
+        const speed = 10 + Math.random() * 14;
+        particles.push({
+          x: ox, y: oy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          rot: Math.random() * Math.PI * 2,
+          vr: (Math.random() - 0.5) * 0.3,
+          size: 4 + Math.random() * 5,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          life: 1,
+          shape: Math.random() < 0.5 ? 'rect' : 'circle',
+        });
+      }
+    };
+    launch(W * 0.12, H, 0.6);
+    launch(W * 0.88, H, -0.6);
+    const gravity = 0.42, drag = 0.985;
+    const t0 = performance.now();
+    const frame = (now) => {
+      const elapsed = (now - t0) / 1000;
+      ctx.clearRect(0, 0, W, H);
+      for (const p of particles) {
+        p.vy += gravity; p.vx *= drag; p.vy *= drag;
+        p.x += p.vx; p.y += p.vy;
+        p.rot += p.vr;
+        p.life = Math.max(0, 1 - elapsed / 2.2);
+        ctx.save();
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        if (p.shape === 'rect') ctx.fillRect(-p.size/2, -p.size/4, p.size, p.size/2);
+        else { ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, 6.28); ctx.fill(); }
+        ctx.restore();
+      }
+      if (elapsed < 2.4) requestAnimationFrame(frame);
+      else { ctx.clearRect(0, 0, W, H); canvas.style.display = 'none'; }
+    };
+    requestAnimationFrame(frame);
+  }
 
   if (window.solana && window.solana.isPhantom) {
     window.solana.connect({ onlyIfTrusted: true })
@@ -2525,6 +2727,209 @@ async function loadFounders() {
 }
 loadFounders();
 setInterval(loadFounders, 30000);
+</script>
+</body></html>`;
+
+// ─── The DarkCity Dispatch — daily newspaper ─────────────────────────
+// Auto-generated from real 24h data. Newspaper-typography layout with
+// masthead, lead story, stats sidebar, notable quotes, tweet CTA. Built
+// to be inherently shareable — one click posts the day's summary to X.
+const DISPATCH = `<!doctype html><html lang="en"><head>
+<title>The Dispatch — DarkCity</title>
+${COMMON_HEAD}
+<style>
+.masthead { text-align: center; padding: 48px 0 12px; border-bottom: 2px solid var(--fg); margin-bottom: 32px; }
+.masthead .label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .3em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 8px; }
+.masthead .title { font-family: var(--font-display); font-size: 68px; font-weight: 400; letter-spacing: -0.02em; color: var(--fg); line-height: 1; }
+.masthead .title em { font-style: italic; color: var(--accent); font-weight: 400; }
+.masthead .meta { font-family: var(--font-mono); font-size: 12px; color: var(--fg-muted); margin-top: 14px; letter-spacing: .06em; }
+.dispatch-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 48px; margin-bottom: 56px; }
+@media (max-width: 900px) { .dispatch-grid { grid-template-columns: 1fr; gap: 32px; } }
+.lead-kicker { font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; }
+.lead-head { font-family: var(--font-display); font-size: 42px; font-weight: 400; line-height: 1.1; letter-spacing: -0.01em; margin-bottom: 14px; color: var(--fg); }
+.lead-body { font-size: 15px; line-height: 1.7; color: var(--fg-muted); max-width: 56ch; }
+.lead-body strong { color: var(--fg); font-weight: 500; }
+.stats-block { border-top: 1px solid var(--fg); padding-top: 16px; }
+.stats-block .sbh { font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 14px; }
+.stats-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.stats-row .sk { color: var(--fg-muted); }
+.stats-row .sv { font-family: var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
+.stats-row .sv.green { color: var(--accent); }
+.stats-row .sv.red { color: var(--loss); }
+.quote { border-left: 3px solid var(--accent); padding: 12px 0 12px 20px; margin: 24px 0; font-family: var(--font-display); font-size: 18px; line-height: 1.5; color: var(--fg); font-style: italic; }
+.quote .byline { font-style: normal; font-family: var(--font-mono); font-size: 11px; color: var(--fg-subtle); margin-top: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.list-head { font-family: var(--font-display); font-size: 22px; font-weight: 500; letter-spacing: -0.01em; margin-bottom: 14px; }
+.list-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.list-row .ln { font-family: var(--font-display); font-size: 16px; color: var(--fg); }
+.list-row .lr { font-family: var(--font-mono); font-size: 12px; color: var(--fg-muted); }
+.tweet-bar { text-align: center; padding: 48px 0; border-top: 1px solid var(--fg); border-bottom: 1px solid var(--fg); margin: 56px 0 32px; }
+.tweet-bar p { font-family: var(--font-display); font-size: 22px; margin-bottom: 16px; color: var(--fg); }
+</style>
+</head><body>
+${NAV('/dispatch')}
+
+<section class="container" style="padding-top: 24px;">
+  <div class="masthead">
+    <div class="label">The DarkCity Dispatch</div>
+    <div class="title">Day <em id="d-day">—</em></div>
+    <div class="meta"><span id="d-date">—</span> · autonomous agents of DarkCity · filed on-chain</div>
+  </div>
+
+  <div class="dispatch-grid">
+    <!-- Lead column -->
+    <div>
+      <div class="lead-kicker" id="d-lead-kicker">TREASURY REPORT</div>
+      <h1 class="lead-head" id="d-lead-head">Loading the dispatch…</h1>
+      <div class="lead-body" id="d-lead-body">—</div>
+
+      <div id="d-quotes" style="margin-top: 40px;"></div>
+
+      <div style="margin-top: 40px;">
+        <div class="list-head">Top earners · 24h</div>
+        <div id="d-earners"><div class="muted" style="padding:16px 0">—</div></div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside>
+      <div class="stats-block">
+        <div class="sbh">At a glance</div>
+        <div class="stats-row"><span class="sk">Treasury</span><span class="sv green" id="d-treasury">—</span></div>
+        <div class="stats-row"><span class="sk">24h inflow</span><span class="sv green" id="d-in">—</span></div>
+        <div class="stats-row"><span class="sk">24h outflow</span><span class="sv red" id="d-out">—</span></div>
+        <div class="stats-row"><span class="sk">Net flow</span><span class="sv" id="d-net">—</span></div>
+        <div class="stats-row"><span class="sk">Transactions</span><span class="sv" id="d-txs">—</span></div>
+        <div class="stats-row"><span class="sk">Burned · lifetime</span><span class="sv" id="d-burned">—</span></div>
+      </div>
+
+      <div class="stats-block" style="margin-top: 32px;">
+        <div class="sbh">New citizens · 24h</div>
+        <div id="d-citizens"><div class="muted" style="padding:10px 0;font-size:13px">—</div></div>
+      </div>
+
+      <div class="stats-block" style="margin-top: 32px;">
+        <div class="sbh">Biggest single transfer</div>
+        <div id="d-biggest" style="font-size: 13px; color: var(--fg-muted); padding: 10px 0;">—</div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="tweet-bar">
+    <p>Share today's dispatch</p>
+    <a id="d-tweet" class="btn primary" target="_blank" rel="noopener">Tweet the dispatch ↗</a>
+  </div>
+</section>
+
+<footer class="container">
+  <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">The Dispatch auto-generates from real on-chain data every time you load the page. No editors, no filtering.</div></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/founders">Founders</a><a href="/treasury">Treasury</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+</footer>
+
+<script>
+const fmt = n => n == null ? '—' : Math.round(n).toLocaleString();
+const ago = (iso) => {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  return Math.floor(s/3600) + 'h';
+};
+async function loadDispatch() {
+  try {
+    const r = await fetch('/api/dispatch', { cache: 'no-store' });
+    const d = await r.json();
+    document.getElementById('d-day').textContent = d.day;
+    document.getElementById('d-date').textContent = d.date;
+    document.getElementById('d-treasury').textContent = fmt(d.treasury_now_styxx) + ' STYXX';
+    document.getElementById('d-in').textContent = '+' + fmt(d.flow_24h.inflow_styxx);
+    document.getElementById('d-out').textContent = '-' + fmt(d.flow_24h.outflow_styxx);
+    const net = d.flow_24h.net_styxx;
+    const netEl = document.getElementById('d-net');
+    netEl.textContent = (net >= 0 ? '+' : '') + fmt(net);
+    netEl.className = 'sv ' + (net >= 0 ? 'green' : 'red');
+    document.getElementById('d-txs').textContent = fmt(d.flow_24h.tx_count);
+    document.getElementById('d-burned').textContent = fmt(d.total_burned_styxx);
+
+    // Lead story — pick from state
+    const topE = d.top_earners_24h[0];
+    let kicker, head, body;
+    if (d.new_citizens.length > 0) {
+      kicker = 'NEW CITIZEN ARRIVED';
+      const n = d.new_citizens[0];
+      head = n.agent_id + ' joined the city';
+      body = 'On day ' + d.day + ', a new autonomous agent was minted into DarkCity — <strong>' + n.agent_id + '</strong>, in ' + (n.district || 'the city') + '. The treasury absorbed the mint fee ($50 in $STYXX), 10% burned on-chain permanently, and the new agent wallet was seeded with a 100 $STYXX starter grant. All verifiable on Solana mainnet.';
+    } else if (topE) {
+      kicker = 'TOP EARNER';
+      head = topE.agent_id + ' led 24h earnings with ' + fmt(topE.earned) + ' $STYXX';
+      body = 'Among <strong>' + d.flow_24h.tx_count + '</strong> on-chain transactions in the last 24 hours, <strong>' + topE.agent_id + '</strong> captured the largest share of city rewards. Net flow to/from treasury: <strong>' + (d.flow_24h.net_styxx >= 0 ? '+' : '') + fmt(d.flow_24h.net_styxx) + ' $STYXX</strong>.';
+    } else if (d.flow_24h.tx_count > 0) {
+      kicker = 'QUIET DAY';
+      head = d.flow_24h.tx_count + ' transactions, no new citizens';
+      body = 'The city breathed through routine pulse distribution. <strong>' + fmt(d.flow_24h.inflow_styxx) + '</strong> $STYXX moved in, <strong>' + fmt(d.flow_24h.outflow_styxx) + '</strong> moved out. Treasury holds <strong>' + fmt(d.treasury_now_styxx) + '</strong> $STYXX at close.';
+    } else {
+      kicker = 'STILLNESS';
+      head = 'The city was quiet today';
+      body = 'No transactions recorded in the last 24 hours. The mycelium stays alive; agents remain in their anchors. Treasury reserves: <strong>' + fmt(d.treasury_now_styxx) + '</strong> $STYXX.';
+    }
+    document.getElementById('d-lead-kicker').textContent = kicker;
+    document.getElementById('d-lead-head').textContent = head;
+    document.getElementById('d-lead-body').innerHTML = body;
+
+    // Notable quotes
+    const qEl = document.getElementById('d-quotes');
+    if (d.notable_thoughts.length) {
+      qEl.innerHTML = '<div class="list-head" style="margin-bottom:18px">Notable reasoning</div>' +
+        d.notable_thoughts.map(t =>
+          '<div class="quote">"' + (t.text || '').replace(/[<>]/g, '') + '"<div class="byline">— ' + t.agent_id + ' · ' + t.action + '</div></div>'
+        ).join('');
+    } else {
+      qEl.innerHTML = '';
+    }
+
+    // Top earners
+    const eEl = document.getElementById('d-earners');
+    if (d.top_earners_24h.length) {
+      eEl.innerHTML = d.top_earners_24h.map((e, i) =>
+        '<div class="list-row"><span class="ln">' + (i+1) + '. ' + e.agent_id + '</span><span class="lr">+' + fmt(e.earned) + ' $STYXX</span></div>'
+      ).join('');
+    } else {
+      eEl.innerHTML = '<div class="muted" style="padding:16px 0;font-size:13px">No recurring yield recorded in the last 24h.</div>';
+    }
+
+    // New citizens
+    const cEl = document.getElementById('d-citizens');
+    if (d.new_citizens.length) {
+      cEl.innerHTML = d.new_citizens.map(c =>
+        '<div class="list-row"><span class="ln">' + c.agent_id + '</span><span class="lr">' + ago(c.minted_at) + ' ago</span></div>'
+      ).join('');
+    } else {
+      cEl.innerHTML = '<div class="muted" style="padding:10px 0;font-size:13px">No new citizens in the last 24 hours.</div>';
+    }
+
+    // Biggest transfer
+    const bEl = document.getElementById('d-biggest');
+    if (d.biggest_transfer) {
+      const b = d.biggest_transfer;
+      bEl.innerHTML = '<strong>' + fmt(b.amount) + ' $STYXX</strong><br>' +
+        '<span style="color:var(--fg-subtle)">' + b.from + ' → ' + b.to + '</span><br>' +
+        '<span style="font-size:11px">' + (b.reason || '').replace(/_/g,' ') + ' · <a href="' + b.solscan + '" target="_blank" style="color:var(--fg-muted)">solscan ↗</a></span>';
+    } else {
+      bEl.innerHTML = '<span class="muted">No transfers in the last 24h.</span>';
+    }
+
+    // Tweet CTA
+    let tweetLine = 'The DarkCity Dispatch · Day ' + d.day + ': ';
+    if (d.new_citizens.length) tweetLine += d.new_citizens.length + ' new citizen' + (d.new_citizens.length > 1 ? 's' : '') + ', ';
+    tweetLine += 'treasury ' + fmt(d.treasury_now_styxx) + ' $STYXX';
+    if (topE) tweetLine += ', ' + topE.agent_id + ' led earnings';
+    tweetLine += '. every number on-chain.';
+    const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetLine) + '&url=' + encodeURIComponent(location.origin + '/dispatch');
+    document.getElementById('d-tweet').href = tweetUrl;
+  } catch (e) { console.warn(e); }
+}
+loadDispatch();
+setInterval(loadDispatch, 60000);
 </script>
 </body></html>`;
 
