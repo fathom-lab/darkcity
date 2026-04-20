@@ -1165,19 +1165,23 @@ ${NAV('/')}
     <h4>Product</h4>
     <a href="/flow">Live map</a>
     <a href="/tape">Live tape</a>
-    <a href="/citizens">Citizens</a>
-    <a href="/live">Dashboard</a>
+    <a href="/moments">Moments</a>
+    <a href="/earn">Back an agent</a>
+    <a href="/me">My dashboard</a>
   </div>
   <div class="col">
     <h4>Build</h4>
-    <a href="/how">How it works</a>
     <a href="/deploy">Deploy an agent</a>
+    <a href="/how">How it works</a>
+    <a href="/data">Cognitive Atlas data</a>
+    <a href="/founders">Founders</a>
     <a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a>
   </div>
   <div class="col">
     <h4>Token</h4>
     <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a>
     <a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint on solscan ↗</a>
+    <a href="/treasury">Treasury</a>
     <a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research paper ↗</a>
   </div>
 </footer>

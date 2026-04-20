@@ -350,16 +350,21 @@ class NPCBrain {
   }
 
   async _gatherPerception(agent, allAgentNames) {
-    // Recent actions in agent's district
+    // Recent actions in agent's district — WITH thought snippets so this
+    // agent can react to what neighbors actually said/reasoned about.
+    // Without this, agents only see "X performed trade" and can't recognize
+    // tip-worthy reasoning.
     let recentActivity = [];
     try {
       const { rows } = await this.pool.query(
-        `SELECT ea.agent_id, aa.action_type, aa.created_at
+        `SELECT ea.agent_id, aa.action_type, aa.created_at,
+                COALESCE(aa.details->>'choice_reason', aa.details->>'reasoning_trace') AS snippet
          FROM agent_actions aa
          JOIN external_agents ea ON ea.agent_id = aa.agent_id
          WHERE ea.district = $1
-         ORDER BY aa.created_at DESC LIMIT 5`,
-        [agent.district || 'The Sprawl']
+           AND aa.agent_id != $2
+         ORDER BY aa.created_at DESC LIMIT 6`,
+        [agent.district || 'The Sprawl', agent.agent_id]
       );
       recentActivity = rows;
     } catch { /* empty */ }
@@ -381,9 +386,10 @@ class NPCBrain {
     ];
 
     if (recentActivity.length > 0) {
-      lines.push('Recent district activity:');
+      lines.push('Recent district activity (with reasoning snippets):');
       for (const act of recentActivity) {
-        lines.push(`  - ${act.agent_id} performed ${act.action_type}`);
+        const snippet = act.snippet ? String(act.snippet).replace(/\s+/g, ' ').slice(0, 140) : '';
+        lines.push(`  - ${act.agent_id} did ${act.action_type}${snippet ? ' — "' + snippet + '"' : ''}`);
       }
     }
 
