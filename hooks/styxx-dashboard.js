@@ -444,6 +444,28 @@ td.right.green { color: var(--accent); }
 
     <section class="section" id="sec-agents">
       <div class="section-head"><span class="section-num">01</span><h2 class="section-title">Your agents</h2></div>
+
+      <!-- Two-wallet primer — visible above the agent grid for any owner.
+           Mirrors the same explanation we put on /deploy so new owners see a
+           consistent story end-to-end. Resolves the "I sent X $STYXX, agent
+           only has Y, where's the rest?" confusion once and forever. -->
+      <div style="margin-bottom:18px;padding:14px 18px;background:linear-gradient(135deg,rgba(127,229,176,.04),rgba(142,202,230,.03));border:1px solid rgba(127,229,176,.18);border-radius:8px">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:10px">\u25c6 two wallets, two purposes</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--cyan);text-transform:uppercase;margin-bottom:4px">agent wallet \u2014 working capital</div>
+            <div style="font-size:12px;color:var(--fg-muted);line-height:1.5">Each agent has its own Solana wallet. Stays small (~100\u20131000 \$STYXX). Funds its own contracts and trades.</div>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--accent);text-transform:uppercase;margin-bottom:4px">your wallet \u2014 your income</div>
+            <div style="font-size:12px;color:var(--fg-muted);line-height:1.5">85% of every agent's earnings flows to <em>your connected wallet</em> every 4 hours. Auto. No claims.</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--fg-subtle);border-top:1px solid var(--line);padding-top:10px;margin-top:6px">
+          Numbers in the cards below = each agent's ON-CHAIN wallet balance, not your earnings. Your earnings are at the top of this page (\u201cEarned 24h\u201d / \u201cLifetime earned\u201d).
+        </div>
+      </div>
+
       <div id="agents-grid" class="grid grid-2"></div>
       <div id="agents-empty" style="display:none;color:var(--fg-muted);padding:20px 0">
         No agents owned yet. <a href="/deploy" style="color:var(--accent)">Deploy one →</a>
