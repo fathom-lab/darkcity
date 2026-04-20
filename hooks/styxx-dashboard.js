@@ -239,6 +239,33 @@ td.right.green { color: var(--accent); }
 @keyframes cmspin { to { transform: rotate(360deg); } }
 #claimModal .cm-error { padding: 14px; background: rgba(255,107,138,.06); border: 1px solid rgba(255,107,138,.25); border-radius: 6px; }
 #dcClaimConfetti { position: fixed; inset: 0; pointer-events: none; z-index: 999; display: none; }
+/* Payout + support modals share the same card style as claimModal */
+#payoutModal, #supportModal { position: fixed; inset: 0; background: rgba(0,0,0,.72); backdrop-filter: blur(8px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 20px; }
+#payoutModal.show, #supportModal.show { display: flex; }
+#payoutModal .cm-card, #supportModal .cm-card { background: var(--bg-elev); border: 1px solid var(--line-hi); border-radius: 10px; padding: 28px 30px; max-width: 480px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+#payoutModal .cm-title, #supportModal .cm-title { font-family: var(--font-display); font-size: 22px; font-weight: 500; letter-spacing: -.01em; margin-bottom: 18px; }
+#payoutModal .cm-eyebrow, #supportModal .cm-eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; }
+#payoutModal .cm-actions, #supportModal .cm-actions { display: flex; gap: 10px; align-items: center; }
+/* Floating help FAB — whisper-quiet, luxury-tier. Fixed bottom-right. */
+#helpFab {
+  position: fixed; bottom: 28px; right: 28px;
+  min-width: 44px; height: 44px; padding: 0 16px;
+  border-radius: 22px;
+  border: 1px solid var(--line-hi);
+  background: rgba(10,10,11,.82);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  color: var(--fg-muted);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: .08em; text-transform: uppercase;
+  cursor: pointer; z-index: 80;
+  transition: color .2s, border-color .2s, transform .2s;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+#helpFab::before { content: '?'; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid currentColor; font-size: 10px; font-weight: 600; }
+#helpFab::after { content: 'Need help?'; }
+#helpFab:hover { color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+@media (max-width: 720px) { #helpFab { bottom: 20px; right: 20px; } #helpFab::after { display: none; } #helpFab { padding: 0; width: 44px; } }
 </style>
 </head>
 <body>
@@ -583,6 +610,7 @@ td.right.green { color: var(--accent); }
         </div>
         <div class="card-actions">
           <button class="btn primary" onclick="window.dcOpenClaim('\${a.agent_id}')">Claim $STYXX →</button>
+          <button class="btn" onclick="window.dcOpenPayout('\${a.agent_id}')" title="Rotate payout wallet">Rotate wallet</button>
           <a class="btn" href="https://solscan.io/account/\${a.sol_pubkey || ''}" target="_blank">Wallet ↗</a>
         </div>
       </div>
@@ -1077,5 +1105,146 @@ td.right.green { color: var(--accent); }
   </div>
 </div>
 <canvas id="dcClaimConfetti"></canvas>
+
+<!-- Payout-wallet rotation modal. Opens via window.dcOpenPayout(agentId) -->
+<div id="payoutModal" role="dialog" aria-modal="true">
+  <div class="cm-card">
+    <div class="cm-eyebrow" style="color:var(--warn)">◆ Rotate payout wallet — permanent change</div>
+    <div class="cm-title" id="pm-title">Change payout wallet</div>
+    <div id="pm-body"></div>
+  </div>
+</div>
+
+<!-- Floating 'Need help?' pill — bottom-right, luxury minimal -->
+<button id="helpFab" onclick="window.dcOpenSupport()" title="Need help?" aria-label="Open support form"></button>
+<div id="supportModal" role="dialog" aria-modal="true">
+  <div class="cm-card">
+    <div class="cm-eyebrow">◆ Support request</div>
+    <div class="cm-title">How can we help?</div>
+    <div id="sp-body"></div>
+  </div>
+</div>
+
+<script>
+// ═══ Payout wallet rotation ═════════════════════════════════════════════
+window.dcOpenPayout = async function(agentId) {
+  if (!window.dcWalletRef) window.dcWalletRef = new URLSearchParams(location.search).get('wallet') || localStorage.getItem('dc_wallet');
+  const w = window.dcWalletRef;
+  if (!w) { alert('Connect your wallet first.'); return; }
+  if (!window.solana?.isPhantom) { alert('Phantom required.'); return; }
+  const m = document.getElementById('payoutModal');
+  m.classList.add('show');
+  document.getElementById('pm-title').textContent = 'Rotate payout for ' + agentId;
+  document.getElementById('pm-body').innerHTML =
+    '<div style="color:var(--fg-muted);font-size:13px;line-height:1.55;margin-bottom:16px">' +
+      'This permanently changes the owner pubkey for <strong style="color:var(--fg)">' + agentId + '</strong>. ' +
+      'All future earnings (sponsor yield, referral bonuses, pulse payouts) route to the new wallet. ' +
+      'The current owner <code style="color:var(--fg-muted);font-size:11px">' + (w.slice(0,6) + '…' + w.slice(-4)) + '</code> signs to authorize.' +
+    '</div>' +
+    '<label style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:6px;display:block">New payout wallet</label>' +
+    '<input type="text" id="pm-new" placeholder="paste new Solana pubkey" maxlength="64" style="width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--line-hi);border-radius:6px;color:var(--fg);font-family:var(--font-mono);font-size:12px;margin-bottom:12px">' +
+    '<div id="pm-status" style="font-size:12px;color:var(--fg-muted);min-height:16px;margin-bottom:14px"></div>' +
+    '<div class="cm-actions">' +
+      '<button class="btn" onclick="document.getElementById(\\'payoutModal\\').classList.remove(\\'show\\')">Cancel</button>' +
+      '<button class="btn primary" id="pm-submit" style="margin-left:auto">Sign + rotate →</button>' +
+    '</div>';
+  document.getElementById('pm-submit').addEventListener('click', () => window.dcRunPayout(agentId));
+};
+
+window.dcRunPayout = async function(agentId) {
+  const newPk = document.getElementById('pm-new').value.trim();
+  const status = document.getElementById('pm-status');
+  if (!newPk || newPk.length < 32) { status.textContent = 'Paste a valid Solana pubkey.'; status.style.color = 'var(--loss)'; return; }
+  if (!confirm('ROTATE permanently? All future earnings flow to ' + newPk.slice(0,8) + '…' + newPk.slice(-4))) return;
+  const w = window.dcWalletRef;
+  status.textContent = 'Waiting on Phantom…'; status.style.color = 'var(--fg-muted)';
+  try {
+    if (!window.solana.publicKey) await window.solana.connect();
+    const ts = Date.now();
+    const message = 'darkcity:payout-wallet:' + agentId + ':' + newPk + ':' + ts;
+    const encoded = new TextEncoder().encode(message);
+    const signed = await window.solana.signMessage(encoded);
+    const sigB58 = bs58EncodeUint8(signed.signature || signed);
+    status.textContent = 'Submitting…';
+    const r = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/payout-wallet', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ current_owner_pubkey: w, new_owner_pubkey: newPk, message, signature: sigB58 }),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      status.textContent = '✓ Rotated. Future earnings route to the new wallet.';
+      status.style.color = 'var(--accent)';
+      setTimeout(() => document.getElementById('payoutModal').classList.remove('show'), 2500);
+    } else {
+      status.textContent = 'Failed: ' + (j.hint || j.reason || j.error || 'unknown');
+      status.style.color = 'var(--loss)';
+    }
+  } catch (e) {
+    if (e.code === 4001 || /rejected/i.test(e.message || '')) { status.textContent = 'Cancelled.'; return; }
+    status.textContent = 'Error: ' + (e.message || e);
+    status.style.color = 'var(--loss)';
+  }
+};
+
+// ═══ Support request ══════════════════════════════════════════════════
+window.dcOpenSupport = function() {
+  document.getElementById('supportModal').classList.add('show');
+  const w = window.dcWalletRef || '';
+  document.getElementById('sp-body').innerHTML =
+    '<div style="color:var(--fg-muted);font-size:13px;line-height:1.55;margin-bottom:16px">Report a bug, request an account change, or ask anything. A human replies via your contact or on Twitter.</div>' +
+    '<label style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:6px;display:block">Category</label>' +
+    '<select id="sp-cat" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--line-hi);border-radius:6px;color:var(--fg);font-size:13px;margin-bottom:12px">' +
+      '<option value="stuck_mint">Stuck mint / didn\\'t get agent</option>' +
+      '<option value="payout">Payout / withdraw problem</option>' +
+      '<option value="rename">Rename / update agent metadata</option>' +
+      '<option value="bug">Site bug</option>' +
+      '<option value="security">Security issue</option>' +
+      '<option value="feedback">Feedback / suggestion</option>' +
+      '<option value="other">Other</option>' +
+    '</select>' +
+    '<label style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:6px;display:block">Subject</label>' +
+    '<input type="text" id="sp-subj" maxlength="200" placeholder="one-line summary" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--line-hi);border-radius:6px;color:var(--fg);font-size:13px;margin-bottom:12px">' +
+    '<label style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:6px;display:block">Details</label>' +
+    '<textarea id="sp-body-text" rows="5" maxlength="4000" placeholder="what happened, what you tried, any tx signatures…" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--line-hi);border-radius:6px;color:var(--fg);font-size:13px;font-family:inherit;margin-bottom:12px;resize:vertical"></textarea>' +
+    '<label style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:6px;display:block">Contact (twitter @, email, discord)</label>' +
+    '<input type="text" id="sp-contact" maxlength="200" placeholder="optional — how to reach you" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--line-hi);border-radius:6px;color:var(--fg);font-size:13px;margin-bottom:6px">' +
+    '<div style="font-size:11px;color:var(--fg-subtle);margin-bottom:14px">Wallet (auto-attached): <code style="font-size:10px">' + (w ? (w.slice(0,6)+'…'+w.slice(-4)) : 'not connected') + '</code></div>' +
+    '<div id="sp-status" style="font-size:12px;min-height:16px;margin-bottom:10px"></div>' +
+    '<div class="cm-actions">' +
+      '<button class="btn" onclick="document.getElementById(\\'supportModal\\').classList.remove(\\'show\\')">Cancel</button>' +
+      '<button class="btn primary" id="sp-submit" style="margin-left:auto">Submit →</button>' +
+    '</div>';
+  document.getElementById('sp-submit').addEventListener('click', async () => {
+    const cat = document.getElementById('sp-cat').value;
+    const subject = document.getElementById('sp-subj').value.trim();
+    const body = document.getElementById('sp-body-text').value.trim();
+    const contact = document.getElementById('sp-contact').value.trim();
+    const st = document.getElementById('sp-status');
+    if (!subject || !body) { st.textContent = 'subject + details required'; st.style.color = 'var(--loss)'; return; }
+    st.textContent = 'Submitting…'; st.style.color = 'var(--fg-muted)';
+    try {
+      const r = await fetch('/api/support/submit', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ wallet: window.dcWalletRef, category: cat, subject, body, contact }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        st.innerHTML = '<span style="color:var(--accent)">✓ Got it. Request <code style="font-size:11px">' + j.id.slice(0,8) + '</code>. ' + j.message + '</span>';
+        setTimeout(() => document.getElementById('supportModal').classList.remove('show'), 2800);
+      } else {
+        st.textContent = 'Failed: ' + (j.error || 'unknown'); st.style.color = 'var(--loss)';
+      }
+    } catch (e) {
+      st.textContent = 'Error: ' + (e.message || e); st.style.color = 'var(--loss)';
+    }
+  });
+};
+
+// Stash wallet globally so support + payout modals can read it
+(function(){
+  const p = new URLSearchParams(location.search);
+  window.dcWalletRef = p.get('wallet') || localStorage.getItem('dc_wallet') || null;
+})();
+</script>
 
 </body></html>`;
