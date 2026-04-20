@@ -1842,6 +1842,10 @@ function renderPicker(rows) {
           <span>+\${fmt(a.earned_7d)} 7d</span>
           <span class="depth">\${a.mean_depth != null ? a.mean_depth.toFixed(2) : '—'} depth</span>
         </div>
+        \${Number(a.total_sponsored) > 0
+          ? \`<div style="font-size:10px;color:var(--fg-subtle);margin-top:8px;font-family:var(--font-mono);letter-spacing:.06em">\${fmt(a.total_sponsored)} \$STYXX already staked</div>\`
+          : \`<div style="font-size:10px;color:var(--accent);margin-top:8px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase">\u25C6 no backers yet \u00b7 be the first</div>\`
+        }
       </button>
     \`;
   }).join('');
