@@ -39,9 +39,14 @@ function register(app, pool) {
                  last_thought.text AS last_thought_text,
                  last_thought.action AS last_thought_action,
                  last_thought.at AS last_thought_at,
-                 f.citizen_n
+                 f.citizen_n,
+                 sp.n_sponsors
           FROM external_agents ea
           LEFT JOIN founders f ON f.agent_id = ea.agent_id
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS n_sponsors
+            FROM sponsorships WHERE agent_id = ea.agent_id AND status = 'active'
+          ) sp ON TRUE
           LEFT JOIN LATERAL (
             SELECT
               ROUND(AVG(normalized_score)::numeric, 3) AS mean_depth,
@@ -117,6 +122,7 @@ function register(app, pool) {
           depth_tier: r.dominant_tier || null,
           evals_24h: Number(r.evals_24h || 0),
           citizen_n: r.citizen_n ? Number(r.citizen_n) : null,  // founder rank for halo
+          n_sponsors: Number(r.n_sponsors || 0),                 // drives sponsor rings on map
           owner_pubkey: r.owner_pubkey,
           last_thought: r.last_thought_text ? {
             text: (r.last_thought_text || '').slice(0, 200),
@@ -1576,6 +1582,23 @@ function drawNet(t) {
       : \`rgba(\${ringR},\${ringG},\${ringB},\${.18})\`;
     netCtx.lineWidth = 1.5;
     netCtx.stroke();
+
+    // Sponsor rings — one whisper-quiet ring per active sponsor. Capped at 8
+    // to keep agents legible. Each ring offset by 2.2px, alpha attenuates with
+    // ring count so the inner-most stays visible while outer fades. This is
+    // the 'who's backed by whom' signal; it pays interest to look for.
+    if (a.n_sponsors && a.n_sponsors > 0) {
+      const n = Math.min(a.n_sponsors, 8);
+      for (let i = 0; i < n; i++) {
+        const offset = 3.5 + i * 2.4;
+        const alpha = Math.max(0.05, 0.26 - i * 0.025);
+        netCtx.beginPath();
+        netCtx.arc(a.x, a.y, rr + offset, 0, 6.28);
+        netCtx.strokeStyle = 'rgba(' + ringR + ',' + ringG + ',' + ringB + ',' + alpha + ')';
+        netCtx.lineWidth = 0.6;
+        netCtx.stroke();
+      }
+    }
 
     // Mean-depth progress arc — thicker than the ring, partial sweep
     const md = a.mean_depth;

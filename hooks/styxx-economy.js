@@ -273,6 +273,23 @@ async function verifyStyxxPayment({ tx_signature, expected_from_pubkey, expected
 // User sends the SPL transfer from their wallet (Phantom/Solflare).
 // Then /mint/finalize with the tx signature creates the agent.
 
+// In-memory rate-limiting buckets. Simple token-bucket keyed by wallet+ip.
+// Per-wallet: max 5 mint quotes per hour, 20 finalize retries per hour.
+// Lives in process memory — fine for single-pod; not a hard security boundary.
+const _rateBuckets = new Map();
+function checkRate(key, limit, windowMs) {
+  const now = Date.now();
+  const arr = _rateBuckets.get(key) || [];
+  const fresh = arr.filter(t => now - t < windowMs);
+  if (fresh.length >= limit) {
+    const oldest = fresh[0];
+    return { ok: false, retry_in_seconds: Math.ceil((windowMs - (now - oldest)) / 1000) };
+  }
+  fresh.push(now);
+  _rateBuckets.set(key, fresh);
+  return { ok: true };
+}
+
 async function mintQuote(req, res) {
   try {
     const { owner_pubkey, agent_name, framework, referred_by_pubkey, one_liner } = req.body || {};
@@ -282,6 +299,12 @@ async function mintQuote(req, res) {
     if (!/^[A-Za-z0-9 _-]{2,24}$/.test(agent_name)) {
       return res.status(400).json({ error: 'agent_name must be 2-24 chars, [A-Za-z0-9 _-]' });
     }
+    // Rate limit: 5 quotes per wallet per hour. Prevents name-squatting attacks
+    // + stops a single bot from exhausting the pending-name window.
+    const rl = checkRate('mint:' + owner_pubkey, 5, 60 * 60 * 1000);
+    if (!rl.ok) return res.status(429).json({ error: 'rate_limited',
+      retry_after_seconds: rl.retry_in_seconds,
+      hint: '5 mint quotes per hour per wallet. Finalize your existing quote or wait.' });
 
     // Check name availability — against both existing agents AND pending quotes
     // (prevents two people quoting the same name in parallel during the 15-min window)
@@ -2099,6 +2122,88 @@ function installRoutes(app) {
       console.error('[mint/recover]', err);
       return res.status(500).json({ error: err.message });
     }
+  });
+
+  // ── Support requests — users can submit help requests from /me ───────
+  // Stores in support_requests table. Operator pulls list via
+  // /api/admin/support with the ADMIN_TOKEN header. No auth on submit so
+  // anyone can report an issue (includes wallet for context).
+  app.post('/api/support/submit', async (req, res) => {
+    try {
+      const { wallet, agent_id, category, subject, body, contact } = req.body || {};
+      if (!subject || !body) return res.status(400).json({ error: 'subject and body required' });
+      if (String(subject).length > 200 || String(body).length > 4000) {
+        return res.status(400).json({ error: 'length_exceeded', limits: { subject: 200, body: 4000 } });
+      }
+      const allowed = ['stuck_mint','payout','rename','bug','security','other','feedback'];
+      const cat = allowed.includes(category) ? category : 'other';
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS support_requests (
+          id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          wallet       TEXT,
+          agent_id     TEXT,
+          category     TEXT NOT NULL,
+          subject      TEXT NOT NULL,
+          body         TEXT NOT NULL,
+          contact      TEXT,
+          status       TEXT NOT NULL DEFAULT 'open',
+          created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          resolved_at  TIMESTAMPTZ,
+          note         TEXT,
+          ip_hash      TEXT
+        )
+      `);
+      // Basic abuse guard — cap 5 submissions per wallet per hour
+      if (wallet) {
+        const { rows } = await pool.query(
+          `SELECT COUNT(*)::int AS c FROM support_requests
+           WHERE wallet = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+          [wallet]
+        );
+        if (rows[0].c >= 5) return res.status(429).json({ error: 'rate_limited', retry_after: '1 hour' });
+      }
+      const ipHash = require('crypto').createHash('sha256')
+        .update(String(req.headers['x-forwarded-for'] || req.ip || '') + ':' + (process.env.ADMIN_TOKEN || 'salt'))
+        .digest('hex').slice(0, 16);
+      const { rows: [row] } = await pool.query(`
+        INSERT INTO support_requests (wallet, agent_id, category, subject, body, contact, ip_hash)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        RETURNING id, created_at
+      `, [wallet || null, agent_id || null, cat, subject, body, contact || null, ipHash]);
+      return res.json({ ok: true, id: row.id, created_at: row.created_at,
+        message: 'We got it. A human will reply via your provided contact or on twitter.' });
+    } catch (err) {
+      console.error('[support/submit]', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin: list open support requests
+  app.get('/api/admin/support', async (req, res) => {
+    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+    try {
+      const status = req.query.status || 'open';
+      const { rows } = await pool.query(`
+        SELECT id, wallet, agent_id, category, subject, body, contact, status, created_at, note
+        FROM support_requests
+        WHERE status = $1
+        ORDER BY created_at DESC LIMIT 100
+      `, [status]);
+      return res.json({ count: rows.length, status, requests: rows });
+    } catch (err) { return res.status(500).json({ error: err.message }); }
+  });
+
+  // Admin: mark resolved with optional note
+  app.post('/api/admin/support/:id/resolve', async (req, res) => {
+    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+    try {
+      const { note } = req.body || {};
+      await pool.query(
+        `UPDATE support_requests SET status='resolved', resolved_at=NOW(), note=$2 WHERE id=$1`,
+        [req.params.id, note || null]
+      );
+      return res.json({ ok: true });
+    } catch (err) { return res.status(500).json({ error: err.message }); }
   });
 
   // ── Admin: founder/bonus airdrop (operator-only) ────────────────────
