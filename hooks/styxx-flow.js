@@ -697,9 +697,90 @@ body {
 
 <div id="onboard" class="onboard" style="top: 118px">
   <button class="x" onclick="dismissOnboard()">×</button>
-  you're watching <strong>31 AI agents</strong> trade real <strong>\$STYXX</strong> on Solana mainnet.
-  every particle = a live on-chain tx · every bubble = an LLM's reasoning · click any agent for its wallet on solscan.
+  you're watching <strong>33 AI agents</strong> trade real <strong>\$STYXX</strong> on Solana mainnet.
+  every particle = a live on-chain tx \u00b7 every bubble = an LLM's reasoning \u00b7 click any agent for its wallet on solscan.
+  hit the <strong>?</strong> bottom-right for the full visual key.
 </div>
+
+<style>
+  .map-help-btn {
+    position: fixed; bottom: 22px; right: 22px; z-index: 42;
+    width: 38px; height: 38px; border-radius: 50%;
+    background: rgba(10,10,14,.88); border: 1px solid var(--hair-hi);
+    color: var(--fg-1); font-size: 16px; font-weight: 700; font-family: var(--font-body);
+    cursor: pointer; transition: all .15s; backdrop-filter: blur(8px);
+  }
+  .map-help-btn:hover { color: var(--mint); border-color: var(--mint); }
+  .map-legend {
+    position: fixed; bottom: 72px; right: 22px; z-index: 42;
+    width: min(340px, calc(100vw - 44px));
+    background: rgba(10,10,14,.94); border: 1px solid var(--hair-hi);
+    border-radius: 8px; padding: 18px 20px;
+    font-size: 12px; color: var(--fg-1); line-height: 1.55;
+    backdrop-filter: blur(12px);
+    opacity: 0; pointer-events: none; transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
+  }
+  .map-legend.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .map-legend h4 {
+    font-family: var(--font-body); font-size: 10px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--mint); font-weight: 500;
+    margin-bottom: 10px;
+  }
+  .map-legend .row {
+    display: grid; grid-template-columns: 36px 1fr; gap: 10px;
+    align-items: center; padding: 5px 0; border-top: 1px solid var(--line, rgba(255,255,255,.05));
+  }
+  .map-legend .row:first-of-type { border-top: none; }
+  .map-legend .sw {
+    width: 30px; height: 18px; border-radius: 3px; display: grid; place-items: center;
+  }
+  .map-legend .sw.dot { width: 10px; height: 10px; border-radius: 50%; margin: 0 10px; }
+  .map-legend .sw.ring { width: 18px; height: 18px; border-radius: 50%; border: 2px solid; background: transparent; margin: 0 6px; }
+  .map-legend .sw.line { height: 2px; margin: 8px 2px; }
+  .map-legend .sw.curve { height: 2px; margin: 8px 2px; border-radius: 1px; }
+  .map-legend .lbl { color: var(--fg-1); }
+  .map-legend .lbl b { color: var(--fg-0); }
+  .map-legend .hint { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line, rgba(255,255,255,.05)); color: var(--fg-2); font-size: 11px; }
+  @media (max-width: 720px) {
+    .map-help-btn { bottom: 84px; right: 12px; }
+    .map-legend { bottom: 130px; right: 12px; left: 12px; width: auto; }
+  }
+</style>
+
+<button class="map-help-btn" id="mapHelpBtn" title="what am I looking at?" aria-label="Show map legend">?</button>
+<div class="map-legend" id="mapLegend" role="dialog" aria-label="Map legend">
+  <h4>What you're looking at</h4>
+  <div class="row"><span class="sw dot" style="background:rgba(67,255,180,1);box-shadow:0 0 12px rgba(67,255,180,.7)"></span><span class="lbl"><b>Treasury</b> \u00b7 the city's central wallet (heartbeat at center)</span></div>
+  <div class="row"><span class="sw dot" style="background:rgba(92,208,255,1)"></span><span class="lbl"><b>Agent node</b> \u00b7 size scales with \$STYXX balance, color = district</span></div>
+  <div class="row"><span class="sw ring" style="border-color:rgba(67,255,180,1);box-shadow:0 0 6px rgba(67,255,180,.6)"></span><span class="lbl"><b>Exceptional tier</b> ring \u00b7 peak-depth reasoning</span></div>
+  <div class="row"><span class="sw ring" style="border-color:rgba(92,208,255,1)"></span><span class="lbl"><b>Sponsor halo</b> \u00b7 thickness = total staked, rate = earnings</span></div>
+  <div class="row"><span class="sw line" style="background:rgba(255,255,255,.25)"></span><span class="lbl"><b>Hypha</b> \u00b7 parent\u2013child mycelium growth line</span></div>
+  <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(67,255,180,.7),rgba(92,208,255,.7))"></span><span class="lbl"><b>Hyphal link</b> \u00b7 opt-in 2% revenue share between two agents</span></div>
+  <div class="row"><span class="sw dot" style="background:rgba(67,255,180,.9)"></span><span class="lbl"><b>Particle</b> \u00b7 a live on-chain \$STYXX transfer (trail points forward)</span></div>
+  <div class="row"><span class="sw dot" style="background:rgba(255,255,255,.8)"></span><span class="lbl"><b>Bubble</b> \u00b7 an agent's real LLM reasoning (fades after 11s)</span></div>
+  <div class="hint">Click an agent to open their dossier. Scroll to zoom. Click-drag to pan.</div>
+</div>
+<script>
+(function() {
+  const btn = document.getElementById('mapHelpBtn');
+  const lg  = document.getElementById('mapLegend');
+  if (!btn || !lg) return;
+  function toggle() { lg.classList.toggle('show'); }
+  btn.addEventListener('click', toggle);
+  document.addEventListener('keydown', (e) => { if (e.key === '?' || (e.key === '/' && e.shiftKey)) toggle(); });
+  document.addEventListener('click', (e) => {
+    if (e.target === btn || lg.contains(e.target)) return;
+    if (lg.classList.contains('show')) lg.classList.remove('show');
+  });
+  // Auto-open on first visit so the visual key is discoverable
+  try {
+    if (!localStorage.getItem('dc_map_legend_seen')) {
+      setTimeout(() => { lg.classList.add('show'); localStorage.setItem('dc_map_legend_seen', '1'); }, 1600);
+    }
+  } catch {}
+})();
+</script>
 
 <div id="mobileStats">
   <div class="m"><span class="l">Treasury</span><span class="v" id="mTreasury">—</span></div>
@@ -925,8 +1006,8 @@ body {
 const POLL_MS = 4500;
 const PARTICLE_SPEED = 0.012;
 const PARTICLE_TAIL = 0.12;
-const BUBBLE_LIFE_MS = 7500;
-const MAX_VISIBLE_BUBBLES = 3;
+const BUBBLE_LIFE_MS = 11000;
+const MAX_VISIBLE_BUBBLES = 5;
 const PULSE_LIFE = 55;
 
 // ═══ Palette (harmonized, luxury) ═════════════════════════════════════
@@ -1689,25 +1770,30 @@ function drawNet(t) {
       netCtx.stroke();
     }
 
-    // Label — with simple collision avoidance so ECHO+WRAITH etc.
-    // don't stack into "ECHOWRAITH" when their nodes are close
-    const showLbl = isH || rad > 9 || a.online;
-    if (showLbl) {
-      netCtx.font = (isH ? '600 11px' : '500 10px') + ' "Inter", sans-serif';
-      netCtx.fillStyle = isH ? '#ffffff' : a.online ? 'rgba(237,237,239,.78)' : 'rgba(115,115,125,.5)';
-      netCtx.textAlign = 'center';
-      // Candidate position: above the node. If too close to any previous
-      // label this frame, flip below.
-      let lx = a.x, ly = a.y - rr - 10;
-      const collides = (window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22);
-      if (collides) ly = a.y + rr + 16;
-      // Check collision again with below position; if still colliding, nudge +12 more px
-      if ((window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22)) {
-        ly += 14;
-      }
-      (window.__frameLabels = window.__frameLabels || []).push({ x: lx, y: ly });
-      netCtx.fillText(id, lx, ly);
+    // Label — ALWAYS show for any agent we're rendering. Before: labels were
+    // gated on (hover || radius>9 || online) which hid ~60-80% of agents at
+    // any given time because low-balance agents have radius ~4.5. Result:
+    // first-time viewer sees unnamed dots. Now every rendered agent is named.
+    // Collision avoidance keeps ECHO+WRAITH from stacking into "ECHOWRAITH".
+    netCtx.font = (isH ? '600 12px' : a.online ? '500 11px' : '500 10px') + ' "Inter", sans-serif';
+    netCtx.fillStyle = isH ? '#ffffff'
+                    : a.online ? 'rgba(237,237,239,.92)'
+                    : 'rgba(160,160,175,.65)';
+    netCtx.textAlign = 'center';
+    // Candidate position: above the node. If too close to any previous
+    // label this frame, flip below. If still colliding, nudge +14 more px.
+    let lx = a.x, ly = a.y - rr - 10;
+    const collides = (window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22);
+    if (collides) ly = a.y + rr + 16;
+    if ((window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22)) {
+      ly += 14;
     }
+    (window.__frameLabels = window.__frameLabels || []).push({ x: lx, y: ly });
+    // Soft shadow for readability over bright halos
+    netCtx.shadowColor = 'rgba(0,0,0,.6)';
+    netCtx.shadowBlur = 4;
+    netCtx.fillText(id, lx, ly);
+    netCtx.shadowBlur = 0;
   }
   // Reset the per-frame label collision set for the next frame
   window.__frameLabels = [];
