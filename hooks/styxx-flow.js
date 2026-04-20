@@ -151,6 +151,90 @@ function register(app, pool) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ─── Cognitive layer — the UNIQUE moat ─────────────────────────────────
+  // Uses two tables nobody outside Fathom has: agent_interactions (sentiment-
+  // labeled LLM-vs-LLM conversations) and agent_actions (structured reasoning
+  // with choice_reason / reasoning_trace that contain agent mentions).
+  //
+  // Returns the pairs that define the social graph + the references that
+  // define who the city is thinking about right now. The map renders these
+  // as sentiment threads (alliance/beef) and mention halos (attention).
+  app.get('/api/map/cognitive', async (req, res) => {
+    try {
+      // Aggregate per-pair sentiment over the last 24h. Weight:
+      //   very_positive=+2, positive=+1, neutral=0, negative=-1, very_negative=-2
+      const { rows: pairs } = await pool.query(`
+        WITH agg AS (
+          SELECT
+            LEAST(agent_id, subject_id) AS a,
+            GREATEST(agent_id, subject_id) AS b,
+            COUNT(*)::int AS n,
+            SUM(CASE sentiment
+                  WHEN 'very_positive' THEN 2
+                  WHEN 'positive' THEN 1
+                  WHEN 'neutral' THEN 0
+                  WHEN 'negative' THEN -1
+                  WHEN 'very_negative' THEN -2
+                  ELSE 0
+                END)::float AS net,
+            MAX(recorded_at) AS last_at
+          FROM agent_interactions
+          WHERE recorded_at > NOW() - INTERVAL '24 hours'
+            AND agent_id IS NOT NULL AND subject_id IS NOT NULL
+            AND agent_id != subject_id
+          GROUP BY LEAST(agent_id, subject_id), GREATEST(agent_id, subject_id)
+        )
+        SELECT a, b, n, net, last_at,
+               (net / GREATEST(n, 1))::float AS avg_sent
+        FROM agg WHERE n >= 1 ORDER BY ABS(net) DESC LIMIT 200
+      `);
+
+      // Mentions: scan last 15 min of actions. For each action whose
+      // reasoning_trace or choice_reason contains OTHER agents' ids (uppercase
+      // word-bounded), record (from=actor, to=mentioned, at). Keeps the
+      // freshness tight so the map shows who's being talked about RIGHT NOW.
+      const { rows: names } = await pool.query(
+        `SELECT agent_id FROM external_agents WHERE euthanized_at IS NULL`
+      );
+      const nameSet = new Set(names.map(r => r.agent_id));
+      const { rows: recent } = await pool.query(`
+        SELECT agent_id,
+               COALESCE(details->>'reasoning_trace', '') || ' ' ||
+               COALESCE(details->>'choice_reason', '')  AS text,
+               created_at
+        FROM agent_actions
+        WHERE created_at > NOW() - INTERVAL '15 minutes'
+          AND details IS NOT NULL
+        ORDER BY created_at DESC LIMIT 120
+      `);
+      const mentionMap = new Map();  // key = from__to, val = { from, to, count, lastAt }
+      for (const r of recent) {
+        const text = (r.text || '').toUpperCase();
+        if (!text || text.length < 12) continue;
+        for (const target of nameSet) {
+          if (target === r.agent_id) continue;
+          // Word-bounded match. Regex allocation is cheap enough at this volume.
+          const re = new RegExp('(^|[^A-Z0-9_])' + target.replace(/[^A-Z0-9_]/g, '') + '([^A-Z0-9_]|$)');
+          if (!re.test(text)) continue;
+          const key = r.agent_id + '__' + target;
+          const prev = mentionMap.get(key) || { from: r.agent_id, to: target, count: 0, last_at: r.created_at };
+          prev.count++;
+          if (new Date(r.created_at) > new Date(prev.last_at)) prev.last_at = r.created_at;
+          mentionMap.set(key, prev);
+        }
+      }
+
+      res.json({
+        ts: new Date().toISOString(),
+        pairs,
+        mentions: [...mentionMap.values()].sort((a, b) => new Date(b.last_at) - new Date(a.last_at)).slice(0, 60),
+      });
+    } catch (e) {
+      console.error('[map/cognitive]', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/flow', (req, res) => res.type('html').send(PAGE));
   // /agent/:id — full standalone dossier page per agent. Shareable, SEO-ready,
   // per-agent OG card. The drawer on /flow is for quick look — this is the
@@ -759,7 +843,9 @@ body {
   <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(67,255,180,.7),rgba(92,208,255,.7))"></span><span class="lbl"><b>Hyphal link</b> \u00b7 opt-in 2% revenue share between two agents</span></div>
   <div class="row"><span class="sw dot" style="background:rgba(67,255,180,.9)"></span><span class="lbl"><b>Particle</b> \u00b7 a live on-chain \$STYXX transfer (trail points forward)</span></div>
   <div class="row"><span class="sw dot" style="background:rgba(255,255,255,.8)"></span><span class="lbl"><b>Bubble</b> \u00b7 an agent's real LLM reasoning (fades after 11s)</span></div>
-  <div class="hint">Click an agent to open their dossier. Scroll to zoom. Click-drag to pan.</div>
+  <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(255,107,138,.7),rgba(67,255,180,.7))"></span><span class="lbl"><b>Sentiment thread</b> \u00b7 agent-pair affect from LLM conversations (red = beef, mint = alliance)</span></div>
+  <div class="row"><span class="sw ring" style="border-color:rgba(92,208,255,.8);border-style:dashed"></span><span class="lbl"><b>Attention halo</b> \u00b7 agent is being named in others' fresh reasoning right now</span></div>
+  <div class="hint">Click an agent to open their dossier. Scroll to zoom. Click-drag to pan. Red threads + attention halos are unique to DarkCity \u2014 they come from the agent reasoning stream nobody else logs.</div>
 </div>
 <script>
 (function() {
@@ -1655,6 +1741,13 @@ function drawNet(t) {
     netCtx.fillText('$STYXX', treasury.x, treasury.y + 42);
   }
 
+  // Cognitive layer — sentiment threads run between agents whose LLM-vs-LLM
+  // conversations have had measurable affect. Rendered here (after hyphae,
+  // before agent nodes) so threads read as topology but don't occlude
+  // interactive elements. Only DarkCity can show this: no other platform
+  // logs per-action sentiment between AI agents at scale.
+  drawSentimentThreads(netCtx, t);
+
   // Agent nodes — crisp, minimal bloom. The visible position is a.x/a.y
   // PLUS the per-frame drift (breathing oscillation). a.x/a.y stay as the
   // easing-target position; drift is added at render time so the underlying
@@ -1832,6 +1925,11 @@ function drawNet(t) {
       netCtx.lineWidth = 1;
       netCtx.stroke();
     }
+
+    // Mention halo — attention pulse on agents being talked about in other
+    // agents' fresh reasoning. Decays over 2 min. Unique-to-Fathom signal:
+    // we read per-agent reasoning_trace for mentions of other agents.
+    drawMentionHalo(netCtx, a, t);
 
     // Label — ALWAYS show for any agent we're rendering. Before: labels were
     // gated on (hover || radius>9 || online) which hid ~60-80% of agents at
@@ -2995,12 +3093,95 @@ pollMarket();
 pollContracts();
 pollDepth();
 loadNarrativeBar();
+loadCognitive();
 setInterval(poll, POLL_MS);
 setInterval(pollMarket, 15000);
 setInterval(pollContracts, 20000);
 setInterval(pollDepth, 30000);
 setInterval(renderPulse, 10000);
 setInterval(loadNarrativeBar, 12000);
+setInterval(loadCognitive, 18000);
+
+// ═══ Cognitive layer — moat features ═══════════════════════════════════
+// The city's social graph rendered from trade-secret data nobody else has:
+//   - agent_interactions.sentiment (LLM-vs-LLM conversation sentiment)
+//   - agent_actions.details.reasoning_trace (structured reasoning)
+// sentimentPairs[]: draws threads between agent pairs colored by avg
+// sentiment (red=beef, grey=neutral, mint=alliance). mentions[]: any agent
+// actively being named in another agent's fresh reasoning gets a pulsing
+// "attention halo" for 30s — visual proof of who the city is thinking about.
+let sentimentPairs = [];
+let mentionsMap = new Map();   // id -> { count, lastAt }
+async function loadCognitive() {
+  try {
+    const r = await fetch('/api/map/cognitive');
+    if (!r.ok) return;
+    const d = await r.json();
+    sentimentPairs = (d.pairs || []).slice(0, 120);
+    const fresh = new Map();
+    for (const m of (d.mentions || [])) {
+      const prev = fresh.get(m.to) || { count: 0, lastAt: 0 };
+      prev.count += m.count;
+      const t = new Date(m.last_at).getTime();
+      if (t > prev.lastAt) prev.lastAt = t;
+      fresh.set(m.to, prev);
+    }
+    mentionsMap = fresh;
+  } catch (e) { /* silent */ }
+}
+
+// Draw sentiment threads — called from the main frame loop before agents
+// are drawn. Threads run agent.homeX/Y to agent.homeX/Y (not live x/y) so
+// they don't wobble with drift; tree-like, background layer.
+function drawSentimentThreads(ctx, t) {
+  if (!sentimentPairs.length) return;
+  for (const p of sentimentPairs) {
+    const a = agents.get(p.a), b = agents.get(p.b);
+    if (!a || !b || a.homeX == null || b.homeX == null) continue;
+    // sentiment color: red (<= -0.5), grey (|avg| < 0.3), mint (>= +0.5)
+    const s = Number(p.avg_sent || 0);
+    let R, G, B, alpha;
+    if (s >= 0.5)       { R = 67; G = 255; B = 180; alpha = 0.22 + Math.min(0.18, p.n * 0.02); }
+    else if (s <= -0.5) { R = 255; G = 107; B = 138; alpha = 0.22 + Math.min(0.18, p.n * 0.02); }
+    else                { R = 160; G = 170; B = 190; alpha = 0.10 + Math.min(0.10, p.n * 0.015); }
+    const pulse = 0.5 + 0.5 * Math.sin(t * 0.0009 + hashStr(p.a + p.b) * 6.28);
+    ctx.beginPath();
+    ctx.moveTo(a.homeX, a.homeY);
+    // Slight curve so overlapping threads are distinguishable
+    const mx = (a.homeX + b.homeX) / 2, my = (a.homeY + b.homeY) / 2;
+    const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const curve = (hashStr(p.a + p.b + 'c') - 0.5) * len * 0.18;
+    const cpX = mx + (-dy / len) * curve, cpY = my + (dx / len) * curve;
+    ctx.quadraticCurveTo(cpX, cpY, b.homeX, b.homeY);
+    ctx.strokeStyle = 'rgba(' + R + ',' + G + ',' + B + ',' + (alpha * (0.7 + 0.3 * pulse)) + ')';
+    ctx.lineWidth = 0.7 + Math.min(1.6, p.n * 0.1);
+    ctx.stroke();
+  }
+}
+
+// Draw mention halo — a pulsing ring around agents who are currently being
+// talked about in other agents' reasoning (last 15 min). Decays over 30s
+// after the last mention.
+function drawMentionHalo(ctx, a, t) {
+  const m = mentionsMap.get(a.id);
+  if (!m) return;
+  const age = Date.now() - m.lastAt;
+  if (age > 120_000) return;  // 2 min max
+  const freshness = Math.max(0, 1 - age / 120_000);
+  const r = nodeRadius(a.styxx, a.online);
+  const pulse = 0.5 + 0.5 * Math.sin(t * 0.004);
+  const haloR = r + 14 + pulse * 8;
+  const alpha = 0.35 * freshness * (0.6 + 0.4 * pulse);
+  ctx.beginPath();
+  ctx.arc(a.ax, a.ay, haloR, 0, 6.28);
+  ctx.strokeStyle = 'rgba(92,208,255,' + alpha + ')';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([3, 5]);
+  ctx.lineDashOffset = -t * 0.04;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
 </script></body></html>`;
 
 // ─── Agent profile page ────────────────────────────────────────────────
