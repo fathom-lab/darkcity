@@ -40,6 +40,7 @@ const { depthMultiplier } = require('./hooks/depth-scorer');
 
 // ═══ DATA PIPELINE ═══
 const { runDataPipelineMigration, enrichAction, writeEnrichment, registerDaaSRoute, registerExportRoute } = require('./hooks/data-pipeline');
+const { registerDataProduct } = require('./hooks/data-product');
 
 // ═══ NPC BRAIN v2 — LLM-powered agent loop ═══
 const { NPCBrain } = require('./hooks/npc-brain');
@@ -290,6 +291,20 @@ async function initDB() {
         heartbeat_cycle INTEGER DEFAULT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS data_inquiries (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL,
+        organization TEXT DEFAULT NULL,
+        tier_requested TEXT NOT NULL DEFAULT 'researcher',
+        use_case TEXT DEFAULT NULL,
+        status TEXT NOT NULL DEFAULT 'new',
+        ip_hash TEXT DEFAULT NULL,
+        user_agent TEXT DEFAULT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        contacted_at TIMESTAMPTZ DEFAULT NULL,
+        notes TEXT DEFAULT NULL
+      );
+
     `);
 
     // Indexes — run individually so pre-existing tables with different schemas don't crash init
@@ -308,6 +323,8 @@ async function initDB() {
       'CREATE INDEX IF NOT EXISTS idx_agent_interactions_pair ON agent_interactions(agent_id, subject_id, recorded_at DESC)',
       'CREATE INDEX IF NOT EXISTS idx_agent_interactions_type ON agent_interactions(agent_id, interaction_type)',
       'CREATE INDEX IF NOT EXISTS idx_agent_interactions_recent ON agent_interactions(recorded_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_data_inquiries_recent ON data_inquiries(created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_data_inquiries_status ON data_inquiries(status, created_at DESC)',
     ];
     for (const idx of indexes) {
       try { await client.query(idx); } catch (e) { console.warn(`[initDB] skipping index (${e.message.split('\n')[0]})`); }
@@ -2096,6 +2113,7 @@ app.post('/api/depth/score', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 registerDaaSRoute(app, pool, DEPTH_SCORER_URL);
 registerExportRoute(app, pool);
+registerDataProduct(app, pool);
 
 // ═══════════════════════════════════════════════════════════════
 
