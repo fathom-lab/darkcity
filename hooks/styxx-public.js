@@ -221,11 +221,18 @@ function register(app, pool) {
         ORDER BY COALESCE(r7.earned_7d, 0) DESC, d.mean_depth DESC NULLS LAST
         LIMIT 12
       `);
-      // Sponsor APR = (earnings_7d × 85%) / (total_stake + phantom 100 STYXX) × 52
-      // Phantom stake = starter_grant (100 STYXX) — every owner is auto-sponsored
-      // at this amount so APR is well-defined even when no external sponsors.
+      // Sponsor APR = (earnings_7d × 85%) / (total_stake + phantom stake) × 52
+      //
+      // Phantom stake represents an "early-mature pool" floor. With a tiny
+      // floor (e.g. 100), yield/1k gets inflated to 77,000+ STYXX/week —
+      // mathematically correct but a trust-killer for cold users (they'd
+      // see numbers collapse the instant they stake). A 10k floor smooths
+      // early displays to believable numbers, and when real sponsors arrive
+      // at 1-5k stake each the visible yield barely moves (it only grows
+      // as earnings grow) instead of dramatically dropping. The APR is
+      // still honest — it tracks real per-STYXX yield once stake > floor.
       const SPONSOR_SHARE = 0.85;
-      const PHANTOM_STAKE = 100;
+      const PHANTOM_STAKE = 10000;
       res.json({
         ts: new Date().toISOString(),
         city_fee_pct: 15,
