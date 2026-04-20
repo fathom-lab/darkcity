@@ -16,23 +16,32 @@ function register(app, pool) {
       let where = '';
       if (since) { params.push(new Date(since)); where = 'WHERE confirmed_at > $1'; }
 
-      const [ledger, leaderboard, treasury, narratives] = await Promise.all([
+      const [ledger, leaderboard, treasury, narratives, hyphalLinks, recentPulse] = await Promise.all([
         pool.query(`
           SELECT tx_signature, from_agent_id, to_agent_id, amount, reason, memo, confirmed_at
           FROM styxx_transfers ${where}
           ORDER BY confirmed_at DESC LIMIT 40
         `, params),
         pool.query(`
+          WITH founders AS (
+            SELECT agent_id,
+                   ROW_NUMBER() OVER (ORDER BY minted_at ASC)::int AS citizen_n
+            FROM external_agents
+            WHERE owner_pubkey IS NOT NULL AND minted_at IS NOT NULL
+              AND euthanized_at IS NULL
+          )
           SELECT ea.agent_id, ea.district, ea.rank, ea.reputation, ea.builds, ea.trades,
-                 ea.sol_pubkey, ea.last_active,
+                 ea.sol_pubkey, ea.last_active, ea.minted_at, ea.owner_pubkey,
                  COALESCE(ea.styxx_cached, 0)::float AS styxx,
                  de_stats.mean_depth,
                  de_stats.dominant_tier,
                  de_stats.evals_24h,
                  last_thought.text AS last_thought_text,
                  last_thought.action AS last_thought_action,
-                 last_thought.at AS last_thought_at
+                 last_thought.at AS last_thought_at,
+                 f.citizen_n
           FROM external_agents ea
+          LEFT JOIN founders f ON f.agent_id = ea.agent_id
           LEFT JOIN LATERAL (
             SELECT
               ROUND(AVG(normalized_score)::numeric, 3) AS mean_depth,
@@ -77,6 +86,17 @@ function register(app, pool) {
             AND length(COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity')) > 20
           ORDER BY created_at DESC LIMIT 14
         `).catch(() => ({ rows: [] })),
+        pool.query(`
+          SELECT agent_a, agent_b, yield_share_bps, formed_at
+          FROM hyphal_links WHERE status = 'active'
+          LIMIT 200
+        `).catch(() => ({ rows: [] })),
+        // A recent pulse within the last 90s triggers the treasury wave animation
+        pool.query(`
+          SELECT window_start, completed_at FROM pulse_runs
+          WHERE completed_at > NOW() - INTERVAL '90 seconds'
+          ORDER BY completed_at DESC LIMIT 1
+        `).catch(() => ({ rows: [] })),
       ]);
 
       res.json({
@@ -96,6 +116,8 @@ function register(app, pool) {
           mean_depth: r.mean_depth !== null ? Number(r.mean_depth) : null,
           depth_tier: r.dominant_tier || null,
           evals_24h: Number(r.evals_24h || 0),
+          citizen_n: r.citizen_n ? Number(r.citizen_n) : null,  // founder rank for halo
+          owner_pubkey: r.owner_pubkey,
           last_thought: r.last_thought_text ? {
             text: (r.last_thought_text || '').slice(0, 200),
             action: r.last_thought_action,
@@ -112,11 +134,25 @@ function register(app, pool) {
           depth: n.normalized_score !== null ? Number(n.normalized_score) : null,
           at: n.created_at,
         })),
+        hyphal_links: (hyphalLinks.rows || []).map(h => ({
+          a: h.agent_a, b: h.agent_b, bps: h.yield_share_bps, formed_at: h.formed_at,
+        })),
+        recent_pulse: (recentPulse.rows[0]) ? {
+          window_start: recentPulse.rows[0].window_start,
+          completed_at: recentPulse.rows[0].completed_at,
+        } : null,
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   app.get('/flow', (req, res) => res.type('html').send(PAGE));
+  // /agent/:id — shareable permalink that deep-links into /flow with the agent
+  // highlighted (flow listens for ?agent= query + opens the drawer). 301 to
+  // keep link rot low.
+  app.get('/agent/:id', (req, res) => {
+    const id = (req.params.id || '').toUpperCase();
+    res.redirect(301, '/flow?agent=' + encodeURIComponent(id) + '#open');
+  });
 }
 
 const PAGE = `<!doctype html>
@@ -880,6 +916,8 @@ let totalFlowed = 0;
 let sessionTxCount = 0;
 let mouseX = -999, mouseY = -999;
 let hovered = null;
+let hyphalLinks = [];          // real 25-STYXX links, rendered distinct from parent-child tree
+let recentPulse = null;        // { window_start, completed_at } if pulse fired in last 90s
 // ═══ Pan/zoom camera ═══════════════════════════════════════════════════
 // view.x / view.y are pan offsets in screen pixels, view.k is zoom level.
 // Applied inside drawNet after the motion-trail wipe so the background
@@ -1234,6 +1272,32 @@ function drawNet(t) {
     'Dark Library':     [210, 180, 110],  // parchment
   };
 
+  // Record expedition trails — only while on a task, sample ~every 4 frames.
+  // Each agent keeps last 14 positions; these render as a fading line behind
+  // the agent so direction-of-travel is visible.
+  if ((t | 0) % 4 === 0) {
+    for (const a of agents.values()) {
+      if (!a.task) { a.trail = []; continue; }
+      if (!a.trail) a.trail = [];
+      a.trail.push({ x: a.x, y: a.y });
+      if (a.trail.length > 14) a.trail.shift();
+    }
+  }
+  // Draw trails BEFORE hyphae so agent+hyphae render on top
+  for (const a of agents.values()) {
+    const tr = a.trail || [];
+    if (tr.length < 2) continue;
+    for (let i = 1; i < tr.length; i++) {
+      const alpha = (i / tr.length) * 0.55;
+      netCtx.beginPath();
+      netCtx.moveTo(tr[i-1].x, tr[i-1].y);
+      netCtx.lineTo(tr[i].x, tr[i].y);
+      netCtx.strokeStyle = 'rgba(92,208,255,' + alpha + ')';
+      netCtx.lineWidth = 1 + (i / tr.length) * 1.2;
+      netCtx.stroke();
+    }
+  }
+
   // Mycelium hyphae (parent-home → child-home, curved). Hyphae ALWAYS use
   // HOME positions — the rigid tree skeleton never distorts when agents move
   // on expedition. The agent's live position (a.x, a.y) is decoupled from
@@ -1302,6 +1366,74 @@ function drawNet(t) {
       netCtx.lineWidth = 0.8;
       netCtx.stroke();
       netCtx.setLineDash([]);
+    }
+  }
+
+  // Explicit HYPHAL LINKS — the real 25 $STYXX cross-tree connections between
+  // agents (NOT the parent-child tree hyphae). Rendered as thicker, brighter,
+  // bi-directional animated lines between the two linked agents' home anchors.
+  // These sit above the tree hyphae but below agent nodes.
+  if (hyphalLinks && hyphalLinks.length) {
+    for (const link of hyphalLinks) {
+      const A = agents.get(link.a);
+      const B = agents.get(link.b);
+      if (!A || !B || A.homeX == null || B.homeX == null) continue;
+      const dx = B.homeX - A.homeX, dy = B.homeY - A.homeY;
+      const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      // Slight curve so they don't cross each other as straight lines
+      const mx = (A.homeX + B.homeX) / 2, my = (A.homeY + B.homeY) / 2;
+      const bend = 22;
+      const cpX = mx + (-dy / len) * bend, cpY = my + (dx / len) * bend;
+
+      // Base glow
+      netCtx.beginPath();
+      netCtx.moveTo(A.homeX, A.homeY);
+      netCtx.quadraticCurveTo(cpX, cpY, B.homeX, B.homeY);
+      netCtx.strokeStyle = 'rgba(67,255,180,.14)';
+      netCtx.lineWidth = 3;
+      netCtx.stroke();
+
+      // Crisp stroke on top
+      netCtx.beginPath();
+      netCtx.moveTo(A.homeX, A.homeY);
+      netCtx.quadraticCurveTo(cpX, cpY, B.homeX, B.homeY);
+      netCtx.strokeStyle = 'rgba(67,255,180,.55)';
+      netCtx.lineWidth = 1.4;
+      netCtx.stroke();
+
+      // Two flow dots moving in opposite directions (2% cross-flow visualized)
+      for (let dir = 0; dir < 2; dir++) {
+        const phase = ((t * 0.0004) + (dir ? 0.5 : 0)) % 1;
+        const ft = dir ? 1 - phase : phase;
+        const bx = (1-ft)*(1-ft)*A.homeX + 2*(1-ft)*ft*cpX + ft*ft*B.homeX;
+        const by = (1-ft)*(1-ft)*A.homeY + 2*(1-ft)*ft*cpY + ft*ft*B.homeY;
+        netCtx.beginPath();
+        netCtx.arc(bx, by, 2.2, 0, 6.28);
+        netCtx.fillStyle = 'rgba(67,255,180,.85)';
+        netCtx.fill();
+      }
+    }
+  }
+
+  // Treasury pulse wave — when a distribution pulse fires, a big concentric
+  // ring expands from treasury outward. Triggered by recent_pulse metadata
+  // from the backend (set if pulse completed within last 90s). Three waves
+  // stagger so the "heartbeat moment" is unmistakable.
+  if (treasury && recentPulse && recentPulse.completed_at) {
+    const pulseAge = Date.now() - new Date(recentPulse.completed_at).getTime();
+    if (pulseAge < 90_000) {
+      for (let w = 0; w < 3; w++) {
+        const wAge = pulseAge - w * 800;
+        if (wAge < 0 || wAge > 4500) continue;
+        const prog = wAge / 4500;
+        const r = 20 + prog * 500;
+        const alpha = (1 - prog) * 0.55;
+        netCtx.beginPath();
+        netCtx.arc(treasury.x, treasury.y, r, 0, 6.28);
+        netCtx.strokeStyle = 'rgba(67,255,180,' + alpha + ')';
+        netCtx.lineWidth = 1.4 + (1 - prog) * 1.4;
+        netCtx.stroke();
+      }
     }
   }
 
@@ -1382,18 +1514,58 @@ function drawNet(t) {
 
     // Rank aura — Sovereign+ get a second outer stroke ring, Lich_King a
     // warm-tinted accent. Restrained: thin, low alpha, visible only on online
-    // + high-rank agents. No crown particles, no heavy treatment.
+    // + high-rank agents.
     const rankStr = (a.rank || '').toString().toUpperCase();
     if (a.online && (rankStr.includes('SOVEREIGN') || rankStr.includes('ARCHITECT') || rankStr.includes('LICH'))) {
       const isLich = rankStr.includes('LICH');
-      const rankR = rad * (isLich ? 1.95 : 1.75);
+      const rankRoR = rad * (isLich ? 1.95 : 1.75);
       netCtx.beginPath();
-      netCtx.arc(a.x, a.y, rankR, 0, 6.28);
+      netCtx.arc(a.x, a.y, rankRoR, 0, 6.28);
       netCtx.strokeStyle = isLich
-        ? 'rgba(255,107,138,' + (0.30 * breath) + ')'  // warm accent for Lich
-        : 'rgba(240,200,100,' + (0.22 * breath) + ')'; // soft gold for Sovereign/Architect
+        ? 'rgba(255,107,138,' + (0.30 * breath) + ')'
+        : 'rgba(240,200,100,' + (0.22 * breath) + ')';
       netCtx.lineWidth = isLich ? 1.2 : 0.9;
       netCtx.stroke();
+    }
+
+    // FOUNDER HALO — first 100 user-minted citizens get a permanent ring.
+    // Diamond (#01-03) = blue-white, Gold (#04-10) = warm amber, Silver
+    // (#11-100) = pale platinum. Always visible, online or not; this is
+    // permanent status, not activity.
+    if (a.citizen_n && a.citizen_n <= 100) {
+      const cn = a.citizen_n;
+      const [hR, hG, hB] = cn <= 3 ? [182, 241, 255] : cn <= 10 ? [255, 209, 102] : [233, 233, 239];
+      const halo1 = rad * 2.2, halo2 = rad * 2.55;
+      // Outer faint bloom (tier-colored)
+      const bloom = netCtx.createRadialGradient(a.x, a.y, halo1, a.x, a.y, halo2 + 8);
+      bloom.addColorStop(0, 'rgba(' + hR + ',' + hG + ',' + hB + ',' + (0.18 + 0.1 * breath) + ')');
+      bloom.addColorStop(1, 'rgba(0,0,0,0)');
+      netCtx.fillStyle = bloom;
+      netCtx.fillRect(a.x - halo2 - 8, a.y - halo2 - 8, (halo2 + 8) * 2, (halo2 + 8) * 2);
+      // Crisp halo ring — slightly thicker for diamond tier
+      netCtx.beginPath();
+      netCtx.arc(a.x, a.y, halo1, 0, 6.28);
+      netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',' + (cn <= 3 ? 0.7 : cn <= 10 ? 0.55 : 0.4) + ')';
+      netCtx.lineWidth = cn <= 3 ? 1.6 : cn <= 10 ? 1.3 : 1.0;
+      netCtx.stroke();
+      // Tiny numeric badge floating above-right for top 10
+      if (cn <= 10) {
+        const bx = a.x + rad * 1.5, by = a.y - rad * 1.5;
+        netCtx.beginPath();
+        netCtx.arc(bx, by, 8, 0, 6.28);
+        netCtx.fillStyle = 'rgba(5,7,10,.85)';
+        netCtx.fill();
+        netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.85)';
+        netCtx.lineWidth = 1;
+        netCtx.stroke();
+        netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.95)';
+        netCtx.font = '600 9px JetBrains Mono, monospace';
+        netCtx.textAlign = 'center';
+        netCtx.textBaseline = 'middle';
+        netCtx.fillText(String(cn).padStart(2, '0'), bx, by + 0.5);
+        netCtx.textAlign = 'start';
+        netCtx.textBaseline = 'alphabetic';
+      }
     }
 
     // Outer ring — tier color, thin, not solid
@@ -1935,6 +2107,43 @@ setInterval(refreshVelocity, 3000);
   });
 })();
 
+// ═══ Deep-link: /flow?agent=X or /agent/:id ══════════════════════════════
+// Lets users share a direct link to a specific agent. On first poll that
+// finds the target, fly camera + open drawer. Also triggers on #open hash.
+(function(){
+  const url = new URL(location.href);
+  const target = (url.searchParams.get('agent') || '').toUpperCase();
+  if (!target) return;
+  let tries = 0;
+  const iv = setInterval(() => {
+    tries++;
+    const a = agents.get(target);
+    if (a && a.homeX != null) {
+      clearInterval(iv);
+      // Fly camera to target (matches the search-bar flyTo logic)
+      const targetK = 1.6;
+      const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+      const start = performance.now();
+      const fromK = view.k, fromX = view.x, fromY = view.y;
+      const goalK = targetK;
+      const goalX = cx - a.x * goalK;
+      const goalY = cy - a.y * goalK;
+      (function step(now) {
+        const u = Math.min(1, (now - start) / 700);
+        const ease = u < .5 ? 2*u*u : 1 - Math.pow(-2*u+2, 2)/2;
+        view.x = fromX + (goalX - fromX) * ease;
+        view.y = fromY + (goalY - fromY) * ease;
+        view.k = fromK + (goalK - fromK) * ease;
+        if (u < 1) requestAnimationFrame(step);
+        else if (typeof openAgentDrawer === 'function') openAgentDrawer(a);
+      })(performance.now());
+      a.sparkAt = Date.now() + 1200;
+    } else if (tries > 30) {
+      clearInterval(iv);   // give up after ~9s
+    }
+  }, 300);
+})();
+
 // ═══ Pan/zoom input ════════════════════════════════════════════════════
 // Wheel: zoom around cursor. Drag empty space: pan. Dragging an agent
 // still counts as a click (handled above by distance check).
@@ -2246,7 +2455,9 @@ async function poll() {
         task: prev?.task,
       });
     }
-    if (d.treasury) treasury = { ...d.treasury, x: treasury?.x, y: treasury?.y };
+    if (d.treasury) treasury = { ...d.treasury, x: treasury?.x, y: treasury?.y, homeX: treasury?.homeX, homeY: treasury?.homeY };
+    hyphalLinks = d.hyphal_links || [];
+    recentPulse = d.recent_pulse || null;
     layoutAgents();
 
     for (const tx of (d.new_transfers || []).slice().reverse()) {
