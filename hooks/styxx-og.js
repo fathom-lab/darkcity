@@ -132,7 +132,90 @@ function register(app, pool) {
   // handle the content-type; strict PNG-only clients just fail gracefully)
   app.get('/og.png', renderOg);
 
-  console.log('[styxx-og] OG card registered at /og.svg and /og.png');
+  // ── Citizen Seal card — shareable proof-of-founder for early mints ──
+  // Each of the first 100 user-minted agents gets a numbered Founder Seal.
+  // URL: /og/citizen/:agent_id.svg  → an SVG card users can post to Twitter.
+  async function renderCitizenSeal(req, res) {
+    const agentId = (req.params.agent_id || '').toUpperCase();
+    let seal = null;
+    try {
+      const { rows } = await pool.query(`
+        WITH ranked AS (
+          SELECT agent_id, district, minted_at, sol_pubkey, mint_tx_signature,
+                 ROW_NUMBER() OVER (ORDER BY minted_at ASC)::int AS citizen_n
+          FROM external_agents
+          WHERE owner_pubkey IS NOT NULL AND minted_at IS NOT NULL AND euthanized_at IS NULL
+        )
+        SELECT * FROM ranked WHERE agent_id = $1
+      `, [agentId]);
+      if (rows.length) seal = rows[0];
+    } catch {}
+
+    const W = 1200, H = 630;
+    if (!seal) {
+      // Not a founding citizen (yet) — fall back to main OG
+      return renderOg(req, res);
+    }
+    const n = seal.citizen_n;
+    const num = n < 10 ? '0' + n : String(n);
+    const tier = n <= 3 ? 'DIAMOND' : n <= 10 ? 'GOLD' : n <= 100 ? 'SILVER' : 'CITIZEN';
+    const accent = n <= 3 ? '#b6f1ff' : n <= 10 ? '#ffd166' : n <= 100 ? '#e9e9ef' : '#43ffb4';
+    const mintedDate = new Date(seal.minted_at).toISOString().slice(0, 10);
+
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="DarkCity Founder Seal — Citizen ${num}">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#0d1115"/>
+      <stop offset="100%" stop-color="#05070a"/>
+    </radialGradient>
+    <radialGradient id="gld" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="${accent}" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="${accent}" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <circle cx="${W*0.5}" cy="${H*0.5}" r="420" fill="url(#gld)"/>
+
+  <!-- Concentric rings — a seal motif -->
+  <g fill="none" stroke="${accent}" opacity="0.22">
+    <circle cx="${W*0.5}" cy="${H*0.5}" r="260" stroke-width="1"/>
+    <circle cx="${W*0.5}" cy="${H*0.5}" r="215" stroke-width="1"/>
+    <circle cx="${W*0.5}" cy="${H*0.5}" r="170" stroke-width="1" stroke-dasharray="3 4"/>
+    <circle cx="${W*0.5}" cy="${H*0.5}" r="130" stroke-width="1"/>
+  </g>
+
+  <!-- Brand top-left -->
+  <g transform="translate(60, 60)">
+    <polygon points="18,0 36,18 18,36 0,18" fill="${accent}"/>
+    <text x="52" y="26" font-family="Fraunces, Georgia, serif" font-size="24" font-weight="600" fill="#ededef">DarkCity</text>
+  </g>
+  <text x="${W - 60}" y="80" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="12" letter-spacing="3" fill="#5a5a64">FOUNDER SEAL · ${tier}</text>
+
+  <!-- The number (big) -->
+  <text x="${W*0.5}" y="${H*0.5 - 20}" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="180" font-weight="400" fill="${accent}" letter-spacing="-8">${num}</text>
+  <text x="${W*0.5}" y="${H*0.5 + 30}" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="13" letter-spacing="6" fill="#a0a0aa">CITIZEN OF DARKCITY</text>
+
+  <!-- Agent name -->
+  <text x="${W*0.5}" y="${H*0.5 + 100}" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="52" font-weight="400" fill="#ededef" letter-spacing="-1" font-style="italic">${agentId}</text>
+
+  <!-- Metadata -->
+  <g transform="translate(${W*0.5}, ${H - 110})" text-anchor="middle">
+    <text y="0" font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#5a5a64">MINTED</text>
+    <text y="22" font-family="'JetBrains Mono', monospace" font-size="15" fill="#ededef">${mintedDate}</text>
+  </g>
+
+  <!-- URL ribbon -->
+  <text x="${W - 60}" y="${H - 30}" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="12" letter-spacing="1" fill="#72727c">darkcity.wtf/founders</text>
+</svg>`;
+    res.set('Content-Type', 'image/svg+xml');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.send(svg);
+  }
+  app.get('/og/citizen/:agent_id.svg', renderCitizenSeal);
+  app.get('/og/citizen/:agent_id', renderCitizenSeal);
+
+  console.log('[styxx-og] OG cards: /og.svg · /og.png · /og/citizen/:id');
 }
 
 module.exports = { register };
