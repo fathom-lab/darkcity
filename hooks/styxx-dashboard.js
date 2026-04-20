@@ -217,6 +217,28 @@ td.right.green { color: var(--accent); }
 .footer { padding: 60px 0 40px; border-top: 1px solid var(--line); margin-top: 40px; color: var(--fg-subtle); font-size: 13px; }
 .footer a { color: var(--fg-muted); }
 .footer a:hover { color: var(--accent); }
+/* ═══ Claim modal ═════════════════════════════════════════════════════ */
+#claimModal { position: fixed; inset: 0; background: rgba(0,0,0,.72); backdrop-filter: blur(8px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 20px; }
+#claimModal.show { display: flex; }
+#claimModal .cm-card { background: var(--bg-elev); border: 1px solid var(--line-hi); border-radius: 10px; padding: 28px 30px; max-width: 460px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+#claimModal .cm-eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; }
+#claimModal .cm-title { font-family: var(--font-display); font-size: 22px; font-weight: 500; letter-spacing: -.01em; margin-bottom: 18px; }
+#claimModal .cm-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; font-size: 13px; border-bottom: 1px solid var(--line); }
+#claimModal .cm-row.cm-total { border-bottom: none; padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--line-hi); font-weight: 500; }
+#claimModal .cm-lbl { color: var(--fg-muted); }
+#claimModal .cm-val { font-family: var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
+#claimModal .cm-val.green { color: var(--accent); }
+#claimModal .cm-preset { padding: 8px 14px; background: transparent; border: 1px solid var(--line-hi); border-radius: 6px; color: var(--fg-muted); font-family: var(--font-mono); font-size: 12px; cursor: pointer; transition: all .12s; }
+#claimModal .cm-preset:hover { border-color: var(--accent); color: var(--accent); }
+#claimModal .cm-actions { display: flex; gap: 10px; align-items: center; }
+#claimModal .cm-loading { text-align: center; padding: 24px; color: var(--fg-muted); }
+#claimModal .cm-step { display: flex; align-items: center; gap: 16px; padding: 12px 0; }
+#claimModal .cm-step-h { font-family: var(--font-display); font-size: 16px; margin-bottom: 2px; }
+#claimModal .cm-step-s { font-size: 12px; color: var(--fg-muted); line-height: 1.5; }
+#claimModal .cm-spinner { width: 20px; height: 20px; border: 2px solid rgba(67,255,180,.2); border-top-color: var(--accent); border-radius: 50%; animation: cmspin 0.8s linear infinite; flex-shrink: 0; }
+@keyframes cmspin { to { transform: rotate(360deg); } }
+#claimModal .cm-error { padding: 14px; background: rgba(255,107,138,.06); border: 1px solid rgba(255,107,138,.25); border-radius: 6px; }
+#dcClaimConfetti { position: fixed; inset: 0; pointer-events: none; z-index: 999; display: none; }
 </style>
 </head>
 <body>
@@ -560,7 +582,7 @@ td.right.green { color: var(--accent); }
           <div class="metric"><div class="m-lbl">Mycelium</div><div class="m-val">\${a.n_hyphal_links || 0} 🍄</div></div>
         </div>
         <div class="card-actions">
-          <button class="btn primary" onclick="window.dcWithdraw('\${a.agent_id}')">Withdraw</button>
+          <button class="btn primary" onclick="window.dcOpenClaim('\${a.agent_id}')">Claim $STYXX →</button>
           <a class="btn" href="https://solscan.io/account/\${a.sol_pubkey || ''}" target="_blank">Wallet ↗</a>
         </div>
       </div>
@@ -771,43 +793,150 @@ td.right.green { color: var(--accent); }
     \`).join('');
   }
 
-  window.dcWithdraw = async function(agentId) {
-    if (!wallet) return alert('no wallet loaded');
-    if (!window.solana || !window.solana.isPhantom) {
-      return alert('Phantom wallet required — install it at phantom.com, then retry.');
+  // ═══ Claim modal — flawless withdraw UX ════════════════════════════════
+  // Opens a proper modal instead of native alerts. Steps:
+  //   1. preview   — live balance + reserve + amount slider, [Cancel] [Claim]
+  //   2. signing   — 'Signing proof of ownership in Phantom…'
+  //   3. submitting — 'Broadcasting on Solana…'
+  //   4. success   — amount + tx + solscan + tweet button + confetti
+  //   5. error     — clean message + retry
+  window.dcOpenClaim = async function(agentId) {
+    if (!wallet) { alert('Connect your wallet first.'); return; }
+    if (!window.solana?.isPhantom) {
+      if (confirm('Phantom wallet required. Install it now?')) window.open('https://phantom.com','_blank');
+      return;
     }
-    if (!confirm('Claim your $STYXX from ' + agentId + ' into your connected wallet?\\n(Phantom will pop up to sign — no transaction fee, just proof of ownership. A 50 $STYXX reserve stays in the agent so it keeps running.)')) return;
+    // Find the agent in state + fetch live on-chain balance
+    const modal = document.getElementById('claimModal');
+    modal.classList.add('show');
+    const body = document.getElementById('cm-body');
+    body.innerHTML = '<div class="cm-loading">Loading agent wallet…</div>';
+
+    let bal = 0, reserve = 50;
     try {
-      // Connect if not already
+      const r = await fetch('/api/portfolio/' + encodeURIComponent(wallet));
+      const p = await r.json();
+      const a = (p.agents || []).find(x => x.agent_id === agentId);
+      if (!a) throw new Error('agent not found in your portfolio');
+      bal = Number(a.styxx_cached || 0);
+      reserve = 50;
+    } catch (e) {
+      body.innerHTML = '<div class="cm-error">Couldn\\'t load balance: ' + e.message + '</div>';
+      return;
+    }
+    const available = Math.max(0, bal - reserve);
+
+    document.getElementById('cm-title').textContent = 'Claim $STYXX from ' + agentId;
+
+    if (available <= 0) {
+      body.innerHTML =
+        '<div style="font-size:14px;color:var(--fg-muted);line-height:1.6">This agent holds <strong style="color:var(--fg)">' + styxxFmt(bal) + ' $STYXX</strong>, which is at or below the <strong>' + reserve + ' $STYXX cognition-fee reserve</strong>. Wait for the next payout (every 4h) to build up a withdrawable balance.</div>' +
+        '<div class="cm-actions" style="margin-top:18px"><button class="btn" onclick="window.dcCloseClaim()">Close</button></div>';
+      return;
+    }
+
+    body.innerHTML =
+      '<div class="cm-row"><span class="cm-lbl">Agent wallet balance</span><span class="cm-val green">' + styxxFmt(bal) + ' $STYXX</span></div>' +
+      '<div class="cm-row"><span class="cm-lbl">Cognition reserve (kept in agent)</span><span class="cm-val">− ' + reserve + ' $STYXX</span></div>' +
+      '<div class="cm-row cm-total"><span class="cm-lbl">Maximum withdrawable</span><span class="cm-val green">' + styxxFmt(available) + ' $STYXX</span></div>' +
+      '<div style="margin-top:20px">' +
+      '  <label style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px;display:block">Amount to claim</label>' +
+      '  <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
+      '    <button type="button" class="cm-preset" data-pct="25">25%</button>' +
+      '    <button type="button" class="cm-preset" data-pct="50">50%</button>' +
+      '    <button type="button" class="cm-preset" data-pct="75">75%</button>' +
+      '    <button type="button" class="cm-preset" data-pct="100">Max</button>' +
+      '  </div>' +
+      '  <input type="number" id="cm-amount" min="1" step="1" max="' + available + '" value="' + Math.floor(available) + '" style="width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--line-hi);border-radius:6px;color:var(--fg);font-family:var(--font-mono);font-size:15px">' +
+      '</div>' +
+      '<div style="margin-top:14px;font-size:12px;color:var(--fg-subtle);line-height:1.6">Destination: your connected wallet <code style="color:var(--fg-muted);font-size:11px">' + short(wallet) + '</code>.<br>Phantom will ask you to sign a proof-of-ownership message. No gas, no transaction fee — just a signature.</div>' +
+      '<div class="cm-actions" style="margin-top:22px">' +
+      '  <button class="btn" onclick="window.dcCloseClaim()">Cancel</button>' +
+      '  <button class="btn primary" id="cm-submit" style="margin-left:auto">Claim $STYXX →</button>' +
+      '</div>';
+
+    // Preset buttons
+    document.querySelectorAll('#cm-body .cm-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pct = Number(btn.getAttribute('data-pct'));
+        const v = Math.floor(available * pct / 100);
+        document.getElementById('cm-amount').value = v;
+      });
+    });
+    // Submit
+    document.getElementById('cm-submit').addEventListener('click', () => window.dcRunClaim(agentId, available));
+  };
+
+  window.dcCloseClaim = function() {
+    document.getElementById('claimModal').classList.remove('show');
+  };
+
+  window.dcRunClaim = async function(agentId, maxAvailable) {
+    const amtEl = document.getElementById('cm-amount');
+    const amount = Number(amtEl?.value || 0);
+    if (!amount || amount < 1) { amtEl.focus(); return; }
+    if (amount > maxAvailable) { alert('Exceeds max (' + styxxFmt(maxAvailable) + ')'); return; }
+
+    const body = document.getElementById('cm-body');
+    body.innerHTML =
+      '<div class="cm-step"><div class="cm-spinner"></div><div><div class="cm-step-h">Waiting on Phantom</div><div class="cm-step-s">Confirm the proof-of-ownership signature in your wallet.</div></div></div>';
+
+    try {
       if (!window.solana.publicKey) await window.solana.connect();
-      // Sign the message proving ownership
       const ts = Date.now();
       const message = 'darkcity:withdraw:' + agentId + ':' + ts;
       const encoded = new TextEncoder().encode(message);
       const signed = await window.solana.signMessage(encoded);
-      // Phantom returns signature as Uint8Array; encode base58
       const sigB58 = bs58EncodeUint8(signed.signature || signed);
+
+      body.innerHTML =
+        '<div class="cm-step"><div class="cm-spinner"></div><div><div class="cm-step-h">Broadcasting on Solana</div><div class="cm-step-s">Transferring ' + styxxFmt(amount) + ' $STYXX from your agent wallet to your wallet.</div></div></div>';
 
       const r = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/withdraw', {
         method: 'POST', headers: {'content-type': 'application/json'},
-        body: JSON.stringify({
-          owner_pubkey: wallet,
-          message,
-          signature: sigB58,
-        }),
+        body: JSON.stringify({ owner_pubkey: wallet, message, signature: sigB58, amount }),
       });
       const j = await r.json();
-      if (j.ok) {
-        alert('✓ Claimed ' + j.withdrawn_styxx.toFixed(2) + ' $STYXX\\nTx: ' + j.tx_signature);
-        load();
-      } else {
-        alert('Withdraw failed: ' + (j.error || j.reason || JSON.stringify(j)));
-      }
+      if (!j.ok) throw new Error(j.hint || j.reason || j.error || 'unknown error');
+
+      const claimed = Number(j.withdrawn_styxx || amount);
+      const tx = j.tx_signature;
+      body.innerHTML =
+        '<div style="text-align:center;padding:12px 0 6px">' +
+        '<div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;color:var(--accent);text-transform:uppercase;margin-bottom:14px">\u25c6 Claimed on-chain</div>' +
+        '<div style="font-family:var(--font-display);font-size:52px;font-weight:500;color:var(--accent);line-height:1;margin-bottom:6px">+' + styxxFmt(claimed) + '</div>' +
+        '<div style="font-family:var(--font-mono);font-size:12px;color:var(--fg-muted);margin-bottom:24px">$STYXX in your wallet now</div>' +
+        '<div style="background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle);margin-bottom:18px;word-break:break-all">tx: ' + tx + '</div>' +
+        '<div class="cm-actions" style="gap:8px;justify-content:center">' +
+          '<a class="btn" href="https://solscan.io/tx/' + tx + '" target="_blank">View on Solscan \u2197</a>' +
+          '<a class="btn primary" id="cm-tweet" target="_blank" rel="noopener">Tweet it \u2197</a>' +
+          '<button class="btn ghost" onclick="window.dcCloseClaim()">Done</button>' +
+        '</div></div>';
+      // Pre-compose tweet
+      const tweetText = 'just claimed ' + Math.round(claimed) + ' $STYXX from my AI agent ' + agentId + ' in @fathom_lab\\'s DarkCity. real on-chain on solana mainnet. mint yours:';
+      const refUrl = location.origin + '/deploy?ref=' + wallet;
+      document.getElementById('cm-tweet').href =
+        'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(refUrl);
+      // Celebration confetti
+      if (typeof window.dcFireConfetti === 'function') window.dcFireConfetti();
+      // Refresh portfolio
+      setTimeout(() => load(), 1500);
     } catch (e) {
-      if (e.code === 4001 || /rejected/i.test(e.message)) return;  // user cancelled
-      alert('Withdraw error: ' + e.message);
+      if (e.code === 4001 || /rejected|user rejected|user denied/i.test(e.message || '')) {
+        window.dcCloseClaim();
+        return;
+      }
+      body.innerHTML =
+        '<div class="cm-error"><div style="color:var(--loss);font-weight:500;margin-bottom:8px">Claim failed</div><div style="font-size:13px;color:var(--fg-muted);line-height:1.5">' + (e.message || 'unknown error') + '</div></div>' +
+        '<div class="cm-actions" style="margin-top:18px">' +
+          '<button class="btn" onclick="window.dcCloseClaim()">Close</button>' +
+          '<button class="btn primary" onclick="window.dcOpenClaim(\\'' + agentId + '\\')" style="margin-left:auto">Try again</button>' +
+        '</div>';
     }
   };
+
+  // Legacy entrypoint kept as an alias so existing calls still work
+  window.dcWithdraw = window.dcOpenClaim;
 
   // Minimal base58 encoder (Phantom's signMessage returns raw bytes; we
   // need base58 to match what the backend decoder expects).
@@ -890,7 +1019,63 @@ td.right.green { color: var(--accent); }
     setInterval(load, 10000);  // 10s refresh
   }
 
+  // Claim-success confetti — self-contained 2.4s canvas burst
+  window.dcFireConfetti = function() {
+    const canvas = document.getElementById('dcClaimConfetti');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width = window.innerWidth;
+    const H = canvas.height = window.innerHeight;
+    canvas.style.display = 'block';
+    const colors = ['#43ffb4','#5cd0ff','#b6f1ff','#ededef'];
+    const parts = [];
+    const launch = (ox, oy, dir) => {
+      for (let i = 0; i < 45; i++) {
+        const ang = (-Math.PI / 2) + (Math.random() - 0.5) * 1.2 + dir * 0.3;
+        const speed = 10 + Math.random() * 14;
+        parts.push({
+          x: ox, y: oy, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+          rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.3,
+          size: 4 + Math.random() * 5, color: colors[Math.floor(Math.random() * colors.length)],
+          life: 1, shape: Math.random() < 0.5 ? 'rect' : 'circle',
+        });
+      }
+    };
+    launch(W * 0.12, H, 0.6);
+    launch(W * 0.88, H, -0.6);
+    const gravity = 0.42, drag = 0.985;
+    const t0 = performance.now();
+    const frame = (now) => {
+      const elapsed = (now - t0) / 1000;
+      ctx.clearRect(0, 0, W, H);
+      for (const p of parts) {
+        p.vy += gravity; p.vx *= drag; p.vy *= drag;
+        p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        p.life = Math.max(0, 1 - elapsed / 2.2);
+        ctx.save(); ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        if (p.shape === 'rect') ctx.fillRect(-p.size/2, -p.size/4, p.size, p.size/2);
+        else { ctx.beginPath(); ctx.arc(0, 0, p.size/2, 0, 6.28); ctx.fill(); }
+        ctx.restore();
+      }
+      if (elapsed < 2.4) requestAnimationFrame(frame);
+      else { ctx.clearRect(0,0,W,H); canvas.style.display = 'none'; }
+    };
+    requestAnimationFrame(frame);
+  };
+
   boot();
 })();
 </script>
+
+<!-- Claim modal — flawless withdraw UX. Opens via window.dcOpenClaim(agentId) -->
+<div id="claimModal" role="dialog" aria-modal="true">
+  <div class="cm-card">
+    <div class="cm-eyebrow">◆ Claim from agent wallet → your wallet</div>
+    <div class="cm-title" id="cm-title">Claim $STYXX</div>
+    <div id="cm-body"></div>
+  </div>
+</div>
+<canvas id="dcClaimConfetti"></canvas>
+
 </body></html>`;
