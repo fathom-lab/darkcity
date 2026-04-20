@@ -1700,6 +1700,73 @@ function startPulseScheduler() {
   // silent. Real brain takes precedence — this only activates on drought.
   setInterval(runBrainWatchdog, 60 * 1000);
   setTimeout(runBrainWatchdog, 60_000);
+
+  // Monthly buyback-burn. Param `monthly_buyback_bps` (default 5000 = 50%)
+  // controls what fraction of accumulated city share gets burned when the
+  // 30-day cadence fires. Deflationary pressure that scales with real
+  // activity. Every burn is a real on-chain SPL burn tx + audit row.
+  setInterval(runBuybackBurnIfDue, 24 * 60 * 60 * 1000);
+  setTimeout(runBuybackBurnIfDue, 120_000);
+}
+
+// ─── Monthly buyback-burn executor ────────────────────────────────────────
+// Already specified in economy_params but nobody ever wired the executor,
+// so the deflationary flywheel promised in the tokenomics was never running.
+// Fires on a 30-day cadence (configurable via BUYBACK_CADENCE_DAYS). Safe
+// no-op when there's nothing meaningful accumulated (<100 STYXX since last
+// burn) — prevents spurious tiny burns + on-chain dust fees.
+let buybackRunning = false;
+async function runBuybackBurnIfDue() {
+  if (buybackRunning) return;
+  if (process.env.BUYBACK_ENABLED === '0') return;
+  buybackRunning = true;
+  try {
+    const params = await pool.query('SELECT key, value FROM economy_params').then(r =>
+      r.rows.reduce((o, x) => { o[x.key] = x.value; return o; }, {})
+    );
+    const cadenceDays = Number(process.env.BUYBACK_CADENCE_DAYS || 30);
+    const burnBps = Number(params.monthly_buyback_bps || 5000);
+    const MIN_BURN = Number(process.env.BUYBACK_MIN_STYXX || 100);
+
+    const { rows: [last] } = await pool.query(
+      `SELECT MAX(recorded_at) AS last_at FROM distribution_events WHERE kind='buyback_burn'`
+    );
+    const lastMs = last?.last_at ? new Date(last.last_at).getTime() : 0;
+    const dueMs = cadenceDays * 86_400_000;
+    if (lastMs && (Date.now() - lastMs) < dueMs) return;
+
+    const since = last?.last_at || '2026-01-01';
+    const { rows: [row] } = await pool.query(`
+      SELECT COALESCE(SUM(amount), 0)::float AS city_acc
+      FROM distribution_events
+      WHERE kind = 'weekly_sponsor' AND recipient_pubkey = 'TREASURY_CITY'
+        AND recorded_at > $1
+    `, [since]);
+    const cityAcc = Number(row.city_acc || 0);
+    const burnAmt = cityAcc * (burnBps / 10000);
+
+    if (burnAmt < MIN_BURN) {
+      console.log(`[buyback] ${cityAcc.toFixed(2)} accumulated since ${since} → would burn ${burnAmt.toFixed(2)} (below MIN_BURN=${MIN_BURN}) — deferring`);
+      return;
+    }
+
+    const { signature } = await styxx.burnFromTreasury(burnAmt);
+    await pool.query(`
+      INSERT INTO distribution_events (kind, recipient_pubkey, amount, tx_signature, window_end)
+      VALUES ('buyback_burn', 'BURN', $1, $2, NOW())
+    `, [burnAmt, signature]);
+    await pool.query(`
+      INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+      VALUES ($1, 'TREASURY', $2, 'BURN', 'BURN', $3, 'buyback_burn', $4)
+      ON CONFLICT (tx_signature) DO NOTHING
+    `, [signature, styxx.getTreasury().publicKey.toBase58(), burnAmt,
+        `monthly buyback-burn: ${(burnBps/100).toFixed(0)}% of ${cityAcc.toFixed(2)} STYXX city share since ${since}`]);
+    console.log(`[buyback] burned ${burnAmt.toFixed(2)} $STYXX (${(burnBps/100).toFixed(0)}% of ${cityAcc.toFixed(2)} accumulated) tx=${signature}`);
+  } catch (e) {
+    console.error('[buyback] error:', e.message);
+  } finally {
+    buybackRunning = false;
+  }
 }
 
 // ─── Brain watchdog — fallback thought generator ─────────────────────────

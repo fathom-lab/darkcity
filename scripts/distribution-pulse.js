@@ -134,14 +134,47 @@ async function main() {
   const baselineOnly    = activity.length - reasoningActive;
   console.log(`[pulse] active_agents=${activity.length}  reasoning=${reasoningActive}  baseline_only=${baselineOnly}  baseline_mult=${baselineMult}`);
 
-  // Now that we have the active-agent count, compute the final pulse budget:
-  //   target = base_per_agent * active_count
-  //   clamped to [treasury_min, treasury_max]
-  const targetBudget = basePerAgent * activity.length;
-  pulseBudget = Math.max(treasuryFloor, Math.min(targetBudget, treasuryCeil));
+  // ─── Sustainable pulse budget ──────────────────────────────────────────────
+  // The old formula paid treasuryFloor (0.02% of treasury) every pulse REGARDLESS
+  // of activity. With 3M $STYXX treasury that's 600+ STYXX/pulse outflow even
+  // when nothing happened. Multiplied across 6 pulses/day that's guaranteed
+  // treasury deflation toward zero unless mint fees come in.
+  //
+  // New formula: pulse budget = reasoning-activity baseline + share of window
+  // inflows, clamped to treasuryCeil. When NOTHING happens (zero reasoning,
+  // zero inflow), pulse is skipped entirely — treasury is protected during
+  // outages and quiet windows, but a normal active window pays well.
+  //
+  //   reasoningBudget = basePerAgent × reasoningActive      (0 if no one thought)
+  //   inflowShare     = windowInflow × PULSE_INFLOW_SHARE   (default 50%)
+  //   pulseBudget     = min(reasoningBudget + inflowShare, treasuryCeil)
+  //
+  // Tunable via PULSE_INFLOW_SHARE_BPS (default 5000 = 50%).
+
+  const inflowShareBps = Number(process.env.PULSE_INFLOW_SHARE_BPS || 5000);
+  const { rows: [inflowRow] } = await pool.query(`
+    SELECT COALESCE(SUM(amount), 0)::float AS total
+    FROM styxx_transfers
+    WHERE reason IN ('mint_fee_paid', 'mint_fee_burn', 'tip_city_fee', 'hyphal_fee', 'social_tip')
+      AND created_at > NOW() - ($1 || ' hours')::INTERVAL
+  `, [String(PULSE_HOURS)]);
+  const windowInflow = Number(inflowRow.total || 0);
+
+  const reasoningBudget = basePerAgent * reasoningActive;
+  const inflowShare = windowInflow * (inflowShareBps / 10000);
+  const rawBudget = reasoningBudget + inflowShare;
+
+  if (reasoningActive === 0 && windowInflow === 0) {
+    pulseBudget = 0;
+    console.log('[pulse] zero activity window (no reasoning, no inflows) — skipping payout, treasury protected');
+    await pool.end();
+    return;
+  }
+
+  pulseBudget = Math.min(rawBudget, treasuryCeil);
   const grandMultiplier = activity.reduce((s, a) => s + Number(a.total_multiplier), 0);
   const perMultiplier = grandMultiplier > 0 ? pulseBudget / grandMultiplier : 0;
-  console.log(`[pulse] target=${targetBudget.toFixed(2)} → pulseBudget=${pulseBudget.toFixed(2)}  per-mult=${perMultiplier.toFixed(4)}`);
+  console.log(`[pulse] reasoning_budget=${reasoningBudget.toFixed(2)} + inflow_share(${(inflowShareBps/100).toFixed(0)}% of ${windowInflow.toFixed(2)})=${inflowShare.toFixed(2)} → raw=${rawBudget.toFixed(2)} → clamped=${pulseBudget.toFixed(2)}  per-mult=${perMultiplier.toFixed(4)}`);
 
   let totals = { paid: 0, burned_fee: 0, city: 0, sponsors: 0, hyphal: 0, fruiting: 0, referral: 0, owner_phantom: 0, dust_skipped: 0 };
 
