@@ -2423,6 +2423,41 @@ function installRoutes(app) {
   // ── Admin: founder/bonus airdrop (operator-only) ────────────────────
   // Bonuses for early users, special events, community rewards, etc.
   // Protected by ADMIN_TOKEN env var (must match X-Admin-Token header).
+  // Direct airdrop to ANY pubkey (owner wallet, partner wallet, etc).
+  // Admin-token gated. Used for goodwill grants to new owners while the
+  // pulse system is still warming up — sends from treasury, logs to
+  // styxx_transfers as 'goodwill_grant' so it shows in /me income stream.
+  app.post('/api/admin/airdrop', async (req, res) => {
+    try {
+      const tok = req.headers['x-admin-token'];
+      if (!tok || tok !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+      const { pubkey, amount, memo, reason } = req.body || {};
+      if (!pubkey || !amount) return res.status(400).json({ error: 'pubkey + amount required' });
+      if (typeof pubkey !== 'string' || pubkey.length < 32 || pubkey.length > 44) {
+        return res.status(400).json({ error: 'pubkey must be a valid Solana pubkey (32-44 chars)' });
+      }
+      const amt = Number(amount);
+      if (!Number.isFinite(amt) || amt <= 0 || amt > 1_000_000) {
+        return res.status(400).json({ error: 'amount must be a positive number, <= 1M' });
+      }
+      const reasonTag = (reason || 'goodwill_grant').slice(0, 64);
+      const memoText = (memo || ('goodwill grant: welcome to the city')).slice(0, 200);
+
+      const { signature } = await styxx.airdropFromTreasury(pubkey, amt);
+      await pool.query(`
+        INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+        VALUES ($1, 'TREASURY', $2, 'GRANT', $3, $4, $5, $6)
+        ON CONFLICT (tx_signature) DO NOTHING
+      `, [signature, styxx.getTreasury().publicKey.toBase58(), pubkey, amt, reasonTag, memoText]);
+
+      console.log(`[admin/airdrop] sent ${amt.toFixed(2)} \$STYXX -> ${pubkey.slice(0,8)}... reason=${reasonTag} tx=${signature.slice(0,12)}`);
+      return res.json({ ok: true, pubkey, amount: amt, reason: reasonTag, signature, explorer: 'https://solscan.io/tx/' + signature });
+    } catch (err) {
+      console.error('[admin/airdrop]', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/admin/bonus', async (req, res) => {
     try {
       const tok = req.headers['x-admin-token'];

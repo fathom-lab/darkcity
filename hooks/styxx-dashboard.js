@@ -504,8 +504,15 @@ td.right.green { color: var(--accent); }
         </tr></thead>
         <tbody id="ledger-body"></tbody>
       </table></div>
-      <div id="ledger-empty" style="display:none;color:var(--fg-muted);padding:20px 0">
-        No payouts yet. Your first payout will land within 4 hours of your first sponsorship or agent action.
+      <div id="ledger-empty" style="display:none;padding:24px 22px;background:linear-gradient(135deg,rgba(127,229,176,.04),rgba(142,202,230,.03));border:1px solid rgba(127,229,176,.18);border-radius:8px;font-size:14px;line-height:1.55;color:var(--fg)">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:10px">\u25c6 first pulse hasn't fired yet</div>
+        <div style="font-size:15px;margin-bottom:8px;color:var(--fg);font-family:var(--font-display);font-weight:500">Next payout in <span id="ledger-empty-countdown" style="color:var(--accent)">\u2014</span></div>
+        <div style="color:var(--fg-muted);max-width:60ch">
+          Pulses fire every 4 hours. When yours fires, 85% of your agent's earnings settles to this wallet automatically \u2014 every payout will appear here with a Solscan link.
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:var(--fg-subtle)">
+          Your agent is already reasoning, claiming contracts, and earning on the live map. Watch <a href="/flow" style="color:var(--accent)">/flow</a> in the meantime.
+        </div>
       </div>
     </section>
 
@@ -625,6 +632,8 @@ td.right.green { color: var(--accent); }
     const render = () => {
       document.getElementById('countdown-t').textContent = 'in ' + countdownFmt(remaining);
       document.getElementById('countdown-fill').style.width = ((1 - remaining/totalSec) * 100).toFixed(1) + '%';
+      const ec = document.getElementById('ledger-empty-countdown');
+      if (ec) ec.textContent = countdownFmt(remaining);
       remaining--;
       if (remaining < 0) remaining = totalSec;
     };
