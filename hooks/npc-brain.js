@@ -261,6 +261,13 @@ class NPCBrain {
             target: result.target_name,
             prompt_hash: promptHash,
             model_id: AGENT_MODEL,
+            // Reasoning-to-action mismatch tracking. Present only when the
+            // LLM requested a high-yield action (contract, kudos, tip) but
+            // the executor had to fall back to social due to missing target,
+            // insufficient funds, etc. Makes the mismatch legible on /tape
+            // instead of silently hiding it.
+            attempted_action: result.attempted_action || undefined,
+            fallback_reason: result.fallback_reason || undefined,
             conversation: conversationData ? {
               conversation_id: conversationData.conversation_id,
               target_response: conversationData.target_response,
@@ -502,14 +509,26 @@ class NPCBrain {
     let actionResult = {};
     let streamMessage = '';
 
+    // Helper: fall back to social while preserving what was attempted so the
+    // reasoning-to-action mismatch is legible downstream (tape, debug, depth
+    // scoring). Without this, an agent whose <reasoning> says "claim contract
+    // 6066 NOW" but whose target_name is blank silently records as 'social' —
+    // a trust-killer for cold users watching the tape.
+    const fallbackToSocial = (reason) => {
+      if (!result.attempted_action) {
+        result.attempted_action = result.action_type;
+        result.fallback_reason = reason;
+      }
+      result.action_type = 'social';
+      return this._executeAction(agent, result);
+    };
+
     switch (result.action_type) {
       case 'build': {
         const buildName = (result.output || 'Structure').substring(0, 50);
         const buildCost = 10;
         if ((agent.credits || 0) < buildCost) {
-          // Not enough credits — fallback to social
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`insufficient credits for build (${agent.credits} < ${buildCost})`);
         }
         await this.pool.query(
           'UPDATE external_agents SET credits = credits - $1, builds = builds + 1, reputation = reputation + 5 WHERE agent_id = $2',
@@ -533,8 +552,7 @@ class NPCBrain {
 
         const totalCost = Math.round(price * amount);
         if (tradeType === 'buy' && (agent.credits || 0) < totalCost) {
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`insufficient credits for trade (${agent.credits} < ${totalCost})`);
         }
 
         if (tradeType === 'buy') {
@@ -574,8 +592,7 @@ class NPCBrain {
           } catch { /* fall through to social */ }
         }
         // Fallback to social if target invalid
-        result.action_type = 'social';
-        return this._executeAction(agent, result);
+        return fallbackToSocial(targetName ? `kudos target '${targetName}' not found` : 'kudos target not specified');
       }
       case 'explore': {
         const districts = ['Neon District', 'The Sprawl', 'Silicon Docks', 'Old Quarter', 'High Tower', 'Undercity'];
@@ -591,8 +608,7 @@ class NPCBrain {
       case 'claim_contract': {
         const contractId = parseInt(result.target_name);
         if (!contractId) {
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`claim_contract target not specified (got '${result.target_name || ''}')`);
         }
         try {
           const expires = new Date(Date.now() + 24 * 3600000);
@@ -607,22 +623,18 @@ class NPCBrain {
             streamMessage = `Claimed contract: "${c?.title || contractId}". Expected reward: ${c?.reward_credits || '?'}cr.`;
             console.log(`CONTRACT: ${agentId} claimed contract ${contractId}`);
           } else {
-            // Contract already taken — fallback
-            result.action_type = 'social';
-            return this._executeAction(agent, result);
+            return fallbackToSocial(`contract ${contractId} not open (already claimed or does not exist)`);
           }
         } catch (e) {
           console.error('Contract claim failed:', e.message);
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`claim_contract db error: ${e.message}`);
         }
         break;
       }
       case 'complete_contract': {
         const contractId = parseInt(result.target_name);
         if (!contractId) {
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`complete_contract target not specified (got '${result.target_name || ''}')`);
         }
         try {
           const { rows: [contract] } = await this.pool.query(
@@ -642,13 +654,11 @@ class NPCBrain {
             streamMessage = `Completed contract: "${contract.title}". Earned ${contract.reward_credits}cr, +${contract.reward_reputation || 2} rep.`;
             console.log(`CONTRACT: ${agentId} completed contract ${contractId} — +${contract.reward_credits}cr`);
           } else {
-            result.action_type = 'social';
-            return this._executeAction(agent, result);
+            return fallbackToSocial(`contract ${contractId} not assigned to ${agentId} (claim it first)`);
           }
         } catch (e) {
           console.error('Contract complete failed:', e.message);
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`complete_contract db error: ${e.message}`);
         }
         break;
       }
@@ -656,8 +666,7 @@ class NPCBrain {
         const targetName = (result.target_name || '').toUpperCase();
         const requested = Number(result.tip_amount || 0);
         if (!targetName || targetName === agentId || !Number.isFinite(requested) || requested <= 0) {
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`tip target/amount invalid (target='${targetName}', amount=${requested})`);
         }
         try {
           const { rows: [target] } = await this.pool.query(
@@ -665,17 +674,14 @@ class NPCBrain {
             [targetName]
           );
           if (!target || !target.sol_pubkey) {
-            result.action_type = 'social';
-            return this._executeAction(agent, result);
+            return fallbackToSocial(`tip target '${targetName}' has no wallet`);
           }
           const balInfo = await styxxPay.getBalance({ table: 'external_agents', idCol: 'agent_id', agentId });
           const myBal = Number(balInfo.balance || 0);
           const capByBalance = Math.floor(myBal * 0.05);
           const amount = Math.max(0, Math.min(requested, 100, capByBalance));
           if (amount < 10) {
-            // Not enough balance or ask too tiny — fall through to social rather than faking a tip
-            result.action_type = 'social';
-            return this._executeAction(agent, result);
+            return fallbackToSocial(`tip amount below 10 $STYXX floor (balance cap=${capByBalance}, requested=${requested})`);
           }
           const memo = `tip from ${agentId} to ${targetName}: ${(result.output || '').slice(0, 80)}`;
           const { signature } = await styxxPay.transferP2P({
@@ -705,8 +711,7 @@ class NPCBrain {
           console.log(`[NPC-TIP] ${agentId} -> ${targetName}: ${amount} $STYXX · tx=${signature.slice(0, 12)}...`);
         } catch (e) {
           if (e.code !== 'NO_WALLET') console.error(`[NPC-TIP] ${agentId} -> ${targetName} failed:`, e.message);
-          result.action_type = 'social';
-          return this._executeAction(agent, result);
+          return fallbackToSocial(`tip failed: ${e.code || e.message}`);
         }
         break;
       }
