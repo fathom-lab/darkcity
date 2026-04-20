@@ -815,11 +815,10 @@ body {
   <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
   <nav class="nav-links">
     <a href="/flow" class="active">Map</a>
-    <a href="/tape">Tape</a>
-    <a href="/moments">Moments</a>
     <a href="/earn">Earn</a>
+    <a href="/deploy">Mint</a>
+    <a href="/how">How</a>
     <a href="/me">Dashboard</a>
-    <a href="/data">Data</a>
   </nav>
   <div class="nav-right" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <a href="/deploy" class="nav-cta" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:var(--accent,#7fe5b0);color:#000;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;box-shadow:0 0 18px rgba(127,229,176,.35);transition:transform .15s">◆ mint \$50</a>
@@ -1365,16 +1364,22 @@ function layoutAgents() {
   const cy = (topMargin + H - bottomMargin) / 2;
   const availW = W - leftMargin - rightMargin;
   const availH = H - topMargin - bottomMargin;
-  const R = Math.min(availW, availH) * 0.42;
+  // Layout radius: geometric-mean of avail-w and avail-h at a bold 0.52
+  // factor. The old Math.min × 0.42 was too conservative — on wide viewports
+  // (1700+ CSS px) it collapsed all 35 agents into a ~260×300px center
+  // cluster, making labels overlap. The geometric mean respects both axes
+  // while still producing a circular mycelium; 0.52 fills the frame without
+  // clipping outer children at the margins. Checked against 12"–32" monitors.
+  const R = Math.sqrt(availW * availH) * 0.52;
 
   if (treasury) { treasury.x = cx; treasury.y = cy; treasury.homeX = cx; treasury.homeY = cy; }
 
   const sorted = [...agents.values()].sort((a, b) => a.id.localeCompare(b.id));
   const primary = Math.min(8, sorted.length);
-  // baseLen widened from .56 → .68: primary agents sit further from treasury
-  // so children branching off them have more room before they hit the edge
-  // or collide with other branches.
-  const baseLen = R * 0.68;
+  // baseLen widened to .85R — primaries plant deeper into the canvas so
+  // their children fan outward instead of overlapping other primaries'
+  // children near the center.
+  const baseLen = R * 0.85;
 
   // Mycelium growth: new agents start at their PARENT's position and ease
   // outward to their target layout spot. Existing agents keep their current
@@ -1408,9 +1413,9 @@ function layoutAgents() {
     // the same radial line from treasury. Bump segment length range so
     // children sprout farther from parent — reduces PRISM/MR_REX-style
     // overlap where sibling nodes are nearly co-located.
-    const branch = (hashStr(a.id + 'br') - 0.5) * 1.6;
+    const branch = (hashStr(a.id + 'br') - 0.5) * 1.8;
     const branchAng = parent.angle + branch;
-    const segLen = R * (0.28 + hashStr(a.id + 'len') * 0.30);
+    const segLen = R * (0.35 + hashStr(a.id + 'len') * 0.35);
     a.homeX = parent.homeX + Math.cos(branchAng) * segLen;
     a.homeY = parent.homeY + Math.sin(branchAng) * segLen;
     a.tx = a.homeX; a.ty = a.homeY;
@@ -1439,8 +1444,11 @@ function layoutAgents() {
   // that only spreads overlapping nodes, never reflows the tree. MIN_DIST
   // = 2×node_radius + label padding, small enough that the mycelium shape
   // stays intact.
-  const MIN_DIST = 62;
-  for (let pass = 0; pass < 4; pass++) {
+  // MIN_DIST widened 62 → 96 so agent labels (typical 80–100px wide at Fraunces
+   // 20px) don't overlap. More passes (4 → 6) to let the field actually settle
+  // at the new spacing without oscillation.
+  const MIN_DIST = 96;
+  for (let pass = 0; pass < 6; pass++) {
     for (let i = 0; i < placed.length; i++) {
       for (let j = i + 1; j < placed.length; j++) {
         const a = placed[i], b = placed[j];
