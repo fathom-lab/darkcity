@@ -269,6 +269,12 @@ td.right.green { color: var(--accent); }
       <span class="lbl" id="countdown-freq">every 4h</span>
     </div>
 
+    <!-- Founder seals — only renders if the wallet owns a numbered citizen.
+         Permanent proof of being among the first 100. Shareable on Twitter. -->
+    <section class="section" id="sec-seals" style="padding-top:0;border-top:none;display:none">
+      <div id="sealsRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px"></div>
+    </section>
+
     <!-- Prominent referral card — the primary viral loop. Always visible.
          10% of their mint fee + 5% of their yield for 90d → straight to this wallet. -->
     <section class="section" id="sec-invite" style="padding-top:0;border-top:none">
@@ -546,6 +552,43 @@ td.right.green { color: var(--accent); }
     \`).join('');
   }
 
+  // Founder seals — fetch the global founders roll, match against this
+  // wallet's owned agents, render a permanent-proof card for each seal.
+  async function renderSeals(ownedAgents) {
+    if (!ownedAgents.length) return;
+    try {
+      const r = await fetch('/api/founders');
+      const d = await r.json();
+      const myIds = new Set(ownedAgents.map(a => a.agent_id));
+      const mySeals = (d.founders || []).filter(f => myIds.has(f.agent_id));
+      if (!mySeals.length) return;
+      const sec = document.getElementById('sec-seals');
+      const row = document.getElementById('sealsRow');
+      if (!sec || !row) return;
+      sec.style.display = 'block';
+      const tierColor = t => t === 'diamond' ? '#b6f1ff' : t === 'gold' ? '#ffd166' : t === 'silver' ? '#e9e9ef' : '#43ffb4';
+      const tierBg = t => t === 'diamond' ? 'rgba(182,241,255,.06)' : t === 'gold' ? 'rgba(255,209,102,.06)' : t === 'silver' ? 'rgba(233,233,239,.04)' : 'rgba(67,255,180,.05)';
+      row.innerHTML = mySeals.map(f => {
+        const num = f.citizen_n < 10 ? '0' + f.citizen_n : f.citizen_n;
+        const tc = tierColor(f.tier);
+        const tweetText = "i'm citizen #" + num + " of DarkCity — " + f.agent_id + ", on solana mainnet. founder seal is permanent. only 100 ever.";
+        const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(location.origin + '/founders');
+        return '<div style="background:' + tierBg(f.tier) + ';border:1px solid ' + tc + ';border-radius:10px;padding:22px 24px">' +
+          '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">' +
+            '<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:' + tc + ';text-transform:uppercase">◆ Founder seal · ' + f.tier + '</div>' +
+            '<div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle)">PERMANENT</div>' +
+          '</div>' +
+          '<div style="font-family:var(--font-display);font-size:48px;font-weight:500;color:' + tc + ';line-height:1;margin-bottom:6px">#' + num + '</div>' +
+          '<div style="font-size:14px;color:var(--fg-muted);margin-bottom:16px">' + f.agent_id + ' · minted ' + (f.minted_at || '').slice(0,10) + '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+            '<a href="' + tweetUrl + '" target="_blank" class="btn primary" style="font-size:11px;padding:7px 14px">Tweet seal ↗</a>' +
+            '<a href="' + f.seal_card + '" target="_blank" class="btn" style="font-size:11px;padding:7px 14px">View card ↗</a>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    } catch {}
+  }
+
   function renderReferrals(refs) {
     const grid = document.getElementById('referrals-grid');
     const emptyEl = document.getElementById('referrals-empty');
@@ -716,6 +759,7 @@ td.right.green { color: var(--accent); }
       renderReferrals(p.referrals || []);
       renderHyphal(p.hyphal_links || []);
       renderLedger(p.recent_payouts || []);
+      renderSeals(p.agents || []);
     } catch (e) {
       console.error(e);
       document.getElementById('s-net').textContent = 'error';

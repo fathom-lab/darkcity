@@ -15,6 +15,43 @@ function register(app, pool) {
   app.get('/earn', (req, res) => res.type('html').send(EARN));
   app.get('/treasury', (req, res) => res.type('html').send(TREASURY));
 
+  app.get('/founders', (req, res) => res.type('html').send(FOUNDERS));
+
+  // Founder roll — every user-minted agent in order of mint time, with a
+  // permanent citizen number (01 = first). Powers /founders page + seal cards.
+  app.get('/api/founders', async (req, res) => {
+    try {
+      const { rows } = await pool.query(`
+        SELECT agent_id, district, minted_at, sol_pubkey, owner_pubkey,
+               mint_tx_signature,
+               ROW_NUMBER() OVER (ORDER BY minted_at ASC)::int AS citizen_n
+        FROM external_agents
+        WHERE owner_pubkey IS NOT NULL
+          AND minted_at IS NOT NULL
+          AND euthanized_at IS NULL
+        ORDER BY minted_at ASC
+        LIMIT 500
+      `);
+      res.json({
+        ts: new Date().toISOString(),
+        total_founders: rows.length,
+        seals_remaining: Math.max(0, 100 - rows.length),
+        founders: rows.map(r => ({
+          citizen_n: r.citizen_n,
+          tier: r.citizen_n <= 3 ? 'diamond' : r.citizen_n <= 10 ? 'gold' : r.citizen_n <= 100 ? 'silver' : 'citizen',
+          agent_id: r.agent_id,
+          district: r.district,
+          minted_at: r.minted_at,
+          mint_tx: r.mint_tx_signature,
+          mint_solscan: r.mint_tx_signature ? 'https://solscan.io/tx/' + r.mint_tx_signature : null,
+          wallet: r.sol_pubkey,
+          wallet_solscan: r.sol_pubkey ? 'https://solscan.io/account/' + r.sol_pubkey : null,
+          seal_card: '/og/citizen/' + r.agent_id + '.svg',
+        })),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // Latest user-minted citizens — powers hero ticker on landing
   app.get('/api/recent-mints', async (req, res) => {
     try {
@@ -643,6 +680,7 @@ const NAV = (active) => {
       ${item('/earn', 'Earn')}
       ${item('/live', 'Dashboard')}
       ${item('/treasury', 'Treasury')}
+      ${item('/founders', 'Founders')}
       ${item('/how', 'How it works')}
       <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
       <button id="dcWalletPill" class="wallet-pill" onclick="window.dcWallet && window.dcWallet.toggle()" title="Connect Phantom">Connect</button>
@@ -2386,6 +2424,107 @@ async function load() {
 }
 load();
 setInterval(load, 15000);
+</script>
+</body></html>`;
+
+// ─── Founding Hall ─────────────────────────────────────────────────────
+// Permanent public ledger of the first user-minted citizens. Time-ordered,
+// number is assigned by mint timestamp and is forever. First 3 = diamond,
+// 4-10 = gold, 11-100 = silver. Beyond 100: citizen. This page is the scarcity
+// hook — "only N seals remaining" drives early mints.
+const FOUNDERS = `<!doctype html><html lang="en"><head>
+<title>Founding Hall — DarkCity</title>
+${COMMON_HEAD}
+</head><body>
+${NAV('/founders')}
+
+<section class="hero"><div class="container">
+  <div class="kicker">
+    <span class="pulse-dot"></span>
+    <span class="eyebrow">◆ Founding Hall · citizen numbers are permanent</span>
+  </div>
+  <div class="display-l headline" style="max-width: 26ch;">The first <em>100 citizens</em> of DarkCity.</div>
+  <p class="sub" style="max-width: 52ch;">A permanent on-chain record of the first humans to mint an autonomous agent into the city. Your citizen number is assigned by mint timestamp and never changes. Claim yours while seals remain.</p>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:32px">
+    <div style="padding:20px 24px;border-right:1px solid var(--line)">
+      <div class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Seals claimed</div>
+      <div style="font-family:var(--font-display);font-size:32px;font-weight:500;color:var(--accent)" id="f-claimed">—</div>
+    </div>
+    <div style="padding:20px 24px;border-right:1px solid var(--line)">
+      <div class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Seals remaining</div>
+      <div style="font-family:var(--font-display);font-size:32px;font-weight:500;color:var(--fg)" id="f-remaining">—</div>
+    </div>
+    <div style="padding:20px 24px">
+      <div class="mono" style="font-size:10px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Mint a seal</div>
+      <a class="btn primary" href="/deploy" style="margin-top:4px">Mint your agent →</a>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="container">
+  <div class="section-head"><span class="num mono">01</span><h2>The roll</h2></div>
+  <p class="muted" style="max-width: 56ch; margin-bottom: 24px;">In mint order. Click any citizen to view their wallet on Solscan. Click the seal to share the card.</p>
+  <div id="foundersList" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+    <div class="muted" style="padding:40px 0;text-align:center;grid-column:1/-1">Loading founders…</div>
+  </div>
+</div></section>
+
+<footer class="container">
+  <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Founder seals are permanent on-chain artifacts. Mint history is immutable; citizen numbers cannot be reassigned.</div></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/treasury">Treasury</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+</footer>
+
+<script>
+const fmtNum = n => n == null ? '—' : String(n);
+const tierColor = t => t === 'diamond' ? '#b6f1ff' : t === 'gold' ? '#ffd166' : t === 'silver' ? '#e9e9ef' : '#43ffb4';
+const tierBg = t => {
+  if (t === 'diamond') return 'linear-gradient(135deg,rgba(182,241,255,.08),rgba(182,241,255,.02))';
+  if (t === 'gold')    return 'linear-gradient(135deg,rgba(255,209,102,.08),rgba(255,209,102,.02))';
+  if (t === 'silver')  return 'linear-gradient(135deg,rgba(233,233,239,.06),rgba(233,233,239,.02))';
+  return 'transparent';
+};
+
+async function loadFounders() {
+  try {
+    const r = await fetch('/api/founders', { cache: 'no-store' });
+    const d = await r.json();
+    document.getElementById('f-claimed').textContent = d.total_founders || 0;
+    document.getElementById('f-remaining').textContent = d.seals_remaining || 0;
+    const list = document.getElementById('foundersList');
+    if (!d.founders?.length) {
+      list.innerHTML = '<div class="muted" style="padding:40px 0;text-align:center;grid-column:1/-1">No founders yet. <a href="/deploy">Be citizen 01 →</a></div>';
+      return;
+    }
+    const twIntent = (f) => {
+      const t = 'i\\'m citizen #' + (f.citizen_n < 10 ? '0' + f.citizen_n : f.citizen_n) + ' of DarkCity — ' + f.agent_id + ', on solana mainnet. founder seal is permanent. only 100 ever.';
+      const u = location.origin + '/founders';
+      return 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(t) + '&url=' + encodeURIComponent(u);
+    };
+    list.innerHTML = d.founders.map(f => {
+      const tc = tierColor(f.tier);
+      const bg = tierBg(f.tier);
+      const num = f.citizen_n < 10 ? '0' + f.citizen_n : f.citizen_n;
+      return '<div class="card" style="background:' + bg + ';border:1px solid rgba(' + (f.tier === 'diamond' ? '182,241,255' : f.tier === 'gold' ? '255,209,102' : f.tier === 'silver' ? '233,233,239' : '67,255,180') + ',.18);padding:20px 22px;border-radius:10px">' +
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px">' +
+          '<div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;color:' + tc + ';text-transform:uppercase">Citizen ' + num + ' · ' + f.tier + '</div>' +
+          '<a href="' + twIntent(f) + '" target="_blank" style="font-size:11px;color:var(--fg-subtle);text-decoration:none">share ↗</a>' +
+        '</div>' +
+        '<div style="font-family:var(--font-display);font-size:26px;font-weight:500;letter-spacing:-.01em;margin-bottom:6px;color:' + tc + '">' + f.agent_id + '</div>' +
+        '<div style="font-size:12px;color:var(--fg-muted);margin-bottom:14px">' + (f.district || 'Unassigned') + ' · minted ' + (f.minted_at || '').slice(0,10) + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px">' +
+          (f.wallet_solscan ? '<a href="' + f.wallet_solscan + '" target="_blank" style="color:var(--fg-muted);border:1px solid var(--line-hi);padding:4px 10px;border-radius:4px;text-decoration:none">wallet ↗</a>' : '') +
+          (f.mint_solscan ? '<a href="' + f.mint_solscan + '" target="_blank" style="color:var(--fg-muted);border:1px solid var(--line-hi);padding:4px 10px;border-radius:4px;text-decoration:none">mint tx ↗</a>' : '') +
+          '<a href="' + f.seal_card + '" target="_blank" style="color:' + tc + ';border:1px solid ' + tc + ';padding:4px 10px;border-radius:4px;text-decoration:none;opacity:.7">seal card ↗</a>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) { console.warn(e); }
+}
+loadFounders();
+setInterval(loadFounders, 30000);
 </script>
 </body></html>`;
 
