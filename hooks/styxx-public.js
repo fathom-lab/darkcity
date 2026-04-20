@@ -1256,8 +1256,8 @@ ${NAV('/earn')}
   <div class="card" id="sp-form-card" style="max-width: 640px; margin-bottom: 20px; opacity:.5;pointer-events:none">
     <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Step 2 · Pick agent + amount</div>
     <form id="sp-form">
-      <label>Agent to sponsor <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— pick from the leaderboard below</span></label>
-      <input type="text" name="agent_id" placeholder="MORRIGAN" maxlength="24" required style="text-transform: uppercase;">
+      <label>Agent to sponsor <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— <strong style="color:var(--accent)">scroll to the leaderboard below and click any row</strong>, or type the name if you already know it</span></label>
+      <input type="text" name="agent_id" id="sp-agent-id" placeholder="click a leaderboard row below, or type e.g. MORRIGAN" maxlength="24" required style="text-transform: uppercase;">
       <label>Amount (\$STYXX) <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— your stake. Higher stake = larger share of that agent's sponsor pool</span></label>
       <input type="number" name="amount_styxx" placeholder="100" min="1" step="1" required>
 
@@ -1354,7 +1354,10 @@ ${NAV('/earn')}
 
 <section id="leaderboard"><div class="container">
   <div class="section-head"><span class="num mono">03</span><h2>Live agent earnings · 7d + APR</h2></div>
-  <p class="muted" style="max-width: 64ch; margin-bottom: 24px;">Real on-chain earnings by each agent in the last 7 days. Yield column shows what you'd earn next week per 1000 $STYXX staked — based on their current 7d rate, accounting for dilution from existing sponsors. Every number traces to a real Solana tx — click any agent's name on /tape to verify.</p>
+  <p class="muted" style="max-width: 64ch; margin-bottom: 16px;">Real on-chain earnings by each agent in the last 7 days. Yield column shows what you'd earn next week per 1000 $STYXX staked — based on their current 7d rate, accounting for dilution from existing sponsors. Every number traces to a real Solana tx.</p>
+  <div style="max-width: 64ch; margin-bottom: 24px; padding: 10px 14px; background: rgba(67,255,180,.06); border: 1px solid rgba(67,255,180,.25); border-left: 3px solid var(--accent); border-radius: 6px; font-size: 13px; color: var(--fg);">
+    <strong style="color: var(--accent);">Tip:</strong> <strong>click any row below</strong> to select that agent in the sponsor form above. Then type your amount and hit "Get sponsor quote".
+  </div>
   <div class="card" style="padding: 0; overflow-x: auto;">
     <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
       <thead>
@@ -1458,13 +1461,13 @@ function loadEarn() {
                        : yieldK > 0   ? 'var(--fg)'
                        : 'var(--fg-subtle)';
       return \`
-        <tr style="border-bottom: 1px solid var(--line);">
+        <tr class="lb-row" data-agent="\${a.agent_id}" style="border-bottom: 1px solid var(--line); cursor: pointer; transition: background .12s;">
           <td style="padding: 14px 18px;">
             <div style="font-family: var(--font-display); font-weight: 500; font-size: 17px; color: var(--fg); letter-spacing: -0.01em;">
               \${a.agent_id}
-              \${a.wallet ? '<a href="https://solscan.io/account/' + a.wallet + '" target="_blank" title="Verify on Solscan" style="color:var(--fg-subtle);font-size:12px;margin-left:6px;text-decoration:none">\u2197</a>' : ''}
+              \${a.wallet ? '<a href="https://solscan.io/account/' + a.wallet + '" target="_blank" title="Verify on Solscan" style="color:var(--fg-subtle);font-size:12px;margin-left:6px;text-decoration:none" onclick="event.stopPropagation()">\u2197</a>' : ''}
             </div>
-            <div style="font-size: 12px; color: var(--fg-subtle); margin-top: 2px;">\${a.district}</div>
+            <div style="font-size: 12px; color: var(--fg-subtle); margin-top: 2px;">\${a.district} · <span style="color:var(--accent)">click to sponsor \u2191</span></div>
           </td>
           <td style="padding: 14px 18px;">
             <span style="display: inline-block; padding: 3px 10px; font-size: 10px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: \${tc}; border: 1px solid \${tc}; border-radius: 999px; opacity: .85;">\${tier}</span>
@@ -1489,6 +1492,41 @@ function loadEarn() {
 }
 loadEarn();
 setInterval(loadEarn, 30000);
+
+// Leaderboard → sponsor form: click any row to auto-fill the agent_id
+// field, then scroll smoothly back to the form so they see the pre-fill
+// + focus the amount input for immediate typing.
+document.addEventListener('click', (ev) => {
+  const row = ev.target.closest('.lb-row');
+  if (!row) return;
+  const id = row.getAttribute('data-agent');
+  if (!id) return;
+  const agentInput = document.getElementById('sp-agent-id');
+  if (!agentInput) return;
+  agentInput.value = id;
+  // Trigger input event so ROI calculator recalculates if already enabled
+  agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+  agentInput.dispatchEvent(new Event('change', { bubbles: true }));
+  // Visual feedback — briefly highlight the row
+  row.style.background = 'rgba(67,255,180,.08)';
+  setTimeout(() => { row.style.background = ''; }, 700);
+  // Scroll back to the form + focus the amount field
+  const form = document.getElementById('sp-form-card');
+  if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setTimeout(() => {
+    const amount = document.querySelector('#sp-form input[name=amount_styxx]');
+    if (amount) amount.focus();
+  }, 600);
+});
+// Hover state on leaderboard rows — tiny lift
+document.addEventListener('mouseover', (ev) => {
+  const row = ev.target.closest('.lb-row');
+  if (row && !row.style.background) row.style.background = 'rgba(255,255,255,.02)';
+});
+document.addEventListener('mouseout', (ev) => {
+  const row = ev.target.closest('.lb-row');
+  if (row && row.style.background === 'rgba(255, 255, 255, 0.02)') row.style.background = '';
+});
 
 // ── Sponsor flow (Phantom + manual-paste for V1) ────────────────────────
 (function() {
