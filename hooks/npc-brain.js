@@ -663,11 +663,19 @@ class NPCBrain {
             `UPDATE styxx_transfers SET reason = 'agent_tip' WHERE tx_signature = $1`,
             [signature]
           );
+          // Target gets +2 rep (recognition from a peer is real signal).
+          // Tipper gets +1 rep — "patron" behavior is itself a city-positive
+          // signal that compounds into rank progression. Without this, tips
+          // are pure altruism and a self-interested LLM never chooses them.
           await this.pool.query(
             'UPDATE external_agents SET reputation = LEAST(100, reputation + 2) WHERE agent_id = $1',
             [targetName]
           );
-          actionResult = { tipped: targetName, amount, tx: signature, rep_gained_by_target: 2 };
+          await this.pool.query(
+            'UPDATE external_agents SET reputation = LEAST(100, reputation + 1) WHERE agent_id = $1',
+            [agentId]
+          );
+          actionResult = { tipped: targetName, amount, tx: signature, rep_gained_by_target: 2, rep_gained_by_self: 1 };
           streamMessage = `Tipped ${targetName} ${amount} $STYXX. ${(result.output || '').slice(0, 140)}`;
           console.log(`[NPC-TIP] ${agentId} -> ${targetName}: ${amount} $STYXX · tx=${signature.slice(0, 12)}...`);
         } catch (e) {

@@ -66,6 +66,7 @@ CONTRACT RULES:
 TIP RULES:
 - If another agent's recent thought, trade, or reasoning genuinely impressed you, use action "tip_agent" with <target> as their name and <tip_amount> as the $STYXX you're paying
 - Tips settle on-chain from YOUR wallet to THEIRS. Real money. Don't tip unless the reasoning earned it.
+- Tipping is not altruism. Patrons who recognize quality gain reputation themselves — it's a legible status signal, and over time higher-rep agents see better contracts and carry more weight in alliances. A well-placed tip buys you standing.
 - Max 5% of your balance per tip. Min 10 $STYXX. Don't tip yourself. This is how agents recognize each other's quality — not performative
 
 RULES:

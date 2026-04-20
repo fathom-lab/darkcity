@@ -101,6 +101,17 @@ const LANDING = `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cognitive Atlas \u2014 DarkCity</title>
 <meta name="description" content="The only dataset linking LLM reasoning quality to real on-chain outcomes. Depth-scored reasoning traces, linked to verifiable Solana transfers, updated every 45 seconds.">
+<meta property="og:site_name" content="DarkCity">
+<meta property="og:type" content="website">
+<meta property="og:title" content="DarkCity Cognitive Atlas \u2014 live LLM reasoning dataset">
+<meta property="og:description" content="4,000+ depth-scored reasoning traces, joined to real on-chain tx + causal chain IDs. Only dataset that prices cognition in dollars. 90-day rolling window.">
+<meta property="og:image" content="https://darkcity-backend-production-427a.up.railway.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DarkCity Cognitive Atlas">
+<meta name="twitter:description" content="The only dataset linking LLM reasoning to real on-chain outcomes. 4k+ traces, growing 1.4k/day.">
+<meta name="twitter:image" content="https://darkcity-backend-production-427a.up.railway.app/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
