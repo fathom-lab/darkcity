@@ -1143,6 +1143,28 @@ async function portfolio(req, res) {
     ]);
 
     const lt = lifetimeAgg.rows[0] || {};
+    // Refresh on-chain balance for each owned agent (parallel) and write back
+    // to styxx_cached. Previously portfolio summed stale cache values and
+    // could show net_worth=0 when the agent wallet actually held STYXX.
+    const liveBalances = await Promise.all(agents.rows.map(async (a) => {
+      if (!a.sol_pubkey) return { agent_id: a.agent_id, bal: Number(a.styxx_cached || 0) };
+      try {
+        const bal = await styxx.getStyxxBalance(a.sol_pubkey);
+        // Persist refreshed cache for downstream views/queries
+        if (Number.isFinite(bal)) {
+          pool.query('UPDATE external_agents SET styxx_cached = $1, styxx_cached_at = NOW() WHERE agent_id = $2', [bal, a.agent_id]).catch(()=>{});
+        }
+        return { agent_id: a.agent_id, bal: Number.isFinite(bal) ? bal : Number(a.styxx_cached || 0) };
+      } catch {
+        return { agent_id: a.agent_id, bal: Number(a.styxx_cached || 0) };
+      }
+    }));
+    const balByAgent = new Map(liveBalances.map(b => [b.agent_id, b.bal]));
+    // Overwrite the stale values with live on-chain balance so downstream
+    // reads of agents.rows[i].styxx_cached return the fresh number
+    for (const row of agents.rows) {
+      row.styxx_cached = balByAgent.get(row.agent_id) ?? row.styxx_cached;
+    }
     const totalAgentBalance = agents.rows.reduce((s, a) => s + Number(a.styxx_cached || 0), 0);
     const totalStaked = sponsorships.rows.reduce((s, r) => s + Number(r.amount_staked || 0), 0);
     const totalReferralBonusesPaid = referrals.rows.reduce((s, r) =>
@@ -2200,10 +2222,11 @@ function installRoutes(app) {
     }
   });
 
-  // ── Health endpoint — city-wide operational heartbeat ──────────────────
+  // ── Detailed health endpoint — city-wide operational heartbeat ────────
   // Surfaces any stuck or degraded state so ops can see problems before users
-  // do. One GET returns a pass/fail for every critical subsystem.
-  app.get('/api/health', async (req, res) => {
+  // do. Pass/fail per critical subsystem. Mounted at /api/health/full so the
+  // legacy /api/health (simple pass/fail in server.js) keeps working.
+  app.get('/api/health/full', async (req, res) => {
     const out = { ts: new Date().toISOString(), overall: 'ok', checks: {} };
     const fail = (name, reason) => { out.checks[name] = { ok: false, reason }; out.overall = 'degraded'; };
     const pass = (name, detail) => { out.checks[name] = { ok: true, detail }; };
