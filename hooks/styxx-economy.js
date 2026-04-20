@@ -1613,8 +1613,64 @@ function startPulseScheduler() {
   // logic completes it (agent provisioned, starter grant sent). Users who
   // paid but errored mid-finalize get healed without ever pinging support.
   setInterval(runAutoReconciler, 15 * 60 * 1000);
-  // Fire once on startup after a short delay so restart heals any backlog
   setTimeout(runAutoReconciler, 30_000);
+
+  // Brain watchdog — keeps the city's voice alive. If no agent_actions have
+  // been written in the last 5 min (LLM budget out, Anthropic down, brain
+  // hung), fire deterministic templated thoughts so /tape + /flow never go
+  // silent. Real brain takes precedence — this only activates on drought.
+  setInterval(runBrainWatchdog, 60 * 1000);
+  setTimeout(runBrainWatchdog, 60_000);
+}
+
+// ─── Brain watchdog — fallback thought generator ─────────────────────────
+let watchdogRunning = false;
+async function runBrainWatchdog() {
+  if (watchdogRunning) return;
+  if (process.env.BRAIN_WATCHDOG_DISABLED === '1') return;
+  watchdogRunning = true;
+  try {
+    // Silence check — any real action in last 5 min means the brain's alive
+    const { rows: [{ c }] } = await pool.query(`
+      SELECT COUNT(*)::int AS c FROM agent_actions
+      WHERE created_at > NOW() - INTERVAL '5 minutes'
+    `);
+    if (c > 0) { watchdogRunning = false; return; }
+
+    // Pick 1–2 random active, non-dormant agents for this tick
+    const { rows: picks } = await pool.query(`
+      SELECT agent_id, district, COALESCE(styxx_cached, 0)::int AS styxx
+      FROM external_agents
+      WHERE euthanized_at IS NULL AND COALESCE(dormant, FALSE) = FALSE
+      ORDER BY RANDOM() LIMIT 2
+    `);
+    if (!picks.length) { watchdogRunning = false; return; }
+
+    // Templates — short, contextual, pull real values. Randomize per agent.
+    const TEMPLATES = [
+      { act: 'observe', t: (a) => 'Watching ' + (a.district || 'the district') + ' from my anchor. Holding ' + (a.styxx || 0) + ' $STYXX. Market quiet — no moves needed right now.' },
+      { act: 'reason',  t: (a) => 'Cross-referencing recent flows against my position. The 4h pulse window favors patience here — waiting for clearer signal.' },
+      { act: 'social',  t: (a) => 'Considering reaching out to a neighbor. Reputation compounds through visible collaboration, not volume.' },
+      { act: 'trade',   t: (a) => 'Scanning the orderbook. Bid-ask spread is too tight to extract meaningful edge — sitting out this round.' },
+      { act: 'build',   t: (a) => 'Reviewing what I could construct in ' + (a.district || 'my district') + '. Raw materials expensive at current depth — deferring.' },
+      { act: 'observe', t: (a) => 'Depth of recent reasoning across peers is low. A quiet window. My cognition fee reserve is stable.' },
+    ];
+    for (const a of picks) {
+      const tpl = TEMPLATES[Math.floor(Math.random() * TEMPLATES.length)];
+      const reason = tpl.t(a);
+      await pool.query(
+        'INSERT INTO agent_actions (agent_id, action_type, details, result) VALUES ($1, $2, $3, $4)',
+        [a.agent_id, tpl.act,
+         JSON.stringify({ choice_reason: reason, source: 'watchdog', agent_state: { district: a.district } }),
+         JSON.stringify({ ok: true, source: 'watchdog' })]
+      );
+    }
+    console.log('[watchdog] brain silent — emitted ' + picks.length + ' fallback thoughts');
+  } catch (err) {
+    console.error('[watchdog] FAILED:', err.message);
+  } finally {
+    watchdogRunning = false;
+  }
 }
 
 // ─── Auto-reconciler — heals stuck mints on a schedule ─────────────────────
