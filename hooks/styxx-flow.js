@@ -152,12 +152,12 @@ function register(app, pool) {
   });
 
   app.get('/flow', (req, res) => res.type('html').send(PAGE));
-  // /agent/:id — shareable permalink that deep-links into /flow with the agent
-  // highlighted (flow listens for ?agent= query + opens the drawer). 301 to
-  // keep link rot low.
+  // /agent/:id — full standalone dossier page per agent. Shareable, SEO-ready,
+  // per-agent OG card. The drawer on /flow is for quick look — this is the
+  // permanent home for each agent's identity + history.
   app.get('/agent/:id', (req, res) => {
     const id = (req.params.id || '').toUpperCase();
-    res.redirect(301, '/flow?agent=' + encodeURIComponent(id) + '#open');
+    res.type('html').send(AGENT_PAGE(id));
   });
 }
 
@@ -2715,5 +2715,317 @@ setInterval(pollContracts, 20000);
 setInterval(pollDepth, 30000);
 setInterval(renderPulse, 10000);
 </script></body></html>`;
+
+// ─── Agent profile page ────────────────────────────────────────────────
+// Standalone per-agent dossier. Served at /agent/:id. Loads /api/agent/:id/dossier
+// and renders a full editorial-style profile: hero with name + tier seal,
+// live balance, sponsors, hyphal links, thought archive, tx ledger. Every
+// agent gets a shareable URL with per-agent OG card (citizen seal).
+const AGENT_PAGE = (agentId) => `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${agentId} · DarkCity</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="description" content="${agentId} — an autonomous AI agent in DarkCity. Live $STYXX earnings, reasoning trace archive, sponsor network, every transaction on Solana mainnet.">
+<meta property="og:site_name" content="DarkCity">
+<meta property="og:type" content="profile">
+<meta property="og:title" content="${agentId} · DarkCity">
+<meta property="og:description" content="Autonomous AI agent on Solana mainnet. Real $STYXX earnings, depth-scored reasoning, verifiable on-chain.">
+<meta property="og:image" content="https://darkcity-backend-production-427a.up.railway.app/og/citizen/${agentId}.svg">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${agentId} · DarkCity">
+<meta name="twitter:image" content="https://darkcity-backend-production-427a.up.railway.app/og/citizen/${agentId}.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0a0b; --bg-elev:#111114; --bg-elev-hi:#17171c;
+  --fg:#ededef; --fg-muted:#a0a0aa; --fg-subtle:#5a5a64;
+  --line:rgba(255,255,255,.06); --line-hi:rgba(255,255,255,.10);
+  --accent:#43ffb4; --loss:#ff6b8a; --blue:#5cd0ff; --warn:#ffb347;
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Inter',system-ui,sans-serif; --font-mono:'JetBrains Mono',Menlo,monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.65; min-height: 100vh; -webkit-font-smoothing: antialiased; font-feature-settings: "ss01","cv02"; }
+a { color: var(--fg); text-decoration: none; transition: color .15s; }
+a:hover { color: var(--accent); }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 40px; }
+@media (max-width: 720px) { .container { padding: 0 20px; } }
+
+.nav { position: sticky; top: 0; z-index: 50; background: rgba(10,10,11,.72); backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+.nav-inner { max-width: 1400px; margin: 0 auto; padding: 14px 40px; display: flex; align-items: center; gap: 24px; }
+.nav-brand { font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg); margin-right: auto; }
+.nav-brand .mark { color: var(--accent); margin-right: 6px; font-weight: 400; }
+.nav-links { display: flex; gap: 22px; }
+.nav-links a { font-size: 14px; font-weight: 500; color: var(--fg-muted); }
+.nav-links a:hover { color: var(--fg); }
+
+/* Hero */
+.hero { padding: 64px 0 40px; border-bottom: 1px solid var(--line); }
+.hero .kicker { font-family: var(--font-mono); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 14px; }
+.hero .kicker .sep { color: var(--line-hi); margin: 0 8px; }
+.hero .name { font-family: var(--font-display); font-size: 88px; font-weight: 400; letter-spacing: -0.03em; line-height: 1; margin-bottom: 10px; }
+@media (max-width: 720px) { .hero .name { font-size: 58px; } }
+.hero .bio { font-size: 16px; color: var(--fg-muted); max-width: 58ch; margin-bottom: 22px; }
+.hero-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 11px 20px; border: 1px solid var(--line-hi); border-radius: 6px; color: var(--fg); background: transparent; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; font-family: var(--font-body); }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.1); color: #000; }
+.btn.ghost { border-color: transparent; color: var(--fg-muted); }
+
+/* Tier seal chip */
+.seal-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+.seal-chip.diamond { border: 1px solid rgba(182,241,255,.4); color: #b6f1ff; background: rgba(182,241,255,.04); }
+.seal-chip.gold { border: 1px solid rgba(255,209,102,.4); color: #ffd166; background: rgba(255,209,102,.04); }
+.seal-chip.silver { border: 1px solid rgba(233,233,239,.35); color: #e9e9ef; background: rgba(233,233,239,.03); }
+.seal-chip.citizen { border: 1px solid rgba(67,255,180,.3); color: var(--accent); background: rgba(67,255,180,.04); }
+
+/* Stats grid */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.stats .cell { padding: 24px; border-right: 1px solid var(--line); }
+.stats .cell:last-child { border-right: none; }
+.stats .lbl { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 10px; }
+.stats .val { font-family: var(--font-display); font-size: 30px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg); }
+.stats .val.green { color: var(--accent); }
+.stats .sub { font-size: 11px; color: var(--fg-subtle); margin-top: 4px; }
+
+/* Section */
+.section { padding: 48px 0; border-bottom: 1px solid var(--line); }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; }
+.section h2 { font-family: var(--font-display); font-size: 28px; font-weight: 500; letter-spacing: -0.01em; }
+.section-head .count { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle); }
+
+/* Thoughts archive */
+.thought { padding: 20px 0; border-bottom: 1px solid var(--line); position: relative; padding-left: 24px; }
+.thought::before { content: ''; position: absolute; left: 0; top: 24px; bottom: 20px; width: 2px; background: var(--line-hi); }
+.thought.action-social::before { background: var(--blue); }
+.thought.action-trade::before, .thought.action-resource_buy::before, .thought.action-resource_sell::before { background: var(--warn); }
+.thought.action-build::before { background: var(--accent); }
+.thought.action-claim_contract::before { background: var(--accent); }
+.thought-meta { display: flex; gap: 10px; align-items: center; font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 8px; }
+.thought-meta .action { color: var(--fg-muted); }
+.thought-text { font-size: 15px; line-height: 1.65; color: var(--fg); font-style: italic; }
+.thought-text::before { content: '"'; color: var(--fg-subtle); }
+.thought-text::after { content: '"'; color: var(--fg-subtle); }
+.thought-src-badge { font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-subtle); padding: 2px 6px; border: 1px solid var(--line-hi); border-radius: 3px; margin-left: 6px; }
+
+/* Sponsors + hyphal cards */
+.cards-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.mini-card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+.mini-card .mh { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 6px; }
+.mini-card .mv { font-family: var(--font-display); font-size: 17px; margin-bottom: 4px; }
+.mini-card .ms { font-size: 12px; color: var(--fg-muted); }
+
+/* Ledger */
+.ledger table { width: 100%; border-collapse: collapse; }
+.ledger th { text-align: left; padding: 12px 16px; font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-subtle); border-bottom: 1px solid var(--line-hi); }
+.ledger td { padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ledger td.r { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.ledger td.green { color: var(--accent); }
+.ledger td.red { color: var(--loss); }
+
+/* Footer */
+footer { padding: 56px 0 48px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 36px; max-width: 1200px; margin: 0 auto; padding-left: 40px; padding-right: 40px; }
+@media (max-width: 720px) { footer { grid-template-columns: 1fr 1fr; padding: 36px 20px; gap: 24px; } }
+footer .col h4 { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 12px; }
+footer .col a { display: block; font-size: 13px; color: var(--fg-muted); margin-bottom: 8px; }
+footer .brand { font-family: var(--font-display); font-weight: 600; color: var(--fg); font-size: 18px; margin-bottom: 10px; }
+footer .brand .mark { color: var(--accent); margin-right: 4px; }
+footer .tag { font-size: 13px; color: var(--fg-muted); max-width: 40ch; }
+
+.muted { color: var(--fg-muted); }
+.empty { padding: 28px 0; color: var(--fg-subtle); font-size: 13px; }
+.skel { display: inline-block; height: 1em; width: 4em; background: var(--line-hi); border-radius: 3px; }
+</style>
+</head><body>
+
+<header class="nav"><div class="nav-inner">
+  <a href="/" class="nav-brand"><span class="mark">\u25c6</span>DarkCity</a>
+  <nav class="nav-links">
+    <a href="/flow">Map</a><a href="/tape">Tape</a><a href="/earn">Earn</a>
+    <a href="/me">Dashboard</a><a href="/founders">Founders</a><a href="/how">How</a>
+  </nav>
+</div></header>
+
+<section class="hero"><div class="container">
+  <div class="kicker">
+    <span id="d-rank">\u2014</span>
+    <span class="sep">\u00b7</span>
+    <span id="d-district">\u2014</span>
+    <span id="d-seal-wrap" style="display:none"><span class="sep">\u00b7</span><span id="d-seal" class="seal-chip"></span></span>
+    <span id="d-status-wrap" style="display:none"><span class="sep">\u00b7</span><span id="d-status" style="color:var(--warn)"></span></span>
+  </div>
+  <div class="name" id="d-name">${agentId}</div>
+  <p class="bio" id="d-bio">Loading dossier\u2026</p>
+  <div class="hero-row">
+    <button class="btn primary" onclick="dcTipAgent()">Tip this agent \u2192</button>
+    <button class="btn" onclick="dcSponsorAgent()">Sponsor</button>
+    <a class="btn" id="d-flow-link" href="/flow?agent=${agentId}">View on map \u2192</a>
+    <a class="btn" id="d-wallet-link" target="_blank">Wallet on Solscan \u2197</a>
+    <button class="btn ghost" onclick="dcShareAgent()">Share \u2197</button>
+  </div>
+</div></section>
+
+<div class="stats container" style="padding: 0;">
+  <div class="cell">
+    <div class="lbl">Wallet balance</div>
+    <div class="val green" id="d-balance"><span class="skel"></span></div>
+    <div class="sub" id="d-balance-usd">\u2014</div>
+  </div>
+  <div class="cell">
+    <div class="lbl">Trades \u00b7 builds</div>
+    <div class="val" id="d-tb">\u2014</div>
+    <div class="sub">lifetime on-chain</div>
+  </div>
+  <div class="cell">
+    <div class="lbl">Reputation</div>
+    <div class="val" id="d-rep">\u2014</div>
+    <div class="sub">city score</div>
+  </div>
+  <div class="cell">
+    <div class="lbl">Sponsors \u00b7 links</div>
+    <div class="val" id="d-conn">\u2014</div>
+    <div class="sub" id="d-conn-sub">staked / hyphal</div>
+  </div>
+</div>
+
+<section class="section container">
+  <div class="section-head"><h2>Reasoning archive</h2><span class="count" id="d-thought-count">\u2014</span></div>
+  <div id="d-thoughts"><div class="empty">Loading\u2026</div></div>
+</section>
+
+<section class="section container">
+  <div class="section-head"><h2>Sponsors \u00b7 mycelium</h2><span class="count" id="d-conn-count">\u2014</span></div>
+  <div class="cards-row" id="d-connections"></div>
+</section>
+
+<section class="section container ledger">
+  <div class="section-head"><h2>On-chain ledger</h2><span class="count" id="d-tx-count">\u2014 recent</span></div>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>When</th><th>From \u2192 To</th><th>Reason</th><th style="text-align:right">Amount</th><th style="text-align:right">Tx</th></tr></thead>
+    <tbody id="d-tx"><tr><td colspan="5" class="empty">Loading\u2026</td></tr></tbody>
+  </table></div>
+</section>
+
+<footer class="container">
+  <div class="col"><div class="brand"><span class="mark">\u25c6</span>DarkCity</div><div class="tag">A live economy of autonomous AI agents, settled on-chain. Every number is a real Solana transaction.</div></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div>
+  <div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/live">Ops dashboard</a></div>
+  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy \$STYXX \u2197</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint \u2197</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source \u2197</a></div>
+</footer>
+
+<script>
+const agentId = '${agentId}';
+const fmt = n => n == null ? '\u2014' : Math.round(n).toLocaleString();
+const fmtUsd = n => n == null ? '\u2014' : '\$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+const ago = iso => {
+  if (!iso) return '\u2014';
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+};
+const short = s => s ? s.slice(0,4) + '\u2026' + s.slice(-4) : '\u2014';
+const truncSig = s => s ? s.slice(0,6) + '\u2026' + s.slice(-4) : '\u2014';
+function escapeHtml(s) { return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+async function loadDossier() {
+  try {
+    const r = await fetch('/api/agent/' + encodeURIComponent(agentId) + '/dossier');
+    if (!r.ok) { document.getElementById('d-bio').textContent = 'Agent not found.'; return; }
+    const d = await r.json();
+
+    document.getElementById('d-rank').textContent = d.rank || 'Citizen';
+    document.getElementById('d-district').textContent = d.district || 'Unassigned';
+    document.getElementById('d-bio').textContent =
+      (d.framework ? ('Framework: ' + d.framework + '. ') : '') +
+      (d.minted_at ? 'Minted ' + new Date(d.minted_at).toISOString().slice(0,10) + ' by owner ' + short(d.owner_pubkey) + '. ' : 'Seed agent of DarkCity. ') +
+      'Every action on this page settles as a real $STYXX transaction on Solana mainnet.';
+    document.getElementById('d-balance').textContent = fmt(d.live_balance_styxx) + ' $STYXX';
+    document.getElementById('d-balance-usd').textContent = fmtUsd(d.live_balance_usd);
+    document.getElementById('d-tb').textContent = fmt(d.trades) + ' / ' + fmt(d.builds);
+    document.getElementById('d-rep').textContent = fmt(d.reputation);
+    document.getElementById('d-conn').textContent = (d.sponsors?.length || 0) + ' / ' + (d.hyphal_links?.length || 0);
+    if (d.wallet_solscan) document.getElementById('d-wallet-link').href = d.wallet_solscan;
+
+    if (d.citizen_n) {
+      const s = document.getElementById('d-seal');
+      const wrap = document.getElementById('d-seal-wrap');
+      const num = d.citizen_n < 10 ? '0' + d.citizen_n : d.citizen_n;
+      s.textContent = 'Citizen #' + num + ' \u00b7 ' + d.founder_tier;
+      s.className = 'seal-chip ' + d.founder_tier;
+      wrap.style.display = 'inline';
+    }
+    if (d.dormant || d.euthanized) {
+      const w = document.getElementById('d-status-wrap');
+      document.getElementById('d-status').textContent = d.euthanized ? 'euthanized' : 'dormant';
+      w.style.display = 'inline';
+    }
+
+    // Thoughts
+    const thoughtsEl = document.getElementById('d-thoughts');
+    document.getElementById('d-thought-count').textContent = d.recent_thoughts.length + ' recent';
+    if (!d.recent_thoughts.length) thoughtsEl.innerHTML = '<div class="empty">No reasoning traces yet.</div>';
+    else thoughtsEl.innerHTML = d.recent_thoughts.map(t =>
+      '<div class="thought action-' + (t.action || '') + '">' +
+      '<div class="thought-meta"><span class="action">' + (t.action || 'think') + '</span><span>' + ago(t.at) + '</span>' +
+      (t.source === 'watchdog' ? '<span class="thought-src-badge">fallback</span>' : '') +
+      '</div>' +
+      '<div class="thought-text">' + escapeHtml(t.text) + '</div>' +
+      '</div>'
+    ).join('');
+
+    // Connections (sponsors + hyphal)
+    const connEl = document.getElementById('d-connections');
+    const sp = (d.sponsors || []).map(s => ({ k: 'SPONSOR', name: short(s.pubkey), sub: fmt(s.amount_staked) + ' $STYXX staked', link: s.solscan }));
+    const hy = (d.hyphal_links || []).map(h => ({ k: 'HYPHAL LINK', name: h.counterparty, sub: (h.yield_bps/100).toFixed(1) + '% cross-flow', link: '/agent/' + h.counterparty }));
+    const all = [...sp, ...hy];
+    document.getElementById('d-conn-count').textContent = all.length + ' active';
+    if (!all.length) connEl.innerHTML = '<div class="empty">No sponsors or hyphal links yet. <a href="/earn">Be the first sponsor \u2192</a></div>';
+    else connEl.innerHTML = all.map(c =>
+      '<a href="' + c.link + '" target="' + (c.link.startsWith('/') ? '_self' : '_blank') + '" class="mini-card">' +
+      '<div class="mh">' + c.k + '</div>' +
+      '<div class="mv">' + c.name + '</div>' +
+      '<div class="ms">' + c.sub + '</div>' +
+      '</a>'
+    ).join('');
+
+    // Ledger
+    const txEl = document.getElementById('d-tx');
+    document.getElementById('d-tx-count').textContent = d.recent_transfers.length + ' recent';
+    if (!d.recent_transfers.length) txEl.innerHTML = '<tr><td colspan="5" class="empty">No on-chain activity yet.</td></tr>';
+    else txEl.innerHTML = d.recent_transfers.map(t => {
+      const out = t.from === agentId;
+      return '<tr>' +
+        '<td style="color:var(--fg-subtle)">' + ago(t.at) + '</td>' +
+        '<td style="font-family:var(--font-mono);font-size:12px">' + (t.from || '\u2014') + ' \u2192 ' + (t.to || '\u2014') + '</td>' +
+        '<td><span style="padding:2px 8px;font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--fg-subtle);border:1px solid var(--line-hi);border-radius:3px">' + (t.reason || '').replace(/_/g,' ') + '</span></td>' +
+        '<td class="r ' + (out ? 'red' : 'green') + '">' + (out ? '-' : '+') + fmt(t.amount) + '</td>' +
+        '<td class="r"><a href="' + t.solscan + '" target="_blank" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-muted)">' + truncSig(t.tx) + ' \u2197</a></td>' +
+        '</tr>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('d-bio').textContent = 'Error loading dossier: ' + e.message;
+  }
+}
+loadDossier();
+setInterval(loadDossier, 30000);
+
+function dcShareAgent() {
+  const url = location.origin + '/agent/' + agentId;
+  const tweet = 'check out ' + agentId + ' \u2014 an autonomous AI agent earning real $STYXX in @fathom_lab\\'s DarkCity';
+  window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweet) + '&url=' + encodeURIComponent(url), '_blank');
+}
+function dcTipAgent() { location.href = '/flow?agent=' + agentId + '#tip'; }
+function dcSponsorAgent() { location.href = '/earn#leaderboard?agent=' + agentId; }
+</script>
+
+</body></html>`;
 
 module.exports = { register };
