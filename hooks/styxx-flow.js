@@ -1385,35 +1385,27 @@ function layoutAgents() {
   }
 
   // ─── Post-layout relaxation ────────────────────────────────────────────
-  // Only runs when the agent roster actually changes — once positions settle,
-  // re-running per poll creates oscillation + ghost labels from the motion
-  // trail. Tracked via a module-local roster signature. When the same set of
-  // agents comes in on the next poll, we skip relaxation entirely and let
-  // the frame-loop easing hold positions.
-  const rosterSig = placed.map(p => p.id).sort().join(',');
-  if (rosterSig !== window.__lastRosterSig) {
-    window.__lastRosterSig = rosterSig;
-    // Pairwise repulsion that only spreads overlapping nodes, never pushes
-    // them through each other. Gentle MIN_DIST so the mycelium tree shape
-    // survives intact — we nudge off local collisions, not reflow the topology.
-    const MIN_DIST = 52;  // rad(~20) + rad(~20) + label padding (~12)
-    for (let pass = 0; pass < 3; pass++) {
-      for (let i = 0; i < placed.length; i++) {
-        for (let j = i + 1; j < placed.length; j++) {
-          const a = placed[i], b = placed[j];
-          const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d > MIN_DIST || d === 0) continue;
-          const push = (MIN_DIST - d) * 0.35;  // gentler than 0.5
-          const nx = d ? dx / d : Math.random() - 0.5;
-          const ny = d ? dy / d : Math.random() - 0.5;
-          a.homeX -= nx * push; a.homeY -= ny * push;
-          b.homeX += nx * push; b.homeY += ny * push;
-        }
+  // Runs every poll (deterministic — same roster → same output positions,
+  // so there's no oscillation between polls). Gentle pairwise repulsion
+  // that only spreads overlapping nodes, never reflows the tree. MIN_DIST
+  // = 2×node_radius + label padding, small enough that the mycelium shape
+  // stays intact.
+  const MIN_DIST = 52;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        const a = placed[i], b = placed[j];
+        const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > MIN_DIST || d === 0) continue;
+        const push = (MIN_DIST - d) * 0.35;
+        const nx = dx / d;
+        const ny = dy / d;
+        a.homeX -= nx * push; a.homeY -= ny * push;
+        b.homeX += nx * push; b.homeY += ny * push;
       }
     }
   }
-  // Always sync targets so the frame loop eases toward current home
   for (const a of placed) { a.tx = a.homeX; a.ty = a.homeY; }
 }
 
