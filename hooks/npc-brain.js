@@ -12,6 +12,7 @@
 const { buildAgentPrompt, parseAgentResponse, hashPrompt } = require('./agent-prompt');
 const { enrichAction, writeEnrichment } = require('./data-pipeline');
 const { handleConversation } = require('./conversation-wiring');
+const { scoreReasoning, writeDepthRow } = require('./depth-scorer');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const AGENT_MODEL = process.env.AGENT_MODEL_ID || 'claude-haiku-4-5-20251001';
@@ -268,6 +269,20 @@ class NPCBrain {
           JSON.stringify(actionResult.result),
         ]
       );
+
+      // Local depth scoring — always runs, populates depth_evaluations so the
+      // cognition→$ loop has signal even when the external SAE scorer is down.
+      try {
+        const scoreObj = scoreReasoning({
+          reasoning_trace: result.reasoning,
+          alternatives: result.alternatives,
+          choice_reason: result.choice_reason,
+          agent_state: result.agent_state,
+        });
+        if (scoreObj) {
+          await writeDepthRow(this.pool, agent.agent_id, result.action_type, actionResult.streamMessage || '', scoreObj);
+        }
+      } catch (e) { console.error('[NPC-BRAIN] local depth score:', e.message); }
 
       // 7. Enrichment + depth scoring (same pipeline as gateway)
       const params = this._buildParams(result, actionResult);

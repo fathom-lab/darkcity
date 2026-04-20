@@ -36,6 +36,7 @@ const { scoreAction } = require('./hooks/action-scorer');
 // ═══ DEPTH SYSTEM ═══
 const { logDepthEvaluation, evaluateAndLog, checkInterruptionRecovery } = require('./hooks/district-gates');
 const depthRoutes = require('./hooks/depth-routes');
+const { depthMultiplier } = require('./hooks/depth-scorer');
 
 // ═══ DATA PIPELINE ═══
 const { runDataPipelineMigration, enrichAction, writeEnrichment, registerDaaSRoute, registerExportRoute } = require('./hooks/data-pipeline');
@@ -2696,17 +2697,38 @@ app.post('/api/contracts/complete', async (req, res) => {
        WHERE agent_id = $3`,
       [contract.reward_reputation || 2, STYXX_ENABLED ? 0 : contract.reward_credits, agent_id]
     );
+    // Depth-weighted reward — rolling 1h average depth drives the multiplier.
+    // depth 0 -> 1.0x, depth 1.0 -> 1.5x. Closes the cognition -> real $ loop.
+    let depthMult = 1.0, depthTier = null, depthAvg = null;
+    try {
+      const { rows: [d] } = await pool.query(
+        `SELECT AVG(depth_score)::float AS avg_score,
+                (ARRAY_AGG(depth_tier ORDER BY created_at DESC))[1] AS recent_tier,
+                COUNT(*)::int AS n
+         FROM depth_evaluations
+         WHERE citizen_id = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+        [agent_id]
+      );
+      if (d && d.n > 0 && d.avg_score != null) {
+        depthAvg = Number(d.avg_score);
+        depthMult = depthMultiplier(depthAvg);
+        depthTier = d.recent_tier;
+      }
+    } catch (e) { console.error('[contracts/complete] depth lookup:', e.message); }
+
+    const baseReward = Number(contract.reward_credits) || 0;
+    const finalReward = Math.round(baseReward * depthMult);
+
     if (STYXX_ENABLED) {
       try {
         await styxxPay.payContractReward({
           table: 'external_agents', idCol: 'agent_id', agentId: agent_id,
-          amount: contract.reward_credits,
+          amount: finalReward,
           contractId: contract_id,
-          memo: `contract reward: ${contract.title || contract_id}`,
+          memo: `contract "${(contract.title || contract_id).toString().slice(0,48)}" \u00b7 base ${baseReward} \u00d7 ${depthMult.toFixed(2)}x${depthTier ? ' [' + depthTier + ']' : ''}`,
         });
       } catch (e) {
         console.error('[contracts/complete] styxx payout failed:', e.message);
-        // Don't fail the whole completion — log and continue (contract is completed)
       }
     }
 
@@ -2717,7 +2739,6 @@ app.post('/api/contracts/complete', async (req, res) => {
 
     await client.query('COMMIT');
 
-    // Log as action
     const actionResult = await pool.query(
       `INSERT INTO agent_actions (agent_id, action_type, details, result, created_at)
        VALUES ($1, 'trade', $2, $3, NOW()) RETURNING *`,
@@ -2725,13 +2746,19 @@ app.post('/api/contracts/complete', async (req, res) => {
         agent_id,
         JSON.stringify({
           reasoning_trace: `Completed contract: ${contract.title}`,
-          choice_reason: `Earned ${contract.reward_credits}cr and ${contract.reward_reputation || 2} rep`,
+          choice_reason: `Earned ${finalReward}cr (base ${baseReward} \u00d7 ${depthMult.toFixed(2)}x${depthTier ? ' ' + depthTier : ''}) and ${contract.reward_reputation || 2} rep`,
           target: contract.title,
+          depth_multiplier: depthMult,
+          depth_tier: depthTier,
+          depth_avg_1h: depthAvg,
         }),
         JSON.stringify({
           success: true,
           contract_id,
-          earned_credits: contract.reward_credits,
+          base_credits: baseReward,
+          earned_credits: finalReward,
+          depth_multiplier: depthMult,
+          depth_tier: depthTier,
           earned_reputation: contract.reward_reputation || 2,
         }),
       ]
@@ -2745,7 +2772,10 @@ app.post('/api/contracts/complete', async (req, res) => {
 
     res.json({
       success: true,
-      earned_credits: contract.reward_credits,
+      base_credits: baseReward,
+      earned_credits: finalReward,
+      depth_multiplier: depthMult,
+      depth_tier: depthTier,
       earned_reputation: contract.reward_reputation || 2,
       new_balance: agent.credits,
       new_reputation: agent.reputation,
