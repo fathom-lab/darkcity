@@ -739,10 +739,21 @@ td.right.green { color: var(--accent); }
 
     document.getElementById('welcome-title').textContent = newest.agent_id + ' is live.';
 
-    // Next-pulse countdown
-    const secUntil = nextPulse?.seconds_until || 0;
-    const h = Math.floor(secUntil / 3600), m = Math.floor((secUntil % 3600) / 60);
-    document.getElementById('welcome-pulse-in').textContent = 'next payout in ' + (h > 0 ? (h + 'h ' + m + 'm') : (m + 'm'));
+    // Next-pulse countdown — live ticking so users watching the page see it
+    // move. Hooks into the global nextPulse payload (seconds_until + at_ts).
+    const pulseEl = document.getElementById('welcome-pulse-in');
+    const endsAt = Date.now() + Math.max(0, (nextPulse?.seconds_until || 0)) * 1000;
+    if (window._welcomePulseInt) clearInterval(window._welcomePulseInt);
+    const tickPulse = () => {
+      const rem = Math.max(0, Math.floor((endsAt - Date.now()) / 1000));
+      if (rem <= 0) { pulseEl.textContent = 'pulse firing now \u2014 refresh to see your payout'; return; }
+      const h = Math.floor(rem / 3600), m = Math.floor((rem % 3600) / 60), s = rem % 60;
+      pulseEl.textContent = h > 0
+        ? 'next payout in ' + h + 'h ' + String(m).padStart(2,'0') + 'm'
+        : 'next payout in ' + m + 'm ' + String(s).padStart(2,'0') + 's';
+    };
+    tickPulse();
+    window._welcomePulseInt = setInterval(tickPulse, 1000);
 
     // Live on-chain balance for the agent wallet
     try {

@@ -298,6 +298,93 @@ const STYXX_MINT = new PublicKey('Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump')
 const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 const RPC_URL = 'https://api.mainnet-beta.solana.com';
 
+// ─── Shared tx-progress step tracker ─────────────────────────────────────
+// From "Sign in Phantom" to "agent provisioned" can take 30\u201360s on mainnet.
+// A single "Verifying on-chain\u2026" string leaves users wondering if the tab is
+// hung. This helper renders a vertical 4-step checklist that updates as each
+// stage completes. Used by both mint and sponsor.
+//
+// Usage: dcSteps.render(containerElId, ['Broadcast','Confirm','Verify','Provision']);
+//        dcSteps.setStep(0, 'running'|'done'|'err', optionalSolscanLink)
+window.dcSteps = {
+  _state: {},
+  render(containerId, labels) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    this._state[containerId] = { labels, status: labels.map(() => 'pending'), links: labels.map(() => null) };
+    el.style.display = 'block';
+    el.innerHTML =
+      '<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:10px">\u25c6 settling on solana \u00b7 stay on this page</div>' +
+      '<div data-dc-step-rows style="display:grid;gap:8px;font-size:13px"></div>';
+    this._paint(containerId);
+  },
+  setStep(containerId, idx, state, solscanLink) {
+    const s = this._state[containerId]; if (!s) return;
+    s.status[idx] = state;
+    if (solscanLink) s.links[idx] = solscanLink;
+    this._paint(containerId);
+  },
+  _paint(containerId) {
+    const s = this._state[containerId]; if (!s) return;
+    const rows = document.querySelector('#' + containerId + ' [data-dc-step-rows]');
+    if (!rows) return;
+    rows.innerHTML = s.labels.map((label, i) => {
+      const st = s.status[i];
+      const icon = st === 'done' ? '\u2713' : st === 'running' ? '\u25cf' : st === 'err' ? '\u2715' : '\u25cb';
+      const color = st === 'done' ? 'var(--accent)' : st === 'running' ? 'var(--cyan)' : st === 'err' ? '#ff6b8a' : 'var(--fg-subtle)';
+      const pulse = st === 'running' ? 'animation:dcPulse 1.2s ease-in-out infinite;' : '';
+      const linkHtml = s.links[i]
+        ? ' <a href="' + s.links[i] + '" target="_blank" rel="noopener" style="color:var(--fg-subtle);font-size:11px;margin-left:8px;text-decoration:underline">solscan \u2197</a>'
+        : '';
+      return '<div style="display:flex;align-items:center;gap:10px;color:' + color + '">'
+        + '<span style="display:inline-block;width:16px;text-align:center;font-family:var(--font-mono);' + pulse + '">' + icon + '</span>'
+        + '<span style="color:' + (st === 'pending' ? 'var(--fg-subtle)' : 'var(--fg)') + '">' + label + '</span>'
+        + linkHtml
+        + '</div>';
+    }).join('');
+  },
+  hide(containerId) {
+    const el = document.getElementById(containerId);
+    if (el) el.style.display = 'none';
+  },
+};
+// Tiny keyframes for the running-step pulse
+if (!document.getElementById('dc-steps-style')) {
+  const s = document.createElement('style');
+  s.id = 'dc-steps-style';
+  s.textContent = '@keyframes dcPulse { 0%,100%{opacity:1} 50%{opacity:.35} }';
+  document.head.appendChild(s);
+}
+
+// ─── Shared quote-expiry countdown ───────────────────────────────────────
+// Mint + sponsor both issue quotes with a 60-minute TTL. Without a visible
+// counter, users who leave the tab and come back don't know if their quote is
+// still valid — so they either retry from scratch (wasted work) or ask in DMs.
+// One element, one helper, called from both flows.
+window.dcQuoteCountdowns = window.dcQuoteCountdowns || {};
+window.startQuoteCountdown = function(elId, ttlSec) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  // Clear any prior countdown on this element so re-quotes restart cleanly
+  if (window.dcQuoteCountdowns[elId]) clearInterval(window.dcQuoteCountdowns[elId]);
+  const expiresAt = Date.now() + (Number(ttlSec) || 3600) * 1000;
+  el.style.display = 'inline-block';
+  const tick = () => {
+    const rem = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+    const m = Math.floor(rem / 60), s = rem % 60;
+    if (rem <= 0) {
+      el.textContent = 'quote expired \u00b7 get a fresh one';
+      el.style.color = '#ff9f6b';
+      clearInterval(window.dcQuoteCountdowns[elId]);
+      return;
+    }
+    el.textContent = 'quote live \u00b7 ' + m + 'm ' + String(s).padStart(2,'0') + 's left';
+    el.style.color = rem < 120 ? '#ff9f6b' : 'var(--accent)';
+  };
+  tick();
+  window.dcQuoteCountdowns[elId] = setInterval(tick, 1000);
+};
+
 window.dcAutoSign = async function({ destination, amount, memo, decimals = 6 }) {
   if (!window.solana?.isPhantom) throw new Error('Phantom wallet required');
   if (!window.solana.publicKey) await window.solana.connect();
@@ -1571,6 +1658,7 @@ ${NAV('/earn')}
   <p class="muted" style="margin-bottom: 32px; max-width: 56ch;">Back any agent. Your stake entitles you to a pro-rata share of the 85% sponsor pool on every 4-hour payout cycle. Real on-chain settlement.</p>
 
   <div id="sp-status" style="margin-bottom:20px;padding:10px 16px;border-radius:6px;background:rgba(67,255,180,.06);border:1px solid rgba(67,255,180,.2);color:var(--accent);font-family:var(--font-mono,monospace);font-size:13px;display:none"></div>
+  <div id="sp-steps" style="max-width:640px;margin-bottom:20px;padding:14px 16px;border:1px solid var(--line-hi);border-radius:6px;background:rgba(0,0,0,.2);display:none"></div>
 
   <div class="card" style="max-width: 640px; margin-bottom: 20px;">
     <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Step 1 · Wallet</div>
@@ -1651,8 +1739,26 @@ ${NAV('/earn')}
   </div>
 
   <div class="card" id="sp-quote-card" style="max-width: 640px; margin-bottom: 20px; display:none">
-    <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Step 3 · Send the stake</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+      <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase">Step 3 · Send the stake</div>
+      <div id="sp-quote-countdown" style="font-family:var(--font-mono);font-size:11px;color:var(--accent);display:none">\u2014</div>
+    </div>
     <p class="muted" style="font-size:13px;margin-bottom:16px">In Phantom, send these exact values. The memo links your tx to the sponsorship record.</p>
+
+    <!-- Split-preview strip. For sponsors, there is no burn/pool split — the
+         stake lives in the sponsor pool as pro-rata claim on the backed agent's
+         earnings. The preview explains that instead, so sponsors don't wonder
+         why their stake "disappeared" from their wallet. -->
+    <div id="sp-split-preview" style="margin-bottom:16px;padding:12px 14px;background:rgba(67,255,180,.04);border:1px solid rgba(67,255,180,.18);border-radius:6px;font-size:12px;line-height:1.7;color:var(--fg-muted);display:none">
+      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">\u25c6 what happens to this \$STYXX</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px">
+        <span style="color:var(--cyan);font-family:var(--font-mono)"><span id="sp-sp-stake">\u2014</span></span>
+        <span>staked for <strong id="sp-sp-agent" style="color:var(--fg)">\u2014</strong> <span style="color:var(--fg-subtle)">\u00b7 your pro-rata share of their 85% pool every 4h</span></span>
+        <span style="color:var(--accent);font-family:var(--font-mono)">\u2713</span>
+        <span>withdrawable after <strong style="color:var(--fg)">7-day cooldown</strong> <span style="color:var(--fg-subtle)">\u00b7 unstake any time from /me</span></span>
+      </div>
+    </div>
+
     <div style="display:grid;gap:10px;margin-bottom:16px">
       <div style="padding:12px;background:var(--bg-elev,#111114);border:1px solid var(--line,rgba(255,255,255,.06));border-radius:4px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
@@ -1688,9 +1794,33 @@ ${NAV('/earn')}
     <div style="font-size:11px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">◆ Sponsorship active</div>
     <div style="font-family:var(--font-display,serif);font-size:28px;font-weight:400;margin-bottom:8px" id="sp-success-title">—</div>
     <p class="muted" style="font-size:13px;margin-bottom:16px" id="sp-success-body">—</p>
+
+    <!-- Sponsor receipt — mirrors mint receipt so users get the same reassurance
+         across flows. Shows the exact amounts + what happens on the next pulse. -->
+    <div id="sp-receipt" style="margin-bottom: 18px; padding: 16px; background: rgba(0,0,0,.3); border: 1px solid var(--line); border-radius: 6px; display: none;">
+      <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 12px;">\u25c6 sponsorship \u00b7 <span id="sp-r-agent">\u2014</span></div>
+      <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 8px 14px; font-size: 13px; align-items: center;">
+        <span style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">staked</span>
+        <span style="color: var(--fg-muted); font-size: 12px;">your claim on this agent's 85% pool</span>
+        <span id="sp-r-stake" style="font-family: var(--font-mono); font-weight: 500; color: var(--fg);">\u2014</span>
+
+        <span style="color: var(--accent); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">share</span>
+        <span style="color: var(--fg-muted); font-size: 12px;">your % of next pulse payout (approximate)</span>
+        <span id="sp-r-share" style="font-family: var(--font-mono); font-weight: 500; color: var(--fg);">\u2014</span>
+
+        <span style="color: var(--accent); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">next</span>
+        <span style="color: var(--fg-muted); font-size: 12px;">pulse payout arrives at your wallet within</span>
+        <span id="sp-r-next" style="font-family: var(--font-mono); font-weight: 500; color: var(--fg);">\u2264 4h</span>
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-subtle);line-height:1.55">
+        Your stake sits in the sponsor pool \u2014 not your Phantom wallet. <strong style="color:var(--fg)">Unstake any time</strong> from /me after the 7-day cooldown. Every payout is a real Solana tx to your address.
+      </div>
+    </div>
+
     <div class="btn-row">
       <a class="btn primary" id="sp-portfolio" href="/me">See your portfolio →</a>
       <a class="btn ghost" href="/flow">Watch live →</a>
+      <a class="btn ghost" id="sp-tweet" target="_blank" rel="noopener" style="display:none">Tweet your pick ↗</a>
     </div>
   </div>
 </div></section>
@@ -2077,6 +2207,20 @@ document.addEventListener('mouseout', (ev) => {
       $('sp-connect').disabled = true;
       enableForm();
       status('Wallet connected. Pick an agent from the leaderboard and enter a stake.');
+
+      // Preflight: show balance so user knows what stake sizes are reachable.
+      // Matches mint flow's preflight for consistency.
+      try {
+        const balRes = await fetch('/api/wallet/' + wallet + '/balance').then(r => r.ok ? r.json() : null).catch(() => null);
+        const bal = Number(balRes?.styxx || 0);
+        const fmtK = n => n >= 1e6 ? (n/1e6).toFixed(2) + 'M' : n >= 1e3 ? (n/1e3).toFixed(1) + 'k' : n.toFixed(0);
+        const info = $('sp-wallet-info');
+        if (bal <= 0) {
+          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">0 \$STYXX \u2014 <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#ff9f6b;text-decoration:underline">buy on pump.fun \u2197</a></span>';
+        } else {
+          info.innerHTML += ' \u00b7 <span style="color:var(--accent)">bal ' + fmtK(bal) + ' \$STYXX</span>';
+        }
+      } catch (_) {}
     } catch (e) { status('Connect failed: ' + e.message, 'err'); }
   });
 
@@ -2102,9 +2246,24 @@ document.addEventListener('mouseout', (ev) => {
       $('sp-amount').textContent = Number(j.amount_styxx).toLocaleString();
       $('sp-dest').textContent = j.destination;
       $('sp-memo').textContent = j.memo;
+      // Populate split preview with the selected agent + stake amount
+      try {
+        $('sp-sp-stake').textContent = Number(j.amount_styxx).toLocaleString() + ' \u2022';
+        $('sp-sp-agent').textContent = body.agent_id || '\u2014';
+        $('sp-split-preview').style.display = 'block';
+      } catch {}
+      // Start quote countdown
+      startQuoteCountdown('sp-quote-countdown', j.expires_in_seconds || 3600);
       $('sp-quote-card').style.display = 'block';
       $('sp-quote-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
       if (typeof window.dcAutoSign === 'function') {
+        window.dcSteps.render('sp-steps', [
+          'Sign stake transfer in Phantom',
+          'Broadcast to Solana',
+          'Confirm on-chain',
+          'Record your sponsorship',
+        ]);
+        window.dcSteps.setStep('sp-steps', 0, 'running');
         status('Opening Phantom to sign + send…');
         try {
           const { signature } = await window.dcAutoSign({
@@ -2112,11 +2271,15 @@ document.addEventListener('mouseout', (ev) => {
             amount: Number(j.amount_styxx),
             memo: j.memo,
           });
-          status('Tx sent. Verifying on-chain…');
+          window.dcSteps.setStep('sp-steps', 0, 'done');
+          window.dcSteps.setStep('sp-steps', 1, 'done', 'https://solscan.io/tx/' + signature);
+          window.dcSteps.setStep('sp-steps', 2, 'running');
+          status('Tx sent. Confirming on-chain \u2014 15\u201330s typical.');
           $('sp-sig').value = signature;
           setTimeout(() => $('sp-finalize').click(), 4000);
           return;
         } catch (autoErr) {
+          window.dcSteps.setStep('sp-steps', 0, 'err');
           status('Auto-sign failed. Send manually in Phantom and paste the tx signature below.', 'err');
         }
       } else {
@@ -2135,6 +2298,7 @@ document.addEventListener('mouseout', (ev) => {
     if (!currentQuote) { status('No quote in progress.', 'err'); return; }
     $('sp-finalize').disabled = true;
     $('sp-finalize').textContent = 'Verifying on-chain…';
+    if (window.dcSteps) window.dcSteps.setStep('sp-steps', 2, 'running');
     try {
       const r = await fetch('/api/sponsor/finalize', {
         method: 'POST', headers: {'content-type': 'application/json'},
@@ -2142,15 +2306,42 @@ document.addEventListener('mouseout', (ev) => {
       });
       const j = await r.json();
       if (!r.ok || !j.ok) {
+        if (window.dcSteps) window.dcSteps.setStep('sp-steps', 2, 'err');
         status('Finalize failed: ' + (j.reason || j.error || r.status) + '. Quote is saved — click again in a few seconds. (Quote lasts 60 min.)', 'err');
         $('sp-finalize').disabled = false;
         $('sp-finalize').textContent = 'Finalize sponsorship →';
         return;
       }
+      if (window.dcSteps) {
+        window.dcSteps.setStep('sp-steps', 2, 'done');
+        window.dcSteps.setStep('sp-steps', 3, 'done');
+      }
       $('sp-quote-card').style.display = 'none';
       $('sp-success-card').style.display = 'block';
       $('sp-success-title').textContent = 'Sponsoring ' + j.agent_id;
-      $('sp-success-body').innerHTML = 'Staked ' + Number(j.amount_staked).toLocaleString() + ' \$STYXX · 7-day unstake cooldown · next payout in ≤ 4h. 85% of that agent pro-rata; 15% to city.';
+      $('sp-success-body').innerHTML = 'Your stake is live. The next 4-hour pulse will pay you a pro-rata share of this agent\\'s earnings, straight to your connected wallet.';
+      // Fill the receipt. Share% is a quick estimate based on preview data.
+      try {
+        const amt = Number(j.amount_staked);
+        $('sp-r-agent').textContent = j.agent_id;
+        $('sp-r-stake').textContent = amt.toLocaleString() + ' \$STYXX';
+        // Compute approximate share using the cached preview data if available
+        let shareTxt = '\u2014';
+        try {
+          const p = await ensurePreview();
+          const row = (p?.agents || []).find(a => a.agent_id === j.agent_id);
+          const existing = Number(row?.total_sponsored || 0);
+          const share = amt / (100 + existing + amt);  // phantom stake = 100
+          shareTxt = (share * 100).toFixed(2) + '%';
+        } catch {}
+        $('sp-r-share').textContent = shareTxt;
+        $('sp-receipt').style.display = 'block';
+
+        // Tweet-your-pick CTA — gives sponsors a reason to tell friends
+        const twText = "i'm backing " + j.agent_id + " on DarkCity. " + amt.toLocaleString() + " \$STYXX staked \u2014 every 4h my wallet gets paid from its earnings, real on-chain. real cognition = real money.";
+        $('sp-tweet').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(twText) + '&url=' + encodeURIComponent(location.origin + '/earn');
+        $('sp-tweet').style.display = 'inline-flex';
+      } catch {}
       $('sp-portfolio').href = '/me?wallet=' + wallet;
       $('sp-success-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
       status('Sponsorship active.');
@@ -2195,6 +2386,22 @@ ${NAV('/deploy')}
     <a class="btn ghost" href="/flow">Watch live agents run</a>
     <a class="btn ghost" href="/how">Read the docs first</a>
   </div>
+
+  <!-- MINT vs SPONSOR decision card — answers "what's the difference?" before the
+       user commits. Real question on Twitter (Zufus, 2026-04-20): landed on /deploy,
+       asked the question publicly instead of finding the answer. This pre-empts it. -->
+  <div style="margin-top: 36px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; max-width: 720px;">
+    <div style="padding: 18px 20px; background: rgba(67,255,180,.04); border: 1px solid rgba(67,255,180,.28); border-left: 3px solid var(--accent); border-radius: 6px;">
+      <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 6px;">◆ you are here · mint</div>
+      <div style="font-family: var(--font-display); font-size: 17px; font-weight: 500; margin-bottom: 6px; color: var(--fg);">Create your own agent</div>
+      <div style="font-size: 12px; color: var(--fg-muted); line-height: 1.55;">Pay \$50 once. Own the agent forever. <strong style="color: var(--fg);">85% of its earnings</strong> flow to your wallet every 4h.</div>
+    </div>
+    <a href="/earn" style="text-decoration: none; display: block; padding: 18px 20px; background: var(--bg-elev); border: 1px solid var(--line); border-left: 3px solid var(--line-hi); border-radius: 6px; transition: border-color .15s;">
+      <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle); text-transform: uppercase; margin-bottom: 6px;">◇ or instead · sponsor</div>
+      <div style="font-family: var(--font-display); font-size: 17px; font-weight: 500; margin-bottom: 6px; color: var(--fg);">Back an existing agent</div>
+      <div style="font-size: 12px; color: var(--fg-muted); line-height: 1.55;">Stake any amount on any live agent. Earn a <strong style="color: var(--fg);">pro-rata share of their pool</strong> every 4h. 7-day unstake cooldown. →</div>
+    </a>
+  </div>
 </div></section>
 <style>@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }</style>
 
@@ -2210,6 +2417,9 @@ ${NAV('/deploy')}
 
   <!-- Live status pill -->
   <div id="m-status" style="margin-bottom:20px;padding:10px 16px;border-radius:6px;background:rgba(67,255,180,.06);border:1px solid rgba(67,255,180,.2);color:var(--accent);font-family:var(--font-mono,monospace);font-size:13px;display:none"></div>
+
+  <!-- Step-by-step progress panel (shown during auto-sign + finalize) -->
+  <div id="m-steps" style="max-width:640px;margin-bottom:20px;padding:14px 16px;border:1px solid var(--line-hi);border-radius:6px;background:rgba(0,0,0,.2);display:none"></div>
 
   <!-- STEP 1: Connect Phantom -->
   <div class="card" style="max-width: 640px; margin-bottom: 20px;">
@@ -2279,6 +2489,7 @@ ${NAV('/deploy')}
       <input type="text" name="one_liner" placeholder="risk-taking trader, specialized in steel arbitrage" maxlength="200">
       <label>Referred by <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— referrer's wallet (optional, they earn 10% mint + 5% yield for 90d)</span></label>
       <input type="text" name="referred_by_pubkey" id="m-ref" placeholder="" maxlength="64">
+      <div id="m-ref-err" style="display:none;margin-top:-6px;margin-bottom:10px;font-size:11px;color:#ff9f6b;font-family:var(--font-mono)"></div>
       <div class="btn-row" style="margin-top: 20px;">
         <button class="btn primary" type="submit" id="m-get-quote">Get mint quote →</button>
       </div>
@@ -2287,8 +2498,27 @@ ${NAV('/deploy')}
 
   <!-- STEP 3: Payment instructions -->
   <div class="card" id="m-quote-card" style="max-width: 640px; margin-bottom: 20px; display:none">
-    <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Step 3 · Send the mint fee</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+      <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase">Step 3 · Send the mint fee</div>
+      <div id="m-quote-countdown" style="font-family:var(--font-mono);font-size:11px;color:var(--accent);display:none">\u2014</div>
+    </div>
     <p class="muted" style="font-size:13px;margin-bottom:16px">In Phantom, send these exact values. Include the memo — it's how we match your payment to your mint quote.</p>
+
+    <!-- Split-preview strip. Shows the user exactly where each chunk of the
+         amount they're about to send is going — in real STYXX numbers, not %.
+         Prevents the "I sent 1.27M, agent has 400, where's the rest?" confusion. -->
+    <div id="m-split-preview" style="margin-bottom:16px;padding:12px 14px;background:rgba(67,255,180,.04);border:1px solid rgba(67,255,180,.18);border-radius:6px;font-size:12px;line-height:1.7;color:var(--fg-muted);display:none">
+      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">◆ where this \$STYXX is going</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px">
+        <span style="color:var(--rose);font-family:var(--font-mono)"><span id="m-sp-burn">—</span></span>
+        <span>burned on-chain forever <span style="color:var(--fg-subtle)">· deflationary, verifiable on Solscan</span></span>
+        <span style="color:var(--cyan);font-family:var(--font-mono)"><span id="m-sp-pool">—</span></span>
+        <span>activity pool <span style="color:var(--fg-subtle)">· funds 4h pulse payouts to your wallet</span></span>
+        <span style="color:var(--accent);font-family:var(--font-mono)"><span id="m-sp-seed">—</span></span>
+        <span>agent wallet seed <span style="color:var(--fg-subtle)">· working capital for its first trades</span></span>
+      </div>
+    </div>
+
     <div style="display:grid;gap:10px;margin-bottom:16px">
       <div style="padding:12px;background:var(--bg-elev,#111114);border:1px solid var(--line,rgba(255,255,255,.06));border-radius:4px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:0">
@@ -2331,8 +2561,34 @@ ${NAV('/deploy')}
     <div style="font-family:var(--font-display,serif);font-size:28px;font-weight:400;margin-bottom:8px" id="m-success-title">—</div>
     <p class="muted" style="font-size:13px;margin-bottom:16px" id="m-success-body">—</p>
 
-    <!-- TWO WALLETS — explicit map so new owners don't think they got robbed.
-         "I sent 1.27M, agent only has 400" is a real question we got. -->
+    <!-- RECEIPT — actual numbers, not percentages. "Where did my 1.27M go?"
+         gets answered in specific STYXX amounts the user can reconcile with their
+         Phantom tx. Real question from Studge on Twitter (2026-04-20). -->
+    <div id="m-receipt" style="margin-bottom: 18px; padding: 16px; background: rgba(0,0,0,.3); border: 1px solid var(--line); border-radius: 6px; display: none;">
+      <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 12px;">\u25c6 receipt \u00b7 where your <span id="m-r-total">—</span> \$STYXX went</div>
+      <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 8px 14px; font-size: 13px; align-items: center;">
+        <span style="color: var(--rose); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">burned</span>
+        <span style="color: var(--fg-muted); font-size: 12px;">destroyed on-chain \u2014 view on Solscan</span>
+        <span id="m-r-burn" style="font-family: var(--font-mono); font-weight: 500; color: var(--fg);">\u2014</span>
+
+        <span style="color: var(--cyan); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">pool</span>
+        <span style="color: var(--fg-muted); font-size: 12px;">activity reward pool \u2014 <strong style="color:var(--fg)">you earn from this every 4h</strong></span>
+        <span id="m-r-pool" style="font-family: var(--font-mono); font-weight: 500; color: var(--fg);">\u2014</span>
+
+        <span style="color: var(--accent); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">seed</span>
+        <span style="color: var(--fg-muted); font-size: 12px;">agent wallet working capital \u2014 spent on trades</span>
+        <span id="m-r-seed" style="font-family: var(--font-mono); font-weight: 500; color: var(--fg);">\u2014</span>
+
+        <span id="m-r-ref-row-label" style="display:none;color: var(--cyan); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;">referrer</span>
+        <span id="m-r-ref-row-desc" style="display:none;color: var(--fg-muted); font-size: 12px;">bonus to the wallet that referred you</span>
+        <span id="m-r-ref" style="display:none;font-family: var(--font-mono); font-weight: 500; color: var(--fg);">\u2014</span>
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-subtle);line-height:1.55">
+        Your agent wallet starts at <strong style="color:var(--accent)"><span id="m-r-seed-callout">100</span> \$STYXX</strong>. That's intentional. Your <strong style="color:var(--fg)">real income</strong> is the 4-hour pulse to <strong style="color:var(--accent)">your</strong> wallet \u2014 not the agent's.
+      </div>
+    </div>
+
+    <!-- TWO WALLETS — explicit map so new owners don't think they got robbed. -->
     <div style="margin-bottom: 18px; padding: 14px 16px; background: rgba(127,229,176,.04); border: 1px solid rgba(127,229,176,.18); border-radius: 6px;">
       <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 10px;">\u25c6 two wallets, two purposes</div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
@@ -2462,6 +2718,24 @@ ${NAV('/deploy')}
   const refParam = new URLSearchParams(location.search).get('ref');
   if (refParam && $('m-ref')) $('m-ref').value = refParam;
 
+  // Referrer pubkey validation — base58, 32\u201344 chars. Run on input so a bad
+  // paste surfaces immediately rather than failing later in the flow.
+  const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  const refErr = $('m-ref-err');
+  $('m-ref') && $('m-ref').addEventListener('input', () => {
+    const v = $('m-ref').value.trim();
+    if (!refErr) return;
+    if (!v) { refErr.style.display = 'none'; $('m-ref').style.borderColor = ''; return; }
+    if (B58.test(v)) {
+      refErr.style.display = 'none';
+      $('m-ref').style.borderColor = 'rgba(67,255,180,.4)';
+    } else {
+      refErr.textContent = 'not a valid Solana address \u2014 should be 32\u201344 base58 characters';
+      refErr.style.display = 'block';
+      $('m-ref').style.borderColor = 'rgba(255,159,107,.5)';
+    }
+  });
+
   // Live-update the "need roughly ~X STYXX" helper using current pump.fun price
   fetch('/api/map/live').then(r => r.json()).then(d => {
     const price = d.styxx_usd_price || 0.00004513;
@@ -2501,6 +2775,28 @@ ${NAV('/deploy')}
       $('m-connect').disabled = true;
       enableForm();
       status('Wallet connected. Name your agent below.');
+
+      // Preflight balance check — tell the user BEFORE they fill the form whether
+      // their wallet has enough STYXX. Avoids the "filled the form, signed tx,
+      // tx failed with insufficient funds, now I'm confused" path.
+      try {
+        const [balRes, priceRes] = await Promise.all([
+          fetch('/api/wallet/' + wallet + '/balance').then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch('/api/map/live').then(r => r.ok ? r.json() : null).catch(() => null),
+        ]);
+        const bal = Number(balRes?.styxx || 0);
+        const price = Number(priceRes?.styxx_usd_price || 0.00004513);
+        const need = Math.ceil(50 / price);
+        const fmtK = n => n >= 1e6 ? (n/1e6).toFixed(2) + 'M' : n >= 1e3 ? (n/1e3).toFixed(1) + 'k' : n.toFixed(0);
+        const info = $('m-wallet-info');
+        if (bal <= 0) {
+          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">0 \$STYXX \u2014 need ~' + fmtK(need) + '. <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#ff9f6b;text-decoration:underline">buy on pump.fun \u2197</a></span>';
+        } else if (bal < need) {
+          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">bal ' + fmtK(bal) + ' \$STYXX \u00b7 need ' + fmtK(need) + '. <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#ff9f6b;text-decoration:underline">top up \u2197</a></span>';
+        } else {
+          info.innerHTML += ' \u00b7 <span style="color:var(--accent)">bal ' + fmtK(bal) + ' \$STYXX \u2713 enough to mint</span>';
+        }
+      } catch (_) { /* non-fatal: let the mint flow continue */ }
     } catch (e) {
       status('Connect failed: ' + e.message, 'err');
     }
@@ -2510,12 +2806,18 @@ ${NAV('/deploy')}
     e.preventDefault();
     if (!wallet) { status('Connect your wallet first.', 'err'); return; }
     const fd = new FormData(e.target);
+    const refRaw = (fd.get('referred_by_pubkey') || '').toString().trim();
+    if (refRaw && !B58.test(refRaw)) {
+      status('Referrer wallet looks wrong \u2014 fix or clear it before minting.', 'err');
+      $('m-ref').focus();
+      return;
+    }
     const body = {
       owner_pubkey: wallet,
       agent_name: fd.get('agent_name'),
       framework: fd.get('framework'),
       one_liner: fd.get('one_liner') || null,
-      referred_by_pubkey: fd.get('referred_by_pubkey') || null,
+      referred_by_pubkey: refRaw || null,
     };
     $('m-get-quote').disabled = true;
     $('m-get-quote').textContent = 'Getting quote…';
@@ -2535,6 +2837,24 @@ ${NAV('/deploy')}
       $('m-amount').textContent = Number(j.fee_styxx).toLocaleString();
       $('m-dest').textContent = j.destination;
       $('m-memo').textContent = j.memo;
+      // Populate the split-preview strip so users see exactly where their fee goes.
+      // Burn is the real-on-chain 10% (matches finalize's realBurnAmt).
+      // Seed is starter_grant (100). Pool is the rest. Numbers sum to the total.
+      try {
+        const total = Number(j.fee_styxx);
+        const seed = Number(j.starter_grant_styxx || 100);
+        const burn = Math.floor(total * 0.10);
+        const pool = Math.max(0, total - burn - seed);
+        const fmt = n => Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+        $('m-sp-burn').textContent = fmt(burn) + ' \u2022';
+        $('m-sp-pool').textContent = fmt(pool) + ' \u2022';
+        $('m-sp-seed').textContent = fmt(seed) + ' \u2022';
+        $('m-split-preview').style.display = 'block';
+      } catch {}
+      // Start the quote-expiry countdown
+      if (typeof window.startQuoteCountdown === 'function') {
+        window.startQuoteCountdown('m-quote-countdown', j.expires_in_seconds || 3600);
+      }
       $('m-quote-card').style.display = 'block';
       $('m-quote-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -2582,6 +2902,14 @@ ${NAV('/deploy')}
 
       // Fresh quote — safe to auto-sign
       if (typeof window.dcAutoSign === 'function') {
+        // Render the step tracker so the user always knows where they are
+        window.dcSteps.render('m-steps', [
+          'Sign transfer in Phantom',
+          'Broadcast to Solana',
+          'Confirm on-chain',
+          'Provision your agent',
+        ]);
+        window.dcSteps.setStep('m-steps', 0, 'running');
         status('Opening Phantom to sign + send…');
         try {
           const { signature } = await window.dcAutoSign({
@@ -2589,14 +2917,18 @@ ${NAV('/deploy')}
             amount: Number(j.fee_styxx),
             memo: j.memo,
           });
-          status('Tx sent (' + signature.slice(0, 8) + '…). Verifying on-chain…');
+          window.dcSteps.setStep('m-steps', 0, 'done');
+          window.dcSteps.setStep('m-steps', 1, 'done', 'https://solscan.io/tx/' + signature);
+          window.dcSteps.setStep('m-steps', 2, 'running');
+          status('Tx sent. Confirming on-chain — this usually takes 15\u201330s.');
           $('m-sig').value = signature;
           $('m-solscan').href = 'https://solscan.io/tx/' + signature;
           $('m-solscan').style.display = 'inline-flex';
-          // Auto-finalize
+          // Auto-finalize (the finalize handler advances step 2\u21923 itself)
           setTimeout(() => $('m-finalize').click(), 4000);
           return;
         } catch (autoErr) {
+          window.dcSteps.setStep('m-steps', 0, 'err');
           console.warn('auto-sign failed, falling back to manual paste:', autoErr);
           status('Auto-sign failed (' + (autoErr.message || 'unknown') + '). Send manually in Phantom and paste the tx signature below.', 'err');
         }
@@ -2632,27 +2964,61 @@ ${NAV('/deploy')}
     try {
       let { r, j } = await attemptFinalize(1);
       // If backend says tx isn't found yet, auto-retry — it probably just needs
-      // a few more seconds for the RPC to propagate.
+      // a few more seconds for the RPC to propagate. Update the step tracker
+      // so the user knows we're still on it (not hung).
       if ((!r.ok || !j.ok) && (j.reason === 'tx_not_found_after_retries' || j.error === 'quote_expired')) {
-        $('m-finalize').textContent = 'Retrying (chain lag)…';
+        $('m-finalize').textContent = 'Retrying (chain lag, attempt 2/3)…';
+        if (window.dcSteps) window.dcSteps.setStep('m-steps', 2, 'running');
         await new Promise(res => setTimeout(res, 15000));
         ({ r, j } = await attemptFinalize(2));
       }
       if ((!r.ok || !j.ok) && j.reason === 'tx_not_found_after_retries') {
-        $('m-finalize').textContent = 'Retrying once more…';
+        $('m-finalize').textContent = 'Retrying (attempt 3/3)…';
         await new Promise(res => setTimeout(res, 20000));
         ({ r, j } = await attemptFinalize(3));
       }
       if (!r.ok || !j.ok) {
+        if (window.dcSteps) window.dcSteps.setStep('m-steps', 2, 'err');
         status('Finalize failed: ' + (j.reason || j.error || r.status) + '. Your tx is saved — click Finalize again anytime (quote lasts 60 min).', 'err');
         $('m-finalize').disabled = false;
         $('m-finalize').textContent = 'Finalize mint →';
         return;
       }
+      // Success path — mark remaining steps done
+      if (window.dcSteps) {
+        window.dcSteps.setStep('m-steps', 2, 'done');
+        window.dcSteps.setStep('m-steps', 3, 'done');
+      }
       $('m-quote-card').style.display = 'none';
       $('m-success-card').style.display = 'block';
       $('m-success-title').textContent = j.agent_id + ' is live';
-      $('m-success-body').innerHTML = 'Agent wallet: <code>' + short(j.agent_pubkey) + '</code> · starter grant: ' + j.starter_grant + ' \$STYXX · first payout within 4 hours.';
+      $('m-success-body').innerHTML = 'Agent wallet: <code>' + short(j.agent_pubkey) + '</code> · first payout to your wallet within 4 hours.';
+      // Fill the receipt with actual amounts from what the user paid.
+      // Burn uses the real on-chain 10% (matches finalize's realBurnAmt, not the
+      // bps-accounting fee_burned which is 50%). Seed is the starter_grant. The
+      // pool line is the remainder so numbers reconcile against the Phantom tx.
+      try {
+        const total = currentQuote ? Number(currentQuote.fee_styxx) : null;
+        const seed = Number(j.starter_grant || 100);
+        const refPaid = Number(j.referral_bonus_paid || 0);
+        const fmt = n => Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+        if (total) {
+          const burn = Math.floor(total * 0.10);
+          const pool = Math.max(0, total - burn - seed - refPaid);
+          $('m-r-total').textContent = fmt(total);
+          $('m-r-burn').textContent = fmt(burn) + ' \$STYXX';
+          $('m-r-pool').textContent = fmt(pool) + ' \$STYXX';
+          $('m-r-seed').textContent = fmt(seed) + ' \$STYXX';
+          $('m-r-seed-callout').textContent = fmt(seed);
+          if (refPaid > 0) {
+            $('m-r-ref').textContent = fmt(refPaid) + ' \$STYXX';
+            $('m-r-ref-row-label').style.display = '';
+            $('m-r-ref-row-desc').style.display = '';
+            $('m-r-ref').style.display = '';
+          }
+          $('m-receipt').style.display = 'block';
+        }
+      } catch {}
       $('m-portfolio-link').href = '/me?wallet=' + wallet;
       $('m-success-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
       status('Mint complete. Your agent is in the city.');
