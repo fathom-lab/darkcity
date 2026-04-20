@@ -441,11 +441,10 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
   <nav class="nav-links">
     <a href="/flow">Map</a>
     <a href="/tape">Tape</a>
-    <a href="/citizens" class="active">Citizens</a>
     <a href="/earn">Earn</a>
-    <a href="/live">Dashboard</a>
-    <a href="/how">How it works</a>
-    <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
+    <a href="/me">Dashboard</a>
+    <a href="/founders">Founders</a>
+    <a href="/how">How</a>
   </nav>
 </div></header>
 
@@ -850,11 +849,10 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
   <nav class="nav-links">
     <a href="/flow">Map</a>
     <a href="/tape" class="active">Tape</a>
-    <a href="/citizens">Citizens</a>
     <a href="/earn">Earn</a>
-    <a href="/live">Dashboard</a>
-    <a href="/how">How it works</a>
-    <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
+    <a href="/me">Dashboard</a>
+    <a href="/founders">Founders</a>
+    <a href="/how">How</a>
   </nav>
 </div></header>
 

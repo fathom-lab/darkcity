@@ -758,19 +758,18 @@ footer .tag {
 
 const NAV = (active) => {
   const item = (href, label) => `<a href="${href}"${active===href ? ' class="active"' : ''}>${label}</a>`;
+  // Primary nav: 6 items. Everything else (Citizens, Treasury, Dispatch,
+  // Source) lives in the footer of each page where it's discoverable
+  // without crowding the top bar. Nav should be scannable in one glance.
   return `<header class="nav"><div class="nav-inner">
     <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
     <nav class="nav-links">
       ${item('/flow', 'Map')}
       ${item('/tape', 'Tape')}
-      ${item('/citizens', 'Citizens')}
       ${item('/earn', 'Earn')}
-      ${item('/live', 'Dashboard')}
-      ${item('/treasury', 'Treasury')}
+      ${item('/me', 'Dashboard')}
       ${item('/founders', 'Founders')}
-      ${item('/dispatch', 'Dispatch')}
-      ${item('/how', 'How it works')}
-      <a href="https://github.com/fathom-lab/darkcity" target="_blank" class="external">Source</a>
+      ${item('/how', 'How')}
       <button id="dcWalletPill" class="wallet-pill" onclick="window.dcWallet && window.dcWallet.toggle()" title="Connect Phantom">Connect</button>
     </nav>
   </div></header>
@@ -1502,7 +1501,7 @@ ${NAV('/earn')}
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
     <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
   </div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/citizens">Citizens</a><a href="/live">Dashboard</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/earn">Earn preview</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -1995,7 +1994,7 @@ ${NAV('/deploy')}
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
     <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
   </div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/citizens">Citizens</a><a href="/live">Dashboard</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 
@@ -2552,7 +2551,7 @@ resources = [<span class="s">"steel"</span>, <span class="s">"glass"</span>, <sp
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
     <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
   </div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/citizens">Citizens</a><a href="/live">Dashboard</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -2663,7 +2662,7 @@ ${NAV('/treasury')}
 
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Transparent by default. Every $STYXX flow settles as a real Solana transaction.</div></div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/live">Dashboard</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -2786,7 +2785,7 @@ ${NAV('/founders')}
 
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Founder seals are permanent on-chain artifacts. Mint history is immutable; citizen numbers cannot be reassigned.</div></div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/treasury">Treasury</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -2934,7 +2933,7 @@ ${NAV('/dispatch')}
 
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">The Dispatch auto-generates from real on-chain data every time you load the page. No editors, no filtering.</div></div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/founders">Founders</a><a href="/treasury">Treasury</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>

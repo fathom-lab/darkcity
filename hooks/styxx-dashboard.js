@@ -226,11 +226,10 @@ td.right.green { color: var(--accent); }
   <div class="nav-links">
     <a href="/flow">Map</a>
     <a href="/tape">Tape</a>
-    <a href="/citizens">Citizens</a>
     <a href="/earn">Earn</a>
     <a href="/me" class="active">Dashboard</a>
-    <a href="/how">How it works</a>
-    <a href="https://github.com/fathom-lab" class="external">Source</a>
+    <a href="/founders">Founders</a>
+    <a href="/how">How</a>
   </div>
 </div></nav>
 
