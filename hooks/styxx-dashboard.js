@@ -274,11 +274,10 @@ td.right.green { color: var(--accent); }
   <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
   <div class="nav-links">
     <a href="/flow">Map</a>
-    <a href="/tape">Tape</a>
-    <a href="/moments">Moments</a>
     <a href="/earn">Earn</a>
+    <a href="/deploy">Mint</a>
+    <a href="/how">How</a>
     <a href="/me" class="active">Dashboard</a>
-    <a href="/data">Data</a>
   </div>
 </div></nav>
 
@@ -820,12 +819,23 @@ td.right.green { color: var(--accent); }
     tickPulse();
     window._welcomePulseInt = setInterval(tickPulse, 1000);
 
-    // Live on-chain balance for the agent wallet
-    try {
-      const r = await fetch('/api/wallet/' + newest.wallet + '/balance');
-      const bj = await r.json();
-      document.getElementById('welcome-bal').textContent = styxxFmt(bj.styxx || 0) + ' $STYXX';
-    } catch {}
+    // Agent wallet balance. Portfolio API returns sol_pubkey (not wallet)
+    // and already does an on-chain refresh into styxx_cached. Start from the
+    // cached value so the card never reads 0 for an agent that actually holds
+    // STYXX; then try to refresh via /api/wallet/:pk/balance if we have the
+    // address. Fall back silently on error: cached value is already correct.
+    const agentPk = newest.sol_pubkey || newest.wallet;
+    const cached  = Number(newest.styxx_cached || 0);
+    document.getElementById('welcome-bal').textContent = styxxFmt(cached) + ' $STYXX';
+    if (agentPk) {
+      try {
+        const r = await fetch('/api/wallet/' + agentPk + '/balance');
+        const bj = await r.json();
+        if (Number.isFinite(Number(bj.styxx))) {
+          document.getElementById('welcome-bal').textContent = styxxFmt(bj.styxx) + ' $STYXX';
+        }
+      } catch {}
+    }
 
     // Expected week-1 earnings — rough average across all active external agents
     try {
