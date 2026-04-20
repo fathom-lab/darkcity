@@ -350,8 +350,19 @@ const PAGE = `<!doctype html>
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; }
+/* ═══ Shared motion curve. One easing for everything that transitions —
+   the field gets read as one system, not a mix of browser defaults. ═══ */
+:root { --ease: cubic-bezier(.2,.8,.2,1); }
 body {
-  background: var(--bg);
+  /* Radial wash — subtly lighter at center, deeper at edges. Gives the
+     canvas a sense of gravity + depth; keeps the eye centered the way a
+     cinematographer frames a shot. The colors are the same deep-indigo
+     tint as --bg; nothing competes with the accent palette. */
+  background:
+    radial-gradient(ellipse 120% 100% at 50% 45%,
+      #0e1118 0%,
+      var(--bg) 55%,
+      #070810 100%);
   color: var(--fg);
   font-family: var(--font-body);
   font-size: 14px; line-height: 1.5;
@@ -362,6 +373,26 @@ body {
 ::selection { background: var(--accent); color: #000; }
 #nebula, #net { position: fixed; inset: 0; pointer-events: none; }
 #net { pointer-events: auto; cursor: crosshair; }
+
+/* ═══ Film grain — very subtle monochrome noise over the whole scene.
+   Makes the render feel photographed, not rasterized. Refik Anadol /
+   museum-quality installations do this to hide digital flatness. Keep
+   opacity at 4–6% so it's felt, not seen. ═══ */
+#grain {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  opacity: .05; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+}
+
+/* ═══ Vignette — dark radial wash on the outer edges that softens the
+   canvas border. Same trick used in every cinematic color grade. Stays
+   behind HUD/nav so data is never dimmed, only the ambient field. ═══ */
+#vignette {
+  position: fixed; inset: 0; z-index: 2; pointer-events: none;
+  background: radial-gradient(ellipse 100% 80% at 50% 50%,
+    transparent 55%, rgba(5,7,11,.55) 100%);
+}
 
 .eyebrow { font-family: var(--font-body); font-size: 11px; font-weight: 500;
   letter-spacing: .14em; text-transform: uppercase; color: var(--fg-subtle); }
@@ -389,7 +420,7 @@ body {
 .nav-links { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
 .nav-links a {
   font-size: 14px; font-weight: 500; color: var(--fg-muted);
-  text-decoration: none; transition: color .15s;
+  text-decoration: none; transition: color .18s var(--ease);
 }
 .nav-links a:hover { color: var(--fg); }
 .nav-links a.active { color: var(--fg); }
@@ -491,20 +522,24 @@ body {
 }
 
 /* ═══ HUD — editorial stats strip, Fraunces display numbers ═══ */
+/* Pro-studio pass: lift the display numbers to 40px/500 so they read as
+   a stat line, not a debug overlay. Tighter tracking, subtle text-shadow
+   so they sit above the canvas glow without getting muddy. */
 .hud {
   position: fixed; left: 28px; top: 72px; z-index: 20;
   display: flex; gap: 36px; pointer-events: auto;
 }
 .hud .stat { display: flex; flex-direction: column; gap: 8px; min-width: 90px; }
 .hud .stat .v {
-  font-family: var(--font-display); font-weight: 400;
-  font-size: 34px; line-height: 1;
-  color: var(--fg); letter-spacing: -0.02em;
+  font-family: var(--font-display); font-weight: 500;
+  font-size: 40px; line-height: .95;
+  color: var(--fg); letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 24px rgba(0,0,0,.45);
 }
 .hud .stat .v.mint { color: var(--accent); }
 .hud .stat .l {
-  font-size: 10px; letter-spacing: .12em; color: var(--fg-subtle);
+  font-size: 10px; letter-spacing: .14em; color: var(--fg-subtle);
   text-transform: uppercase; font-weight: 500;
 }
 .hud .sep { width: 1px; background: var(--line); align-self: stretch; margin: 4px 0; }
@@ -523,7 +558,11 @@ body {
   color: var(--fg-muted); white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis;
 }
+.ticker {
+  box-shadow: 0 12px 36px rgba(0,0,0,.4);
+}
 .ticker.show { opacity: 1; }
+.ticker { transition: opacity .5s var(--ease); }
 .ticker .tk-mark {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 8px var(--accent);
@@ -560,9 +599,10 @@ body {
   font-family: var(--font-body); font-size: 13px; font-weight: 500;
   cursor: pointer; backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: all .2s;
+  transition: color .18s var(--ease), border-color .18s var(--ease),
+              background .18s var(--ease), transform .18s var(--ease);
 }
-.fab:hover { color: var(--fg); border-color: var(--fg-subtle); background: rgba(23,23,28,.85); }
+.fab:hover { color: var(--fg); border-color: var(--fg-subtle); background: rgba(23,23,28,.85); transform: translateY(-1px); }
 .fab.active { color: #000; background: var(--accent); border-color: var(--accent); }
 .fab .chevron { color: currentColor; opacity: .6; font-size: 10px; }
 
@@ -573,9 +613,9 @@ body {
   background: rgba(17,17,20,.9); border: 1px solid var(--line-hi);
   border-radius: 14px;
   padding: 22px 24px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  opacity: 0; pointer-events: none; transform: translateY(8px);
-  transition: opacity .2s ease, transform .2s ease;
-  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  opacity: 0; pointer-events: none; transform: translateY(12px);
+  transition: opacity .28s var(--ease), transform .28s var(--ease);
+  box-shadow: 0 24px 72px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.3);
 }
 .drawer.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
 .drawer::-webkit-scrollbar { width: 4px; }
@@ -765,6 +805,11 @@ body {
 
 <canvas id="nebula"></canvas>
 <canvas id="net"></canvas>
+<!-- Atmospheric passes — render on top of canvases, under HUD. Vignette
+     softens outer-edge brightness, grain hides digital-flat look. Neither
+     captures pointer events so all interactions pass through. -->
+<div id="vignette"></div>
+<div id="grain"></div>
 
 <header class="nav"><div class="nav-inner">
   <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
