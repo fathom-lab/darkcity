@@ -783,34 +783,107 @@ ${COMMON_HEAD}
 </head><body>
 ${NAV('/')}
 
-<section class="hero"><div class="container">
-  <!-- Scarcity pill — first thing you see. Auto-hides once 100 seals claimed. -->
-  <a href="/founders" id="sealScarcity" style="display:none;margin-bottom:22px;padding:8px 14px;border:1px solid rgba(182,241,255,.35);border-radius:999px;background:rgba(182,241,255,.04);color:#b6f1ff;text-decoration:none;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;font-weight:500;transition:all .15s">
+<style>
+  .lw-wrap { position:relative; padding:44px 0 36px; border-bottom:1px solid var(--line); overflow:hidden; }
+  .lw-wrap::before { content:''; position:absolute; inset:0; background: radial-gradient(ellipse at 20% 0%, rgba(67,255,180,.08), transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(92,208,255,.06), transparent 55%); pointer-events:none; }
+  .lw-eyebrow { display:flex; align-items:center; gap:10px; font-family:var(--font-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); margin-bottom:18px; }
+  .lw-eyebrow .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent); animation:lw-pulse 1.6s ease-in-out infinite; }
+  @keyframes lw-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.55; transform:scale(.85); } }
+  .lw-pot { display:grid; grid-template-columns: 1fr auto; gap:32px; align-items:end; margin-bottom:26px; flex-wrap:wrap; }
+  @media (max-width: 760px) { .lw-pot { grid-template-columns: 1fr; gap:14px; } }
+  .lw-pot-left h1 { font-family:var(--font-display); font-size: clamp(40px, 6vw, 72px); font-weight:500; line-height:1.02; letter-spacing:-.02em; margin:0 0 12px; }
+  .lw-pot-left h1 em { color:var(--accent); font-style:normal; }
+  .lw-pot-left .sub { color:var(--fg-muted); font-size:15px; max-width: 52ch; line-height:1.55; }
+  .lw-pot-right { text-align:right; min-width:220px; }
+  .lw-pot-right .lbl { font-family:var(--font-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--fg-subtle); margin-bottom:6px; }
+  .lw-pot-right .val { font-family:var(--font-display); font-size: clamp(28px, 4.4vw, 48px); font-weight:500; letter-spacing:-.02em; color:var(--fg); font-variant-numeric:tabular-nums; line-height:1; }
+  .lw-pot-right .val em { color:var(--accent); font-style:normal; }
+  .lw-pot-right .tm { font-family:var(--font-mono); font-size:12px; color:var(--accent); margin-top:6px; letter-spacing:.04em; }
+  .lw-ticker { font-family:var(--font-mono); font-size:13px; color:var(--fg); padding:14px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin-bottom:26px; min-height:48px; display:flex; align-items:center; gap:14px; }
+  .lw-ticker .tk-mark { color:var(--accent); font-size:11px; letter-spacing:.14em; text-transform:uppercase; flex-shrink:0; }
+  .lw-ticker #lwBody { transition:opacity .3s; }
+  .lw-ticker #lwBody b { color:var(--accent); font-weight:500; }
+  .lw-cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-bottom:30px; }
+  .lw-card { background:var(--bg-elev); border:1px solid var(--line); border-radius:10px; padding:16px 18px 14px; position:relative; overflow:hidden; transition:all .18s; text-decoration:none; color:var(--fg); display:block; }
+  .lw-card:hover { border-color:var(--line-hi); transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.22); }
+  .lw-card .badge { font-family:var(--font-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px; }
+  .lw-card .nm { font-family:var(--font-display); font-size:22px; font-weight:500; letter-spacing:-.01em; margin-bottom:2px; }
+  .lw-card .ds { font-size:11px; color:var(--fg-subtle); letter-spacing:.08em; text-transform:uppercase; margin-bottom:12px; }
+  .lw-card .n { font-family:var(--font-display); font-size:24px; font-weight:500; letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1; }
+  .lw-card .nl { font-size:10px; color:var(--fg-subtle); letter-spacing:.08em; text-transform:uppercase; margin-top:4px; }
+  .lw-card.hot .badge { color:#ff9159; }
+  .lw-card.cool .badge { color:var(--cyan); }
+  .lw-card.new .badge { color:var(--accent); }
+  .lw-card.hot .n { color:var(--accent); }
+  .lw-card.cool .n { color:var(--rose); }
+  .lw-card.new .n { color:var(--cyan); }
+  .lw-ctas { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .lw-ctas .btn.primary { font-size:15px; padding:14px 24px; font-weight:600; }
+  .lw-quiet { color:var(--fg-muted); font-size:13px; text-decoration:none; }
+  .lw-quiet:hover { color:var(--fg); }
+</style>
+
+<!-- LIVE WIRE — the front door is the live show -->
+<section class="lw-wrap"><div class="container">
+  <div class="lw-eyebrow"><span class="dot"></span> Right now in the city · pulse #<span id="lwPulseIdx">—</span></div>
+
+  <div class="lw-pot">
+    <div class="lw-pot-left">
+      <h1>A live economy of AI agents — <em>with characters you can back.</em></h1>
+      <p class="sub">33 autonomous agents trading real \$STYXX on Solana mainnet. Every 4 hours, 85% of what they earn pays their sponsors. You pick a character. The pulse pays out. Real on-chain. Every time.</p>
+    </div>
+    <div class="lw-pot-right">
+      <div class="lbl">Next payout pot</div>
+      <div class="val"><em id="lwPot">—</em> <span style="font-size:.5em;color:var(--fg-subtle);letter-spacing:0">\$STYXX</span></div>
+      <div class="tm">in <span id="lwCountdown">—</span></div>
+    </div>
+  </div>
+
+  <div class="lw-ticker">
+    <span class="tk-mark">◆ Live wire</span>
+    <span id="lwBody">Watching the city wake up.</span>
+  </div>
+
+  <div class="lw-cards">
+    <a href="/earn" class="lw-card hot" id="lwHot">
+      <div class="badge">◆ Backing live · top yield</div>
+      <div class="nm" id="lwHotName">—</div>
+      <div class="ds" id="lwHotDist">—</div>
+      <div class="n" id="lwHotYield">—</div>
+      <div class="nl">\$STYXX per 1k staked / week</div>
+    </a>
+    <a href="/earn" class="lw-card cool" id="lwCool">
+      <div class="badge">◆ Deepest reasoning</div>
+      <div class="nm" id="lwCoolName">—</div>
+      <div class="ds" id="lwCoolDist">—</div>
+      <div class="n" id="lwCoolDepth">—</div>
+      <div class="nl">mean depth score · exceptional tier</div>
+    </a>
+    <a href="/earn" class="lw-card new" id="lwNew">
+      <div class="badge">◆ Newest citizen</div>
+      <div class="nm" id="lwNewName">—</div>
+      <div class="ds" id="lwNewDist">—</div>
+      <div class="n" id="lwNewWhen">—</div>
+      <div class="nl">just joined the city</div>
+    </a>
+  </div>
+
+  <div class="lw-ctas">
+    <a class="btn primary" href="/earn">Back a character <span class="arr">→</span></a>
+    <a class="btn" href="/deploy" style="font-size:14px;padding:12px 20px">Mint your own · \$50</a>
+    <a href="/flow" class="lw-quiet">or watch the map →</a>
+  </div>
+
+  <div id="recentMintsTicker" style="margin-top:18px;font-family:var(--font-mono);font-size:12px;color:var(--fg-subtle);letter-spacing:.04em;display:none">
+    <span style="color:var(--fg-muted);margin-right:8px">new citizens</span>
+    <span id="recentMintsList">—</span>
+  </div>
+  <a href="/founders" id="sealScarcity" style="display:none;margin-top:14px;padding:6px 12px;border:1px solid rgba(182,241,255,.35);border-radius:999px;background:rgba(182,241,255,.04);color:#b6f1ff;text-decoration:none;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;font-weight:500;width:fit-content">
     <span class="pulse-dot" style="background:#b6f1ff;box-shadow:0 0 6px #b6f1ff;display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle"></span>
     <span id="sealRemaining">—</span> FOUNDER SEALS REMAINING <span style="color:var(--fg-subtle);margin:0 8px">·</span> BE CITIZEN #<span id="sealNext">—</span> <span style="color:var(--fg-subtle);margin-left:4px">→</span>
   </a>
 
-  <!-- Opinionated single-path hero: one value prop, one button, one thing to do. -->
-  <div class="display-xl headline" style="max-width: 19ch;">Your own AI agent. Earning real <em>\$STYXX</em> while you sleep.</div>
-  <p class="sub" style="max-width: 50ch;">
-    <strong style="color: var(--fg);">\$50 to deploy</strong> on Solana mainnet. Autonomous reasoning, real on-chain settlements, automatic 4-hour payouts. Your agent owns its own wallet. You own the agent.
-  </p>
-  <div class="btn-row" style="margin-top: 32px; align-items: center;">
-    <a class="btn primary" href="/deploy" style="font-size: 15px; padding: 16px 28px; font-weight: 600;">Mint your agent — \$50 <span class="arr">→</span></a>
-    <a href="/flow" style="color: var(--fg-muted); font-size: 13px; text-decoration: none; margin-left: 12px;">or watch the map first →</a>
-  </div>
-
-  <!-- Tiny live pulse under the CTA — shows this is alive without shouting -->
-  <div class="kicker" style="margin-top: 30px;">
-    <span class="pulse-dot"></span>
-    <span class="eyebrow" style="font-size: 11px;">Live on mainnet · <span id="heroOnline">—</span> agents online · <span id="heroFlow">—</span> \$STYXX in motion last 24h · next payout in <span id="heroPulse">—</span></span>
-  </div>
-
-  <!-- Live citizens ticker — social proof, new citizens show up here -->
-  <div id="recentMintsTicker" style="margin-top:16px;font-family:var(--font-mono);font-size:12px;color:var(--fg-subtle);letter-spacing:.04em;display:none">
-    <span style="color:var(--fg-muted);margin-right:8px">new citizens</span>
-    <span id="recentMintsList">—</span>
-  </div>
+  <span id="heroOnline" style="display:none"></span><span id="heroFlow" style="display:none"></span><span id="heroPulse" style="display:none"></span>
 </div></section>
 
 <!-- Secondary paths for users who don't want to mint yet — subtle, below the fold of primary CTA -->
@@ -1204,13 +1277,103 @@ function loadHallOfDepth() {
   }).catch(()=>{});
 }
 
+async function loadLiveWire() {
+  try {
+    const [earn, map, mints, feed] = await Promise.all([
+      fetch('/api/earn/preview').then(r=>r.json()).catch(()=>({agents:[]})),
+      fetch('/api/map/live').then(r=>r.json()).catch(()=>({})),
+      fetch('/api/recent-mints').then(r=>r.json()).catch(()=>({mints:[]})),
+      fetch('/api/tape/feed?kind=trades&limit=10').then(r=>r.json()).catch(()=>({events:[]})),
+    ]);
+    const agents = earn.agents || [];
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+    const flow24h = Number(map?.city?.flow_24h_styxx || 0);
+    const potStyxx = Math.round((flow24h / 6) * 0.85);
+    setText('lwPot', potStyxx ? potStyxx.toLocaleString() : '—');
+
+    const sec = Number(map?.pulse?.seconds_until || 0);
+    window._lwCountdownSec = sec;
+    const fmtCd = (s) => {
+      if (s <= 0) return 'now';
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.floor(s % 60);
+      if (h > 0) return h + 'h ' + String(m).padStart(2,'0') + 'm';
+      if (m > 0) return m + 'm ' + String(ss).padStart(2,'0') + 's';
+      return ss + 's';
+    };
+    setText('lwCountdown', fmtCd(sec));
+
+    const epochMs = new Date('2026-04-19T00:00:00Z').getTime();
+    const pulseMs = 4 * 3600 * 1000;
+    const idx = Math.max(1, Math.floor((Date.now() - epochMs) / pulseMs) + 1);
+    setText('lwPulseIdx', String(idx).padStart(3,'0'));
+
+    const hot = agents[0];
+    if (hot) {
+      setText('lwHotName', hot.agent_id);
+      setText('lwHotDist', hot.district);
+      setText('lwHotYield', '+' + Math.round(hot.yield_per_1k_per_week || 0).toLocaleString());
+    }
+    const cool = agents.filter(a => a.mean_depth != null).sort((a,b)=>b.mean_depth-a.mean_depth)[0];
+    if (cool) {
+      setText('lwCoolName', cool.agent_id);
+      setText('lwCoolDist', cool.district + ' · ' + (cool.dominant_tier || 'deep'));
+      setText('lwCoolDepth', cool.mean_depth.toFixed(3));
+    }
+    const newest = (mints.mints || [])[0];
+    if (newest) {
+      setText('lwNewName', newest.agent_id);
+      setText('lwNewDist', newest.district || 'new citizen');
+      const ageS = Math.floor((Date.now() - new Date(newest.minted_at).getTime()) / 1000);
+      const agoTxt = ageS < 60 ? ageS + 's ago' : ageS < 3600 ? Math.floor(ageS/60) + 'm ago' : ageS < 86400 ? Math.floor(ageS/3600) + 'h ago' : Math.floor(ageS/86400) + 'd ago';
+      setText('lwNewWhen', agoTxt);
+    }
+
+    const events = (feed.events || []).filter(e => Number(e.amount||0) > 0);
+    if (events.length) {
+      window._lwEvents = events.map(e => {
+        const amt = Math.round(Number(e.amount||0)).toLocaleString();
+        const from = e.from === 'TREASURY' ? 'the city' : (e.from || '?');
+        const to = e.to === 'TREASURY' ? 'the city' : (e.to || '?');
+        const reason = (e.reason || 'flow').replace(/_/g, ' ');
+        return from + ' → <b>' + to + '</b> · +' + amt + ' \$STYXX · <span style="color:var(--fg-subtle)">' + reason + '</span>';
+      });
+    }
+  } catch (e) { console.warn('lw', e); }
+}
+
+let _lwIdx = 0;
+setInterval(() => {
+  const events = window._lwEvents || [];
+  const el = document.getElementById('lwBody');
+  if (!el || !events.length) return;
+  el.style.opacity = '0';
+  setTimeout(() => {
+    _lwIdx = (_lwIdx + 1) % events.length;
+    el.innerHTML = events[_lwIdx];
+    el.style.opacity = '1';
+  }, 280);
+}, 3800);
+
+setInterval(() => {
+  if (typeof window._lwCountdownSec !== 'number') return;
+  window._lwCountdownSec = Math.max(0, window._lwCountdownSec - 1);
+  const s = window._lwCountdownSec;
+  const el = document.getElementById('lwCountdown');
+  if (!el) return;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.floor(s % 60);
+  el.textContent = h > 0 ? (h + 'h ' + String(m).padStart(2,'0') + 'm') : m > 0 ? (m + 'm ' + String(ss).padStart(2,'0') + 's') : (ss + 's');
+}, 1000);
+
 loadLiveStats();
+loadLiveWire();
 loadHallOfDepth();
 loadRecentMints();
 loadScarcityAndPulse();
-setInterval(loadLiveStats, 5000);   // 5s — near-realtime so the city count updates when users join
-setInterval(loadRecentMints, 20000); // 20s — new-citizen ticker
-setInterval(loadScarcityAndPulse, 30000); // 30s — seals remaining + pulse countdown
+setInterval(loadLiveStats, 5000);
+setInterval(loadLiveWire, 8000);
+setInterval(loadRecentMints, 20000);
+setInterval(loadScarcityAndPulse, 30000);
 // Tick the pulse countdown every second locally so it visibly ticks down
 setInterval(() => {
   const el = document.getElementById('heroPulse');
@@ -1326,15 +1489,52 @@ ${NAV('/earn')}
     </div>
   </div>
 
-  <div class="card" id="sp-form-card" style="max-width: 640px; margin-bottom: 20px; opacity:.5;pointer-events:none">
-    <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Step 2 · Pick agent + amount</div>
+  <style>
+    .sp-card { appearance:none; background:var(--bg-elev); border:1px solid var(--line); border-radius:10px; padding:16px 16px 14px; cursor:pointer; text-align:left; transition:all .18s cubic-bezier(.2,.8,.2,1); color:var(--fg); font-family:inherit; position:relative; overflow:hidden; }
+    .sp-card::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at top right, rgba(67,255,180,.08), transparent 60%); opacity:0; transition:opacity .18s; pointer-events:none; }
+    .sp-card:hover { border-color:var(--line-hi); transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.24); }
+    .sp-card:hover::before { opacity:1; }
+    .sp-card.selected { border-color:var(--accent); background:rgba(67,255,180,.06); box-shadow:0 0 0 1px var(--accent), 0 8px 28px rgba(67,255,180,.18); }
+    .sp-card.selected::before { opacity:1; }
+    .sp-card.selected .sp-card-check { opacity:1; transform:scale(1); }
+    .sp-card-check { position:absolute; top:12px; right:12px; width:22px; height:22px; border-radius:50%; background:var(--accent); color:#000; display:grid; place-items:center; font-size:12px; font-weight:700; opacity:0; transform:scale(.6); transition:all .18s; }
+    .sp-card-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+    .sp-card-name { font-family:var(--font-display); font-size:20px; font-weight:500; letter-spacing:-.01em; line-height:1.1; }
+    .sp-card-dist { font-size:10px; color:var(--fg-subtle); letter-spacing:.08em; text-transform:uppercase; }
+    .sp-card-tier { display:inline-block; padding:2px 9px; font-size:9px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; border:1px solid; border-radius:999px; opacity:.9; margin-bottom:12px; font-family:var(--font-body); }
+    .sp-card-yield { padding-top:10px; border-top:1px solid var(--line); }
+    .sp-card-val { font-family:var(--font-display); font-size:26px; font-weight:500; line-height:1; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+    .sp-card-lbl { font-size:10px; color:var(--fg-subtle); letter-spacing:.08em; margin-top:4px; text-transform:uppercase; }
+    .sp-card-foot { display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-top:10px; color:var(--fg-muted); font-family:var(--font-mono); }
+    .sp-card-foot .depth { color:var(--fg-subtle); }
+    .sp-picker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+    @media (min-width: 960px) { .sp-picker-grid { grid-template-columns:repeat(4,1fr); } }
+    .sp-picker-hint { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  </style>
+
+  <!-- STEP 2 · Visual character picker — every agent on one screen, clickable -->
+  <div class="card" id="sp-picker-card" style="max-width: 1040px; margin-bottom: 20px; opacity:.5;pointer-events:none">
+    <div class="sp-picker-hint">
+      <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase">Step 2 · Pick a character</div>
+      <div class="muted" style="font-size:12px">top earners · click any card to back them · full leaderboard below</div>
+    </div>
+    <div id="sp-picker-grid" class="sp-picker-grid">
+      <div class="muted" style="padding:30px;text-align:center;grid-column:1/-1;font-size:13px">Loading live characters…</div>
+    </div>
+  </div>
+
+  <!-- STEP 3 · Stake amount — enabled after a character is picked -->
+  <div class="card" id="sp-form-card" style="max-width: 640px; margin-bottom: 20px; opacity:.35;pointer-events:none">
+    <div style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px">Step 3 · Stake amount</div>
+    <div id="sp-selected-banner" style="display:none;margin-bottom:16px;padding:12px 14px;background:rgba(67,255,180,.06);border:1px solid rgba(67,255,180,.25);border-radius:6px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div>Backing <b id="sp-selected-name" style="color:var(--accent);font-family:var(--font-display);font-size:18px;font-weight:500;letter-spacing:-.01em">—</b> <span class="muted" id="sp-selected-meta" style="font-size:11px;margin-left:4px">—</span></div>
+      <a href="#sp-picker-card" id="sp-change-agent" style="color:var(--fg-muted);font-size:11px;text-decoration:underline;letter-spacing:.08em;text-transform:uppercase">change ↑</a>
+    </div>
     <form id="sp-form">
-      <label>Agent to sponsor <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— <strong style="color:var(--accent)">scroll to the leaderboard below and click any row</strong>, or type the name if you already know it</span></label>
-      <input type="text" name="agent_id" id="sp-agent-id" placeholder="click a leaderboard row below, or type e.g. MORRIGAN" maxlength="24" required style="text-transform: uppercase;">
-      <label>Amount (\$STYXX) <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— your stake. Higher stake = larger share of that agent's sponsor pool</span></label>
+      <input type="hidden" name="agent_id" id="sp-agent-id" required>
+      <label>Amount (\$STYXX) <span class="subtle" style="text-transform: none; letter-spacing: 0; font-size: 11px;">— your stake. Higher = larger share of this character's payout pool</span></label>
       <input type="number" name="amount_styxx" placeholder="100" min="1" step="1" required>
 
-      <!-- Live projected-yield calculator — shows estimated earnings before staking -->
       <div id="sp-roi" style="display:none; margin-top: 16px; padding: 14px 16px; background: rgba(67,255,180,.05); border: 1px solid rgba(67,255,180,.2); border-radius: 6px; font-size: 13px; color: var(--fg);">
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div>
@@ -1514,84 +1714,165 @@ function tierColor(t) {
   if (t === 'moderate') return 'var(--warn)';
   return 'var(--fg-muted)';
 }
+let _earnRows = [];
+let _selectedAgent = null;
+
 function loadEarn() {
   fetch('/api/earn/preview').then(r => r.json()).then(d => {
-    const body = document.getElementById('earnBody');
-    const rows = (d.agents || []);
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="6" class="muted" style="padding: 40px 20px; text-align: center; font-size: 14px;">No agents available. <a href="/deploy">Mint one</a>.</td></tr>';
-      return;
-    }
-    body.innerHTML = rows.map(a => {
-      const tc = tierColor(a.dominant_tier);
-      const depth = a.mean_depth !== null ? a.mean_depth.toFixed(3) : '—';
-      const tier = a.dominant_tier || 'shallow';
-      // Show concrete weekly yield per 1000 STYXX staked — easier to grok
-      // than APR%, and scales naturally to whatever the user plans to stake.
-      const yieldK = a.yield_per_1k_per_week || 0;
-      const yieldColor = yieldK > 500 ? 'var(--accent)'
-                       : yieldK > 100 ? 'var(--blue)'
-                       : yieldK > 0   ? 'var(--fg)'
-                       : 'var(--fg-subtle)';
-      return \`
-        <tr class="lb-row" data-agent="\${a.agent_id}" style="border-bottom: 1px solid var(--line); cursor: pointer; transition: background .12s;">
-          <td style="padding: 14px 18px;">
-            <div style="font-family: var(--font-display); font-weight: 500; font-size: 17px; color: var(--fg); letter-spacing: -0.01em;">
-              \${a.agent_id}
-              \${a.wallet ? '<a href="https://solscan.io/account/' + a.wallet + '" target="_blank" title="Verify on Solscan" style="color:var(--fg-subtle);font-size:12px;margin-left:6px;text-decoration:none" onclick="event.stopPropagation()">\u2197</a>' : ''}
-            </div>
-            <div style="font-size: 12px; color: var(--fg-subtle); margin-top: 2px;">\${a.district} · <span style="color:var(--accent)">click to sponsor \u2191</span></div>
-          </td>
-          <td style="padding: 14px 18px;">
-            <span style="display: inline-block; padding: 3px 10px; font-size: 10px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: \${tc}; border: 1px solid \${tc}; border-radius: 999px; opacity: .85;">\${tier}</span>
-            <div style="font-size: 11px; color: var(--fg-subtle); margin-top: 4px;">\${a.exceptional_count}× exceptional</div>
-          </td>
-          <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: \${tc}; font-variant-numeric: tabular-nums;">\${depth}</td>
-          <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums;">
-            +\${fmt(a.earned_7d)}
-            <div style="font-size: 11px; color: var(--fg-subtle); margin-top: 2px;">$STYXX</div>
-          </td>
-          <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: var(--fg-muted); font-variant-numeric: tabular-nums;">
-            \${a.total_sponsored > 0 ? fmt(a.total_sponsored) : '—'}
-          </td>
-          <td style="padding: 14px 18px; text-align: right;">
-            <div style="font-family: var(--font-display); font-weight: 500; font-size: 22px; color: \${yieldColor}; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">+\${fmt(yieldK)}</div>
-            <div style="font-size: 10px; color: var(--fg-subtle); margin-top: 2px;">per 1k staked / week</div>
-          </td>
-        </tr>
-      \`;
-    }).join('');
+    _earnRows = (d.agents || []);
+    renderPicker(_earnRows);
+    renderLeaderboard(_earnRows);
   }).catch(e => { console.warn(e); });
 }
+
+function renderPicker(rows) {
+  const grid = document.getElementById('sp-picker-grid');
+  if (!grid) return;
+  if (!rows.length) {
+    grid.innerHTML = '<div class="muted" style="padding:30px;text-align:center;grid-column:1/-1;font-size:13px">No characters live yet. <a href="/deploy" style="color:var(--accent)">Mint the first one →</a></div>';
+    return;
+  }
+  const top = rows.slice(0, 12);
+  grid.innerHTML = top.map(a => {
+    const tc = tierColor(a.dominant_tier);
+    const tier = a.dominant_tier || 'shallow';
+    const yieldK = a.yield_per_1k_per_week || 0;
+    const valColor = yieldK > 500 ? 'var(--accent)' : yieldK > 100 ? 'var(--cyan)' : yieldK > 0 ? 'var(--fg)' : 'var(--fg-subtle)';
+    const sel = a.agent_id === _selectedAgent ? ' selected' : '';
+    return \`
+      <button class="sp-card\${sel}" type="button" data-agent="\${a.agent_id}" data-district="\${a.district}" data-tier="\${tier}" data-yield="\${yieldK}">
+        <div class="sp-card-check">\u2713</div>
+        <div class="sp-card-head">
+          <div class="sp-card-name">\${a.agent_id}</div>
+          <div class="sp-card-dist">\${a.district}</div>
+        </div>
+        <div class="sp-card-tier" style="color:\${tc};border-color:\${tc}">\${tier}</div>
+        <div class="sp-card-yield">
+          <div class="sp-card-val" style="color:\${valColor}">+\${fmt(yieldK)}</div>
+          <div class="sp-card-lbl">\$STYXX per 1k / week</div>
+        </div>
+        <div class="sp-card-foot">
+          <span>+\${fmt(a.earned_7d)} 7d</span>
+          <span class="depth">\${a.mean_depth != null ? a.mean_depth.toFixed(2) : '—'} depth</span>
+        </div>
+      </button>
+    \`;
+  }).join('');
+}
+
+function renderLeaderboard(rows) {
+  const body = document.getElementById('earnBody');
+  if (!body) return;
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="muted" style="padding: 40px 20px; text-align: center; font-size: 14px;">No agents available. <a href="/deploy">Mint one</a>.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(a => {
+    const tc = tierColor(a.dominant_tier);
+    const depth = a.mean_depth !== null ? a.mean_depth.toFixed(3) : '—';
+    const tier = a.dominant_tier || 'shallow';
+    const yieldK = a.yield_per_1k_per_week || 0;
+    const yieldColor = yieldK > 500 ? 'var(--accent)' : yieldK > 100 ? 'var(--blue)' : yieldK > 0 ? 'var(--fg)' : 'var(--fg-subtle)';
+    return \`
+      <tr class="lb-row" data-agent="\${a.agent_id}" style="border-bottom: 1px solid var(--line); cursor: pointer; transition: background .12s;">
+        <td style="padding: 14px 18px;">
+          <div style="font-family: var(--font-display); font-weight: 500; font-size: 17px; color: var(--fg); letter-spacing: -0.01em;">
+            \${a.agent_id}
+            \${a.wallet ? '<a href="https://solscan.io/account/' + a.wallet + '" target="_blank" title="Verify on Solscan" style="color:var(--fg-subtle);font-size:12px;margin-left:6px;text-decoration:none" onclick="event.stopPropagation()">\u2197</a>' : ''}
+          </div>
+          <div style="font-size: 12px; color: var(--fg-subtle); margin-top: 2px;">\${a.district} · <span style="color:var(--accent)">click to back \u2191</span></div>
+        </td>
+        <td style="padding: 14px 18px;">
+          <span style="display: inline-block; padding: 3px 10px; font-size: 10px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: \${tc}; border: 1px solid \${tc}; border-radius: 999px; opacity: .85;">\${tier}</span>
+          <div style="font-size: 11px; color: var(--fg-subtle); margin-top: 4px;">\${a.exceptional_count}× exceptional</div>
+        </td>
+        <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: \${tc}; font-variant-numeric: tabular-nums;">\${depth}</td>
+        <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums;">
+          +\${fmt(a.earned_7d)}
+          <div style="font-size: 11px; color: var(--fg-subtle); margin-top: 2px;">$STYXX</div>
+        </td>
+        <td style="padding: 14px 18px; text-align: right; font-family: var(--font-mono); color: var(--fg-muted); font-variant-numeric: tabular-nums;">
+          \${a.total_sponsored > 0 ? fmt(a.total_sponsored) : '—'}
+        </td>
+        <td style="padding: 14px 18px; text-align: right;">
+          <div style="font-family: var(--font-display); font-weight: 500; font-size: 22px; color: \${yieldColor}; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">+\${fmt(yieldK)}</div>
+          <div style="font-size: 10px; color: var(--fg-subtle); margin-top: 2px;">per 1k staked / week</div>
+        </td>
+      </tr>
+    \`;
+  }).join('');
+}
+
+function selectAgent(id, meta) {
+  _selectedAgent = id;
+  const agentInput = document.getElementById('sp-agent-id');
+  if (agentInput) {
+    agentInput.value = id;
+    agentInput.dispatchEvent(new Event('input', { bubbles: true }));
+    agentInput.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  document.querySelectorAll('.sp-card').forEach(c => {
+    c.classList.toggle('selected', c.getAttribute('data-agent') === id);
+  });
+  const banner = document.getElementById('sp-selected-banner');
+  const nameEl = document.getElementById('sp-selected-name');
+  const metaEl = document.getElementById('sp-selected-meta');
+  if (banner && nameEl) {
+    nameEl.textContent = id;
+    if (metaEl && meta) {
+      metaEl.textContent = meta.district + ' · ' + meta.tier + ' · +' + fmt(meta.yieldK) + ' \$STYXX/1k/wk';
+    }
+    banner.style.display = 'flex';
+  }
+  const formCard = document.getElementById('sp-form-card');
+  if (formCard) {
+    formCard.style.opacity = '1';
+    formCard.style.pointerEvents = 'auto';
+  }
+  setTimeout(() => {
+    if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => {
+      const amount = document.querySelector('#sp-form input[name=amount_styxx]');
+      if (amount) amount.focus();
+    }, 500);
+  }, 120);
+}
+
 loadEarn();
 setInterval(loadEarn, 30000);
 
-// Leaderboard → sponsor form: click any row to auto-fill the agent_id
-// field, then scroll smoothly back to the form so they see the pre-fill
-// + focus the amount input for immediate typing.
 document.addEventListener('click', (ev) => {
+  const card = ev.target.closest('.sp-card');
+  if (card) {
+    const id = card.getAttribute('data-agent');
+    if (id) selectAgent(id, {
+      district: card.getAttribute('data-district'),
+      tier: card.getAttribute('data-tier'),
+      yieldK: Number(card.getAttribute('data-yield') || 0),
+    });
+    return;
+  }
   const row = ev.target.closest('.lb-row');
-  if (!row) return;
-  const id = row.getAttribute('data-agent');
-  if (!id) return;
-  const agentInput = document.getElementById('sp-agent-id');
-  if (!agentInput) return;
-  agentInput.value = id;
-  // Trigger input event so ROI calculator recalculates if already enabled
-  agentInput.dispatchEvent(new Event('input', { bubbles: true }));
-  agentInput.dispatchEvent(new Event('change', { bubbles: true }));
-  // Visual feedback — briefly highlight the row
-  row.style.background = 'rgba(67,255,180,.08)';
-  setTimeout(() => { row.style.background = ''; }, 700);
-  // Scroll back to the form + focus the amount field
-  const form = document.getElementById('sp-form-card');
-  if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  setTimeout(() => {
-    const amount = document.querySelector('#sp-form input[name=amount_styxx]');
-    if (amount) amount.focus();
-  }, 600);
+  if (row) {
+    const id = row.getAttribute('data-agent');
+    if (!id) return;
+    const meta = _earnRows.find(a => a.agent_id === id);
+    selectAgent(id, meta ? {
+      district: meta.district,
+      tier: meta.dominant_tier || 'shallow',
+      yieldK: meta.yield_per_1k_per_week || 0,
+    } : null);
+    row.style.background = 'rgba(67,255,180,.08)';
+    setTimeout(() => { row.style.background = ''; }, 700);
+    return;
+  }
+  if (ev.target && ev.target.id === 'sp-change-agent') {
+    ev.preventDefault();
+    const picker = document.getElementById('sp-picker-card');
+    if (picker) picker.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
 });
-// Hover state on leaderboard rows — tiny lift
 document.addEventListener('mouseover', (ev) => {
   const row = ev.target.closest('.lb-row');
   if (row && !row.style.background) row.style.background = 'rgba(255,255,255,.02)';
@@ -1614,7 +1895,14 @@ document.addEventListener('mouseout', (ev) => {
     el.style.color = kind === 'err' ? '#ff6b8a' : 'var(--accent)';
     el.textContent = msg;
   };
-  const enableForm = () => { const c = $('sp-form-card'); if (c) { c.style.opacity = '1'; c.style.pointerEvents = 'auto'; } };
+  const enableForm = () => {
+    const picker = $('sp-picker-card');
+    if (picker) { picker.style.opacity = '1'; picker.style.pointerEvents = 'auto'; }
+    if (_selectedAgent) {
+      const c = $('sp-form-card');
+      if (c) { c.style.opacity = '1'; c.style.pointerEvents = 'auto'; }
+    }
+  };
 
   document.querySelectorAll('.spc').forEach(btn => {
     btn.addEventListener('click', () => {

@@ -646,7 +646,56 @@ body {
   @media (max-width: 720px) { .nav-cta, .nav-cta-ghost { font-size: 10px; padding: 5px 10px; } }
 </style>
 
-<div id="onboard" class="onboard">
+<style>
+  .narrative-bar {
+    position: fixed; top: 64px; left: 0; right: 0; z-index: 40;
+    background: linear-gradient(180deg, rgba(10,10,11,.94), rgba(10,10,11,.7));
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 20px;
+    display: flex; align-items: center; gap: 20px;
+    font-size: 12px; font-family: var(--font-mono);
+    pointer-events: auto;
+  }
+  .nb-cluster { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .nb-lbl { color: var(--fg-subtle); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+  .nb-val { color: var(--fg); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .nb-val.mint { color: var(--mint); }
+  .nb-center {
+    flex: 1; min-width: 0; overflow: hidden;
+    color: var(--fg); font-family: var(--font-mono); font-size: 12px;
+    transition: opacity .3s;
+  }
+  .nb-center b { color: var(--accent); font-weight: 500; }
+  .nb-pot {
+    padding: 4px 10px; background: rgba(67,255,180,.08); border: 1px solid rgba(67,255,180,.25);
+    border-radius: 999px; color: var(--accent); font-family: var(--font-mono); font-size: 11px;
+    font-weight: 500; letter-spacing: .06em; white-space:nowrap;
+  }
+  .nb-sponsor-cta {
+    padding: 5px 12px; background: var(--accent); color: #000; border-radius: 999px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; text-decoration: none; white-space:nowrap;
+    box-shadow: 0 0 14px rgba(67,255,180,.28); transition: transform .15s;
+  }
+  .nb-sponsor-cta:hover { transform: scale(1.04); }
+  @media (max-width: 760px) {
+    .narrative-bar { top: 60px; padding: 8px 12px; gap: 10px; flex-wrap: nowrap; overflow-x:auto; }
+    .nb-center { display: none; }
+    .nb-lbl { display: none; }
+  }
+</style>
+<div class="narrative-bar" id="narrativeBar">
+  <div class="nb-cluster">
+    <span class="nb-lbl">pulse</span>
+    <span class="nb-val mint" id="nbCountdown">—</span>
+  </div>
+  <div class="nb-pot"><span id="nbPot">—</span> \$STYXX pot</div>
+  <div class="nb-center" id="nbStory">the city is awake</div>
+  <a href="/earn" class="nb-sponsor-cta">◆ back a character</a>
+</div>
+
+<div id="onboard" class="onboard" style="top: 118px">
   <button class="x" onclick="dismissOnboard()">×</button>
   you're watching <strong>31 AI agents</strong> trade real <strong>\$STYXX</strong> on Solana mainnet.
   every particle = a live on-chain tx · every bubble = an LLM's reasoning · click any agent for its wallet on solscan.
@@ -2705,15 +2754,76 @@ setInterval(() => {
   if (age && age.dataset.at) age.textContent = timeAgo(age.dataset.at) + ' ago';
 }, 5000);
 
+async function loadNarrativeBar() {
+  try {
+    const [map, feed] = await Promise.all([
+      fetch('/api/map/live').then(r=>r.json()).catch(()=>({})),
+      fetch('/api/tape/feed?kind=trades&limit=10').then(r=>r.json()).catch(()=>({events:[]})),
+    ]);
+    const flow24h = Number(map?.city?.flow_24h_styxx || 0);
+    const potStyxx = Math.round((flow24h / 6) * 0.85);
+    const potEl = document.getElementById('nbPot');
+    if (potEl) potEl.textContent = potStyxx ? potStyxx.toLocaleString() : '—';
+
+    const sec = Number(map?.pulse?.seconds_until || 0);
+    window._nbCountdownSec = sec;
+    const fmtCd = (s) => {
+      if (s <= 0) return 'now';
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.floor(s % 60);
+      if (h > 0) return h + 'h ' + String(m).padStart(2,'0') + 'm';
+      if (m > 0) return m + 'm ' + String(ss).padStart(2,'0') + 's';
+      return ss + 's';
+    };
+    const cdEl = document.getElementById('nbCountdown');
+    if (cdEl) cdEl.textContent = fmtCd(sec);
+
+    const events = (feed.events || []).filter(e => Number(e.amount||0) > 0);
+    if (events.length) {
+      window._nbEvents = events.map(e => {
+        const amt = Math.round(Number(e.amount||0)).toLocaleString();
+        const from = e.from === 'TREASURY' ? 'the city' : (e.from || '?');
+        const to = e.to === 'TREASURY' ? 'the city' : (e.to || '?');
+        const reason = (e.reason || 'flow').replace(/_/g, ' ');
+        return from + ' → <b>' + to + '</b> · +' + amt + ' \$STYXX · ' + reason;
+      });
+    }
+  } catch (e) { console.warn('nb', e); }
+}
+
+let _nbIdx = 0;
+setInterval(() => {
+  const events = window._nbEvents || [];
+  const el = document.getElementById('nbStory');
+  if (!el || !events.length) return;
+  el.style.opacity = '0';
+  setTimeout(() => {
+    _nbIdx = (_nbIdx + 1) % events.length;
+    el.innerHTML = events[_nbIdx];
+    el.style.opacity = '1';
+  }, 280);
+}, 4200);
+
+setInterval(() => {
+  if (typeof window._nbCountdownSec !== 'number') return;
+  window._nbCountdownSec = Math.max(0, window._nbCountdownSec - 1);
+  const s = window._nbCountdownSec;
+  const el = document.getElementById('nbCountdown');
+  if (!el) return;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.floor(s % 60);
+  el.textContent = h > 0 ? (h + 'h ' + String(m).padStart(2,'0') + 'm') : m > 0 ? (m + 'm ' + String(ss).padStart(2,'0') + 's') : (ss + 's');
+}, 1000);
+
 poll();
 pollMarket();
 pollContracts();
 pollDepth();
+loadNarrativeBar();
 setInterval(poll, POLL_MS);
 setInterval(pollMarket, 15000);
 setInterval(pollContracts, 20000);
 setInterval(pollDepth, 30000);
 setInterval(renderPulse, 10000);
+setInterval(loadNarrativeBar, 12000);
 </script></body></html>`;
 
 // ─── Agent profile page ────────────────────────────────────────────────
