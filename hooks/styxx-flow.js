@@ -1391,8 +1391,10 @@ function layoutAgents() {
   // them out evenly without distorting the tree structure (we only nudge
   // each other's homeX/homeY, not parentX/parentY — so hyphae still
   // anchor to original parent positions).
-  const MIN_DIST = 70;  // minimum center-to-center separation
-  for (let pass = 0; pass < 4; pass++) {
+  const MIN_DIST = 95;  // minimum center-to-center separation — enough for
+                        // label (text ~60px wide) + node (~20px radius) to
+                        // not overlap neighbors in dense clusters.
+  for (let pass = 0; pass < 6; pass++) {
     for (let i = 0; i < placed.length; i++) {
       for (let j = i + 1; j < placed.length; j++) {
         const a = placed[i], b = placed[j];
@@ -1834,23 +1836,41 @@ function drawNet(t) {
     const wm = screenToWorld(mouseX, mouseY);
     const isH = Math.hypot(wm.x - a.ax, wm.y - a.ay) < rad + 8 / view.k;
     if (isH) hovered = a;
-    const color = a.online ? C.cyan : C.agentOff;
-    const [r, g, b] = color;
+    // Agent color = DISTRICT_HUE (each district gets its own jewel-tone).
+    // Falls back to celestial blue for online, dusk-grey-blue for offline —
+    // but every agent with a known district paints in that district's hue so
+    // the map reads as 20 overlapping watercolor washes, not 33 identical dots.
+    const districtHue = DISTRICT_HUE[a.district];
+    const color = districtHue ? districtHue : (a.online ? C.cyan : C.agentOff);
 
-    // Activity spark — if this agent fired a tx in the last 900ms, their ring brightens
     const sparkAge = nowT - (a.sparkAt || 0);
     // Spark = expanding ring on every real agent action. Extended from 900ms
     // to 1800ms with a gentler easing curve so the action is more visible
     // to a viewer catching it in peripheral vision.
     const sparkAlpha = sparkAge < 1800 ? Math.pow(1 - sparkAge / 1800, 1.6) : 0;
 
-    // Depth tier → ring color (the signature move — each agent shows its mind at a glance)
+    // Depth tier → ring color. Cognitive-aurora palette:
+    //   exceptional = sage-mint (the city's signature "thinking well" color)
+    //   deep        = celestial blue
+    //   moderate    = antique gold
+    //   shallow     = dusk grey-warm
+    //   untiered    = agent's district hue, desaturated (lets the district
+    //                 watercolor show through rather than painting everyone
+    //                 the same neutral grey).
     const tier = a.depth_tier;
-    let ringR = 140, ringG = 140, ringB = 150, ringA = .35;  // default neutral
-    if (tier === 'exceptional') { ringR = 67; ringG = 255; ringB = 180; ringA = .95; }
-    else if (tier === 'deep')   { ringR = 92; ringG = 208; ringB = 255; ringA = .75; }
-    else if (tier === 'moderate'){ ringR = 255; ringG = 179; ringB = 71; ringA = .55; }
-    else if (tier === 'shallow'){ ringR = 160; ringG = 160; ringB = 170; ringA = .35; }
+    let ringR, ringG, ringB, ringA;
+    if      (tier === 'exceptional') { ringR = 127; ringG = 229; ringB = 176; ringA = .92; }
+    else if (tier === 'deep')        { ringR = 142; ringG = 202; ringB = 230; ringA = .75; }
+    else if (tier === 'moderate')    { ringR = 212; ringG = 165; ringB = 116; ringA = .58; }
+    else if (tier === 'shallow')     { ringR = 165; ringG = 165; ringB = 180; ringA = .32; }
+    else {
+      // No tier yet — paint in desaturated district hue so the map doesn't
+      // default to a sea of identical grey rings.
+      ringR = Math.round(color[0] * 0.85 + 25);
+      ringG = Math.round(color[1] * 0.85 + 25);
+      ringB = Math.round(color[2] * 0.85 + 25);
+      ringA = .38;
+    }
     const isException = tier === 'exceptional';
 
     // Subtle glow only for online + exceptional (restraint)
@@ -3237,18 +3257,26 @@ function drawSentimentThreads(ctx, t) {
 function drawMentionHalo(ctx, a, t) {
   const m = mentionsMap.get(a.id);
   if (!m) return;
+  // Threshold: only show halo for agents being mentioned MEANINGFULLY
+  // (>= 3 distinct mentions in 15 min). Otherwise every agent who got
+  // name-dropped once gets a ring, which makes the whole map visually
+  // identical and defeats the signal.
+  if ((m.count || 0) < 3) return;
   const age = Date.now() - m.lastAt;
-  if (age > 120_000) return;  // 2 min max
+  if (age > 120_000) return;
   const freshness = Math.max(0, 1 - age / 120_000);
+  // Intensity scales with mention count — an agent mentioned 10x is
+  // visibly more "hot" than one mentioned 3x.
+  const weight = Math.min(1, (m.count - 2) / 6);
   const r = nodeRadius(a.styxx, a.online);
   const pulse = 0.5 + 0.5 * Math.sin(t * 0.004);
-  const haloR = r + 14 + pulse * 8;
-  const alpha = 0.35 * freshness * (0.6 + 0.4 * pulse);
+  const haloR = r + 12 + pulse * 6;
+  const alpha = 0.22 * freshness * weight * (0.6 + 0.4 * pulse);
   ctx.beginPath();
   ctx.arc(a.ax, a.ay, haloR, 0, 6.28);
-  ctx.strokeStyle = 'rgba(142,202,230,' + alpha + ')';
-  ctx.lineWidth = 1.2;
-  ctx.setLineDash([3, 5]);
+  ctx.strokeStyle = 'rgba(232,216,176,' + alpha + ')';  // champagne — rare & precious
+  ctx.lineWidth = 0.9;
+  ctx.setLineDash([2, 6]);
   ctx.lineDashOffset = -t * 0.04;
   ctx.stroke();
   ctx.setLineDash([]);
