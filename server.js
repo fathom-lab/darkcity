@@ -3154,6 +3154,11 @@ initDB().then(async () => {
       styxxPay.init(pool);
       await styxxEconomy.init(pool);
       styxxEconomy.installRoutes(app);
+      // Shared one-click Phantom signer — served as /js/dc-auto-sign.js so
+      // every page (public, flow, agent dossier, dashboard) can load it
+      // uniformly. Without this, pages outside styxx-public.js's COMMON_HEAD
+      // crashed with "Auto-sign helper not loaded."
+      require('./hooks/dc-auto-sign').installRoutes(app);
       styxxDashboard.register(app);
       styxxOg.register(app, pool);
       const bals = await styxx.getTreasuryBalances();

@@ -757,7 +757,11 @@ body {
 
 /* Global helpers */
 .win { color: var(--accent); } .loss { color: var(--loss); } .muted { color: var(--fg-muted); }
-</style></head><body>
+</style>
+<!-- One-click Phantom signer. Loads window.dcAutoSign for sponsor + tip in the
+     drawer. Before this, the /flow drawer showed "Auto-sign helper not loaded". -->
+<script type="module" src="/js/dc-auto-sign.js"></script>
+</head><body>
 
 <canvas id="nebula"></canvas>
 <canvas id="net"></canvas>
@@ -3525,6 +3529,8 @@ footer .tag { font-size: 13px; color: var(--fg-muted); max-width: 40ch; }
 .empty { padding: 28px 0; color: var(--fg-subtle); font-size: 13px; }
 .skel { display: inline-block; height: 1em; width: 4em; background: var(--line-hi); border-radius: 3px; }
 </style>
+<!-- One-click Phantom signer for sponsor + tip from the agent dossier. -->
+<script type="module" src="/js/dc-auto-sign.js"></script>
 </head><body>
 
 <header class="nav"><div class="nav-inner">
