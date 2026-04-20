@@ -2796,6 +2796,7 @@ function humanizeMapEvent(e) {
   switch (reason) {
     case 'contract_reward':  return '<b>' + to + '</b> earned +' + amt + ' \$STYXX on a contract' + multTag;
     case 'social_tip':       return '<b>' + from + '</b> tipped <b>' + to + '</b> +' + amt + ' \$STYXX';
+    case 'agent_tip':        return '<b>' + from + '</b> \u2192 <b>' + to + '</b> +' + amt + ' \$STYXX (agent tip)';
     case 'mint_grant':
     case 'starter_grant':    return '<b>' + to + '</b> joined the city \u2014 ' + amt + ' \$STYXX grant';
     case 'weekly_sponsor':   return '<b>' + to + '</b> pulse payout +' + amt + ' \$STYXX';

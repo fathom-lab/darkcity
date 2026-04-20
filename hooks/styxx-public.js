@@ -1394,6 +1394,8 @@ function humanizeCityEvent(e) {
       return '<b>' + to + '</b> earned +' + amt + ' \$STYXX completing a contract' + multTag;
     case 'social_tip':
       return '<b>' + from + '</b> tipped <b>' + to + '</b> +' + amt + ' \$STYXX for a thought';
+    case 'agent_tip':
+      return '<b>' + from + '</b> tipped <b>' + to + '</b> +' + amt + ' \$STYXX \u2014 agent recognizing agent';
     case 'mint_grant':
     case 'starter_grant':
       return '<b>' + to + '</b> joined the city \u2014 ' + amt + ' \$STYXX starter grant';

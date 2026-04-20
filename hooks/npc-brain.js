@@ -13,12 +13,13 @@ const { buildAgentPrompt, parseAgentResponse, hashPrompt } = require('./agent-pr
 const { enrichAction, writeEnrichment } = require('./data-pipeline');
 const { handleConversation } = require('./conversation-wiring');
 const { scoreReasoning, writeDepthRow } = require('./depth-scorer');
+const styxxPay = require('./styxx-payments');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const AGENT_MODEL = process.env.AGENT_MODEL_ID || 'claude-haiku-4-5-20251001';
 const TICK_INTERVAL_MS = parseInt(process.env.NPC_TICK_INTERVAL_MS) || 45_000; // 45s per round
 const AGENTS_PER_TICK = parseInt(process.env.NPC_AGENTS_PER_TICK) || 3; // stagger load
-const VALID_ACTIONS = ['build', 'trade', 'social', 'explore', 'kudos', 'claim_contract', 'complete_contract'];
+const VALID_ACTIONS = ['build', 'trade', 'social', 'explore', 'kudos', 'claim_contract', 'complete_contract', 'tip_agent'];
 
 // Personality map for richer prompts
 const PERSONALITIES = {
@@ -615,6 +616,56 @@ class NPCBrain {
           }
         } catch (e) {
           console.error('Contract complete failed:', e.message);
+          result.action_type = 'social';
+          return this._executeAction(agent, result);
+        }
+        break;
+      }
+      case 'tip_agent': {
+        const targetName = (result.target_name || '').toUpperCase();
+        const requested = Number(result.tip_amount || 0);
+        if (!targetName || targetName === agentId || !Number.isFinite(requested) || requested <= 0) {
+          result.action_type = 'social';
+          return this._executeAction(agent, result);
+        }
+        try {
+          const { rows: [target] } = await this.pool.query(
+            'SELECT agent_id, sol_pubkey FROM external_agents WHERE agent_id = $1',
+            [targetName]
+          );
+          if (!target || !target.sol_pubkey) {
+            result.action_type = 'social';
+            return this._executeAction(agent, result);
+          }
+          const balInfo = await styxxPay.getBalance({ table: 'external_agents', idCol: 'agent_id', agentId });
+          const myBal = Number(balInfo.balance || 0);
+          const capByBalance = Math.floor(myBal * 0.05);
+          const amount = Math.max(0, Math.min(requested, 100, capByBalance));
+          if (amount < 10) {
+            // Not enough balance or ask too tiny — fall through to social rather than faking a tip
+            result.action_type = 'social';
+            return this._executeAction(agent, result);
+          }
+          const memo = `tip from ${agentId} to ${targetName}: ${(result.output || '').slice(0, 80)}`;
+          const { signature } = await styxxPay.transferP2P({
+            fromTable: 'external_agents', fromIdCol: 'agent_id', fromId: agentId,
+            toTable: 'external_agents', toIdCol: 'agent_id', toId: targetName,
+            amount, memo,
+          });
+          // Override the generic reason on the transfer so the feed labels it correctly
+          await this.pool.query(
+            `UPDATE styxx_transfers SET reason = 'agent_tip' WHERE tx_signature = $1`,
+            [signature]
+          );
+          await this.pool.query(
+            'UPDATE external_agents SET reputation = LEAST(100, reputation + 2) WHERE agent_id = $1',
+            [targetName]
+          );
+          actionResult = { tipped: targetName, amount, tx: signature, rep_gained_by_target: 2 };
+          streamMessage = `Tipped ${targetName} ${amount} $STYXX. ${(result.output || '').slice(0, 140)}`;
+          console.log(`[NPC-TIP] ${agentId} -> ${targetName}: ${amount} $STYXX · tx=${signature.slice(0, 12)}...`);
+        } catch (e) {
+          if (e.code !== 'NO_WALLET') console.error(`[NPC-TIP] ${agentId} -> ${targetName} failed:`, e.message);
           result.action_type = 'social';
           return this._executeAction(agent, result);
         }

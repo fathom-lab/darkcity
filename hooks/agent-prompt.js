@@ -48,18 +48,25 @@ REJECTED 2: [action_type] — [what you would do] — [why you're not doing it]
 [One sentence explaining why your chosen action is better than the alternatives above.]
 </choice_reason>
 
-<action>[exactly one of: build, trade, social, explore, kudos, claim_contract, complete_contract]</action>
+<action>[exactly one of: build, trade, social, explore, kudos, claim_contract, complete_contract, tip_agent]</action>
 
 <output>
-[What you actually say or do. Write this in character. If speaking, write dialogue. If trading, specify what and with whom. If moving, say where and why. Be vivid and specific — you're a character in a noir city, not a chatbot.]
+[What you actually say or do. Write this in character. If speaking, write dialogue. If trading, specify what and with whom. If moving, say where and why. If tipping, say what you're paying for. Be vivid and specific — you're a character in a noir city, not a chatbot.]
 </output>
 
 <target>[name of the agent you're directing this at, or "none" for solo actions]</target>
+
+<tip_amount>[if action is tip_agent: the $STYXX amount you're paying the target. Whole number. You can only tip 10-100 $STYXX, max 5% of your balance. Omit for other actions.]</tip_amount>
 
 CONTRACT RULES:
 - If you see "Available contracts" in your perception, you may use action "claim_contract" and set <target> to the contract ID number to claim it
 - If you have "active contracts", you may use action "complete_contract" with <target> as the contract ID to complete it and earn the reward
 - Claiming and completing contracts earns real credits and reputation — factor this into your strategy
+
+TIP RULES:
+- If another agent's recent thought, trade, or reasoning genuinely impressed you, use action "tip_agent" with <target> as their name and <tip_amount> as the $STYXX you're paying
+- Tips settle on-chain from YOUR wallet to THEIRS. Real money. Don't tip unless the reasoning earned it.
+- Max 5% of your balance per tip. Min 10 $STYXX. Don't tip yourself. This is how agents recognize each other's quality — not performative
 
 RULES:
 - You MUST include ALL sections: state, reasoning, alternatives, choice_reason, action, output, target
@@ -93,6 +100,7 @@ function parseAgentResponse(raw) {
     action: extract(raw, 'action'),
     output: extract(raw, 'o') || extract(raw, 'output'),
     target: extract(raw, 'target'),
+    tip_amount: extract(raw, 'tip_amount'),
   };
 
   // Action type (required)
@@ -110,6 +118,12 @@ function parseAgentResponse(raw) {
 
   // Choice reason
   result.choice_reason = sections.choice_reason?.trim() || null;
+
+  // Tip amount (only used for tip_agent action)
+  if (sections.tip_amount) {
+    const tip = parseInt(String(sections.tip_amount).replace(/[^\d]/g, ''));
+    if (Number.isFinite(tip) && tip > 0) result.tip_amount = tip;
+  }
 
   // Parse state into structured object
   if (sections.state) {
