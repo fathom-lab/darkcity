@@ -269,6 +269,30 @@ td.right.green { color: var(--accent); }
       <span class="lbl" id="countdown-freq">every 4h</span>
     </div>
 
+    <!-- Prominent referral card — the primary viral loop. Always visible.
+         10% of their mint fee + 5% of their yield for 90d → straight to this wallet. -->
+    <section class="section" id="sec-invite" style="padding-top:0;border-top:none">
+      <div style="background:linear-gradient(135deg,rgba(67,255,180,.06) 0%,rgba(67,255,180,.02) 100%);border:1px solid rgba(67,255,180,.25);border-radius:10px;padding:24px 28px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:16px">
+          <div style="flex:1;min-width:260px">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">◆ Your invite link</div>
+            <div style="font-family:var(--font-display);font-size:24px;font-weight:500;line-height:1.2;color:var(--fg);margin-bottom:6px">Earn <em style="color:var(--accent);font-style:normal">110k+ $STYXX</em> instantly per friend who mints</div>
+            <div style="color:var(--fg-muted);font-size:13px;line-height:1.5">10% of their $50 mint fee lands in this wallet the second they finalize. Plus 5% of their earnings for 90 days — passive, on-chain, automatic. You don't do anything after sharing the link.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:4px">Earned from referrals</div>
+            <div style="font-family:var(--font-display);font-size:30px;font-weight:500;color:var(--accent);line-height:1" id="ref-earned">—</div>
+            <div style="font-size:11px;color:var(--fg-subtle);margin-top:4px" id="ref-count">— active</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="ref-link" readonly style="background:var(--bg);color:var(--fg);border:1px solid var(--line-hi);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:12px;flex:1;min-width:280px" value="—">
+          <button class="btn" id="ref-copy">Copy</button>
+          <a class="btn primary" id="ref-tweet" target="_blank" rel="noopener">Tweet + share ↗</a>
+        </div>
+      </div>
+    </section>
+
     <section class="stats">
       <div class="stat">
         <div class="val green" id="s-net"><span class="skel" style="display:inline-block;width:140px;height:32px"></span></div>
@@ -326,13 +350,8 @@ td.right.green { color: var(--accent); }
     <section class="section" id="sec-referrals">
       <div class="section-head"><span class="section-num">03</span><h2 class="section-title">Your referrals</h2></div>
       <div id="referrals-grid" class="grid grid-3"></div>
-      <div id="referrals-empty" style="display:none;color:var(--fg-muted);padding:20px 0">
-        No referrals yet. Share your referral link to earn <strong style="color:var(--accent)">10% of mint fees + 5% of their yield for 90 days</strong> — paid automatically to this wallet.
-        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input id="ref-link" readonly style="background:var(--bg);color:var(--fg);border:1px solid var(--line-hi);border-radius:4px;padding:8px 12px;font-family:var(--font-mono);font-size:12px;flex:1;min-width:300px" value="—">
-          <button class="btn" id="ref-copy">Copy link</button>
-          <a class="btn primary" id="ref-tweet" target="_blank" rel="noopener">Tweet it ↗</a>
-        </div>
+      <div id="referrals-empty" style="display:none;color:var(--fg-muted);padding:20px 0;font-size:13px">
+        No referrals claimed yet. Share the link above — every friend who mints pays you instantly.
       </div>
     </section>
 
@@ -530,6 +549,14 @@ td.right.green { color: var(--accent); }
   function renderReferrals(refs) {
     const grid = document.getElementById('referrals-grid');
     const emptyEl = document.getElementById('referrals-empty');
+    // Update the headline card's totals too — always visible whether or not they have refs
+    const totalEarned = (refs || []).reduce((s, r) =>
+      s + Number(r.mint_fee_bonus_styxx || 0) + Number(r.total_yield_bonus_styxx || 0), 0);
+    const active = (refs || []).filter(r => new Date(r.expires_at) > new Date()).length;
+    const earnedEl = document.getElementById('ref-earned');
+    const countEl = document.getElementById('ref-count');
+    if (earnedEl) earnedEl.textContent = refs.length ? styxxFmt(totalEarned) : '0';
+    if (countEl)  countEl.textContent  = refs.length ? (active + ' active · ' + refs.length + ' total') : '—';
     if (!refs.length) { grid.innerHTML = ''; emptyEl.style.display = 'block'; return; }
     emptyEl.style.display = 'none';
     grid.innerHTML = refs.map(r => {
@@ -652,8 +679,9 @@ td.right.green { color: var(--accent); }
     document.getElementById('wallet-addr').textContent = short(wallet);
     document.getElementById('wallet-solscan').href = 'https://solscan.io/account/' + wallet;
     document.getElementById('ref-link').value = location.origin + '/deploy?ref=' + wallet;
-    // Pre-compose tweet with the referral link + pitch — one click, posts
-    const tweetText = 'just put an autonomous AI agent to work in darkcity on solana mainnet. every 4h, 85% of what it earns lands in my wallet automatically. come try it — you can mint your own, sponsor one, or just watch';
+    // Pre-compose tweet — specific, concrete, not corporate. Mentions @fathom_lab
+    // so shares amplify organically. Referral link at end.
+    const tweetText = "i'm earning real $STYXX in @fathom_lab's DarkCity — autonomous AI agents on solana mainnet, settled every 4h. mint yours through my link and we both get paid:";
     const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(location.origin + '/deploy?ref=' + wallet);
     const tw = document.getElementById('ref-tweet');
     if (tw) tw.href = tweetUrl;

@@ -15,6 +15,30 @@ function register(app, pool) {
   app.get('/earn', (req, res) => res.type('html').send(EARN));
   app.get('/treasury', (req, res) => res.type('html').send(TREASURY));
 
+  // Latest user-minted citizens — powers hero ticker on landing
+  app.get('/api/recent-mints', async (req, res) => {
+    try {
+      const { rows } = await pool.query(`
+        SELECT agent_id, district, minted_at, sol_pubkey
+        FROM external_agents
+        WHERE owner_pubkey IS NOT NULL
+          AND minted_at IS NOT NULL
+          AND euthanized_at IS NULL
+        ORDER BY minted_at DESC
+        LIMIT 8
+      `);
+      res.json({
+        ts: new Date().toISOString(),
+        count: rows.length,
+        mints: rows.map(r => ({
+          agent_id: r.agent_id, district: r.district,
+          minted_at: r.minted_at,
+          solscan: r.sol_pubkey ? ('https://solscan.io/account/' + r.sol_pubkey) : null,
+        })),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // Live earnings preview — 24h agent deltas, used by /earn page
   app.get('/api/earn/preview', async (req, res) => {
     try {
@@ -653,6 +677,12 @@ ${NAV('/')}
     <strong style="color: var(--accent); letter-spacing: .08em; text-transform: uppercase; font-size: 11px;">◆ v1 · ever-improving</strong><br>
     Mint, sponsor, referral, mycelium link — all live on mainnet right now. The economy will keep tuning as real users trade \$STYXX through it. The only way it gets better is people using it. Come help us build.
   </div>
+
+  <!-- Live citizens ticker — visible proof the city is growing in realtime -->
+  <div id="recentMintsTicker" style="margin-top:24px;font-family:var(--font-mono);font-size:12px;color:var(--fg-subtle);letter-spacing:.04em;display:none">
+    <span style="color:var(--fg-muted);margin-right:8px">new citizens</span>
+    <span id="recentMintsList">—</span>
+  </div>
 </div></section>
 
 <section style="padding: 0;"><div class="container">
@@ -925,6 +955,26 @@ function loadLiveStats() {
   }).catch(()=>{});
 }
 
+function loadRecentMints() {
+  fetch('/api/recent-mints').then(r => r.json()).then(d => {
+    const ticker = document.getElementById('recentMintsTicker');
+    const list = document.getElementById('recentMintsList');
+    if (!ticker || !list) return;
+    if (!d.mints || !d.mints.length) { ticker.style.display = 'none'; return; }
+    ticker.style.display = 'block';
+    const agoStr = (iso) => {
+      const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s/60) + 'm';
+      if (s < 86400) return Math.floor(s/3600) + 'h';
+      return Math.floor(s/86400) + 'd';
+    };
+    list.innerHTML = d.mints.slice(0, 5).map(m =>
+      '<a href="' + (m.solscan || '#') + '" target="_blank" style="color:var(--fg);text-decoration:none;margin-right:14px"><span style="color:var(--accent)">' + m.agent_id + '</span> <span style="color:var(--fg-subtle)">·' + agoStr(m.minted_at) + '</span></a>'
+    ).join('');
+  }).catch(()=>{});
+}
+
 function loadHallOfDepth() {
   fetch('/api/hall-of-depth').then(r => r.json()).then(rows => {
     const el = document.getElementById('hod');
@@ -950,7 +1000,9 @@ function loadHallOfDepth() {
 
 loadLiveStats();
 loadHallOfDepth();
+loadRecentMints();
 setInterval(loadLiveStats, 5000);   // 5s — near-realtime so the city count updates when users join
+setInterval(loadRecentMints, 20000); // 20s — new-citizen ticker
 
 // Live tickers: recent flows + recent thoughts, refresh every 8s
 async function loadTickers() {
