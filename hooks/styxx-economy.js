@@ -2124,6 +2124,128 @@ function installRoutes(app) {
     }
   });
 
+  // ── Agent dossier — full profile data for /agent/:id pages ───────────
+  // Returns everything needed to render a beautiful standalone profile:
+  // bio, live balance, citizen_n, rank, sponsors, hyphal partners,
+  // recent transactions, thought archive, earnings series, solscan links.
+  app.get('/api/agent/:id/dossier', async (req, res) => {
+    try {
+      const agentId = (req.params.id || '').toUpperCase();
+      const [agent, sponsors, links, thoughts, transfers, earnings, founders] = await Promise.all([
+        pool.query(`
+          SELECT agent_id, district, rank, reputation, trades, builds,
+                 owner_pubkey, sol_pubkey, minted_at, mint_tx_signature,
+                 mint_fee_styxx, cognition_fee_balance, dormant, euthanized_at,
+                 bot_framework
+          FROM external_agents WHERE agent_id = $1
+        `, [agentId]),
+        pool.query(`
+          SELECT sponsor_pubkey, amount_staked, started_at, cooldown_ends_at
+          FROM sponsorships WHERE agent_id = $1 AND status = 'active'
+          ORDER BY started_at DESC
+        `, [agentId]),
+        pool.query(`
+          SELECT CASE WHEN agent_a = $1 THEN agent_b ELSE agent_a END AS counterparty,
+                 yield_share_bps, formed_at
+          FROM hyphal_links WHERE (agent_a = $1 OR agent_b = $1) AND status = 'active'
+          ORDER BY formed_at DESC
+        `, [agentId]),
+        pool.query(`
+          SELECT action_type,
+                 COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity') AS text,
+                 details->>'source' AS source,
+                 created_at
+          FROM agent_actions
+          WHERE agent_id = $1
+            AND details IS NOT NULL
+            AND COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity') IS NOT NULL
+          ORDER BY created_at DESC LIMIT 30
+        `, [agentId]),
+        pool.query(`
+          SELECT tx_signature, from_agent_id, to_agent_id, amount::float, reason, memo, confirmed_at
+          FROM styxx_transfers
+          WHERE from_agent_id = $1 OR to_agent_id = $1
+          ORDER BY confirmed_at DESC LIMIT 40
+        `, [agentId]),
+        pool.query(`
+          SELECT DATE_TRUNC('day', recorded_at) AS day, SUM(amount)::float AS total
+          FROM agent_earnings
+          WHERE agent_id = $1 AND recorded_at > NOW() - INTERVAL '14 days'
+          GROUP BY 1 ORDER BY 1 DESC LIMIT 14
+        `, [agentId]),
+        pool.query(`
+          WITH ranked AS (
+            SELECT agent_id, ROW_NUMBER() OVER (ORDER BY minted_at ASC)::int AS citizen_n
+            FROM external_agents
+            WHERE owner_pubkey IS NOT NULL AND minted_at IS NOT NULL AND euthanized_at IS NULL
+          )
+          SELECT citizen_n FROM ranked WHERE agent_id = $1
+        `, [agentId]),
+      ]);
+      if (!agent.rows.length) return res.status(404).json({ error: 'agent_not_found' });
+      const a = agent.rows[0];
+      // Live on-chain balance (fresh)
+      let liveBalance = 0;
+      try { liveBalance = a.sol_pubkey ? await styxx.getStyxxBalance(a.sol_pubkey) : 0; } catch {}
+
+      const citizenN = founders.rows[0]?.citizen_n || null;
+      const tier = citizenN == null ? null : citizenN <= 3 ? 'diamond' : citizenN <= 10 ? 'gold' : citizenN <= 100 ? 'silver' : 'citizen';
+
+      return res.json({
+        agent_id: a.agent_id,
+        district: a.district,
+        rank: a.rank,
+        reputation: Number(a.reputation || 0),
+        trades: Number(a.trades || 0),
+        builds: Number(a.builds || 0),
+        framework: a.bot_framework,
+        owner_pubkey: a.owner_pubkey,
+        owner_solscan: a.owner_pubkey ? 'https://solscan.io/account/' + a.owner_pubkey : null,
+        wallet: a.sol_pubkey,
+        wallet_solscan: a.sol_pubkey ? 'https://solscan.io/account/' + a.sol_pubkey : null,
+        live_balance_styxx: Math.round(Number(liveBalance) || 0),
+        live_balance_usd: (Number(liveBalance) || 0) * getStyxxUsdPrice(),
+        minted_at: a.minted_at,
+        mint_tx: a.mint_tx_signature,
+        mint_solscan: a.mint_tx_signature ? 'https://solscan.io/tx/' + a.mint_tx_signature : null,
+        mint_fee_styxx: Number(a.mint_fee_styxx || 0),
+        cognition_fee_balance: Number(a.cognition_fee_balance || 0),
+        dormant: !!a.dormant,
+        euthanized: !!a.euthanized_at,
+        citizen_n: citizenN,
+        founder_tier: tier,
+        seal_card: citizenN ? '/og/citizen/' + agentId + '.svg' : null,
+        sponsors: sponsors.rows.map(s => ({
+          pubkey: s.sponsor_pubkey,
+          amount_staked: Number(s.amount_staked || 0),
+          started_at: s.started_at,
+          solscan: 'https://solscan.io/account/' + s.sponsor_pubkey,
+        })),
+        hyphal_links: links.rows.map(l => ({
+          counterparty: l.counterparty,
+          yield_bps: l.yield_share_bps,
+          formed_at: l.formed_at,
+        })),
+        recent_thoughts: thoughts.rows.map(t => ({
+          action: t.action_type,
+          text: (t.text || '').slice(0, 300),
+          source: t.source || null,
+          at: t.created_at,
+        })),
+        recent_transfers: transfers.rows.map(t => ({
+          tx: t.tx_signature,
+          from: t.from_agent_id, to: t.to_agent_id,
+          amount: Number(t.amount), reason: t.reason, memo: t.memo, at: t.confirmed_at,
+          solscan: 'https://solscan.io/tx/' + t.tx_signature,
+        })),
+        earnings_14d: earnings.rows.map(e => ({ day: e.day, total: Number(e.total) })),
+      });
+    } catch (err) {
+      console.error('[agent/dossier]', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Support requests — users can submit help requests from /me ───────
   // Stores in support_requests table. Operator pulls list via
   // /api/admin/support with the ADMIN_TOKEN header. No auth on submit so
