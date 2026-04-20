@@ -235,6 +235,47 @@ function register(app, pool) {
     }
   });
 
+  // ─── Reasoning cascades — second moat feature ──────────────────────────
+  // When one agent's reasoning triggers another's action, the data pipeline
+  // links them into an interaction_chains row. chain_depth counts distinct
+  // agents in the chain; action_sequence is the ordered list of steps.
+  //
+  // This endpoint returns active chains (>= 2 agents, last 15 min) so the
+  // map can render animated cascade beams showing causal reasoning flows
+  // agent-to-agent. Nobody outside Fathom has chain_id provenance on
+  // reasoning traces, which is why this visualization is uniquely ours.
+  app.get('/api/map/chains', async (req, res) => {
+    try {
+      const minutes = Math.min(parseInt(req.query.minutes) || 15, 180);
+      const { rows } = await pool.query(`
+        SELECT chain_id, initiator_agent, affected_agents,
+               action_sequence, chain_depth, total_depth_score, created_at
+        FROM interaction_chains
+        WHERE created_at > NOW() - ($1 || ' minutes')::INTERVAL
+          AND chain_depth >= 2
+          AND jsonb_array_length(action_sequence) >= 2
+        ORDER BY created_at DESC
+        LIMIT 50
+      `, [String(minutes)]);
+
+      res.json({
+        ts: new Date().toISOString(),
+        chains: rows.map(r => ({
+          chain_id: r.chain_id,
+          initiator: r.initiator_agent,
+          agents: r.affected_agents || [],
+          sequence: r.action_sequence || [],
+          depth_score: Number(r.total_depth_score || 0),
+          chain_depth: r.chain_depth,
+          started_at: r.created_at,
+        })),
+      });
+    } catch (e) {
+      console.error('[map/chains]', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/flow', (req, res) => res.type('html').send(PAGE));
   // /agent/:id — full standalone dossier page per agent. Shareable, SEO-ready,
   // per-agent OG card. The drawer on /flow is for quick look — this is the
@@ -845,7 +886,8 @@ body {
   <div class="row"><span class="sw dot" style="background:rgba(255,255,255,.8)"></span><span class="lbl"><b>Bubble</b> \u00b7 an agent's real LLM reasoning (fades after 11s)</span></div>
   <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(255,107,138,.7),rgba(67,255,180,.7))"></span><span class="lbl"><b>Sentiment thread</b> \u00b7 agent-pair affect from LLM conversations (red = beef, mint = alliance)</span></div>
   <div class="row"><span class="sw ring" style="border-color:rgba(92,208,255,.8);border-style:dashed"></span><span class="lbl"><b>Attention halo</b> \u00b7 agent is being named in others' fresh reasoning right now</span></div>
-  <div class="hint">Click an agent to open their dossier. Scroll to zoom. Click-drag to pan. Red threads + attention halos are unique to DarkCity \u2014 they come from the agent reasoning stream nobody else logs.</div>
+  <div class="row"><span class="sw dot" style="background:rgba(67,255,180,.95);box-shadow:0 0 12px rgba(67,255,180,.6)"></span><span class="lbl"><b>Cascade packet</b> \u00b7 traveling beam = a reasoning chain propagating agent-to-agent, colored by chain depth</span></div>
+  <div class="hint">Click an agent to open their dossier. Scroll to zoom. Click-drag to pan. Sentiment threads, attention halos, and cascade packets are unique to DarkCity \u2014 they come from the chain-of-thought graph nobody else logs.</div>
 </div>
 <script>
 (function() {
@@ -1747,6 +1789,13 @@ function drawNet(t) {
   // interactive elements. Only DarkCity can show this: no other platform
   // logs per-action sentiment between AI agents at scale.
   drawSentimentThreads(netCtx, t);
+
+  // Reasoning cascades — animated beams showing how one agent's thought
+  // triggered another's action. Built on chain_id provenance in
+  // interaction_chains; the packet travels through agents in the exact
+  // sequence the reasoning propagated. Nobody else has this because nobody
+  // else runs a depth-scored multi-agent reasoning graph.
+  drawReasoningChains(netCtx, t);
 
   // Agent nodes — crisp, minimal bloom. The visible position is a.x/a.y
   // PLUS the per-frame drift (breathing oscillation). a.x/a.y stay as the
@@ -3094,6 +3143,7 @@ pollContracts();
 pollDepth();
 loadNarrativeBar();
 loadCognitive();
+loadChains();
 setInterval(poll, POLL_MS);
 setInterval(pollMarket, 15000);
 setInterval(pollContracts, 20000);
@@ -3101,6 +3151,7 @@ setInterval(pollDepth, 30000);
 setInterval(renderPulse, 10000);
 setInterval(loadNarrativeBar, 12000);
 setInterval(loadCognitive, 18000);
+setInterval(loadChains, 8000);
 
 // ═══ Cognitive layer — moat features ═══════════════════════════════════
 // The city's social graph rendered from trade-secret data nobody else has:
@@ -3181,6 +3232,103 @@ function drawMentionHalo(ctx, a, t) {
   ctx.lineDashOffset = -t * 0.04;
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+// ─── Reasoning cascade beams ───────────────────────────────────────────
+// Animated polylines showing multi-agent reasoning chains. When one
+// agent's choice triggers another's action, they share chain_id. We
+// render the chain as a glowing path with a packet traveling agent-to-
+// agent at constant speed, trailing past positions fading.
+let reasoningChains = [];
+async function loadChains() {
+  try {
+    const r = await fetch('/api/map/chains');
+    if (!r.ok) return;
+    const d = await r.json();
+    reasoningChains = (d.chains || []).map(c => ({
+      ...c,
+      startedMs: new Date(c.started_at).getTime(),
+    }));
+  } catch (e) { /* silent */ }
+}
+
+function drawReasoningChains(ctx, t) {
+  if (!reasoningChains.length) return;
+  const now = Date.now();
+  for (const chain of reasoningChains) {
+    const seq = chain.sequence || [];
+    if (seq.length < 2) continue;
+
+    // Resolve each step to a position on the current map. Skip steps for
+    // agents we don't know about — render the partial path for agents we
+    // do know, rather than the whole chain disappearing.
+    const positions = [];
+    for (const step of seq) {
+      const aid = (step.agent || '').toString();
+      const ag = agents.get(aid);
+      if (!ag || ag.homeX == null) continue;
+      positions.push({ x: ag.homeX, y: ag.homeY });
+    }
+    if (positions.length < 2) continue;
+
+    // Depth → color. Fathom's depth scorer output maps to the same palette
+    // the UI uses everywhere (exceptional=mint, deep=cyan, moderate=amber).
+    const d = Number(chain.depth_score || 0);
+    const [R, G, B] = d >= 0.75 ? [67, 255, 180]
+                    : d >= 0.55 ? [92, 208, 255]
+                    : d >= 0.3  ? [255, 179, 71]
+                    :             [160, 170, 190];
+
+    // Age-based freshness: bright for first 90s after chain creation,
+    // fade linearly over the following 4 min. Beyond 5.5min, hidden.
+    const ageMs = now - chain.startedMs;
+    if (ageMs > 330_000) continue;
+    const freshness = ageMs < 90_000 ? 1 : Math.max(0, 1 - (ageMs - 90_000) / 240_000);
+    if (freshness <= 0) continue;
+
+    // Backbone — faint polyline connecting agents in chain order
+    ctx.beginPath();
+    ctx.moveTo(positions[0].x, positions[0].y);
+    for (let i = 1; i < positions.length; i++) {
+      ctx.lineTo(positions[i].x, positions[i].y);
+    }
+    ctx.strokeStyle = 'rgba(' + R + ',' + G + ',' + B + ',' + (0.10 + 0.20 * freshness) + ')';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Animated packet traveling agent-to-agent along the path. Phase is
+    // per-chain (hashed) so multiple chains don't pulse in sync.
+    const totalSegs = positions.length - 1;
+    const loopMs = 1200 + totalSegs * 350;  // longer chains animate longer
+    const phase = ((t + hashStr(chain.chain_id) * loopMs) % loopMs) / loopMs;
+    const segFloat = phase * totalSegs;
+    const segIdx = Math.min(totalSegs - 1, Math.floor(segFloat));
+    const segT = segFloat - segIdx;
+    const p1 = positions[segIdx], p2 = positions[segIdx + 1];
+    const px = p1.x + (p2.x - p1.x) * segT;
+    const py = p1.y + (p2.y - p1.y) * segT;
+
+    // Soft radial glow + solid core = cognitive "packet"
+    const packetR = 4 + 1.5 * Math.sin(t * 0.007 + hashStr(chain.chain_id));
+    const bloom = ctx.createRadialGradient(px, py, 0, px, py, packetR * 4.5);
+    bloom.addColorStop(0, 'rgba(' + R + ',' + G + ',' + B + ',' + (freshness * 0.95) + ')');
+    bloom.addColorStop(1, 'rgba(' + R + ',' + G + ',' + B + ',0)');
+    ctx.fillStyle = bloom;
+    ctx.beginPath(); ctx.arc(px, py, packetR * 4.5, 0, 6.28); ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, packetR, 0, 6.28);
+    ctx.fillStyle = 'rgba(' + R + ',' + G + ',' + B + ',' + freshness + ')';
+    ctx.fill();
+
+    // Brief brighten of the node the packet just LEFT — so the viewer
+    // sees the handoff, not just the moving dot
+    if (segT < 0.15 && segIdx > 0) {
+      const prior = positions[segIdx];
+      ctx.beginPath(); ctx.arc(prior.x, prior.y, 8 + (1 - segT / 0.15) * 5, 0, 6.28);
+      ctx.strokeStyle = 'rgba(' + R + ',' + G + ',' + B + ',' + (freshness * 0.35 * (1 - segT / 0.15)) + ')';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+  }
 }
 </script></body></html>`;
 
