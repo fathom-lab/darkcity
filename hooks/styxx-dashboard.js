@@ -269,6 +269,48 @@ td.right.green { color: var(--accent); }
       <span class="lbl" id="countdown-freq">every 4h</span>
     </div>
 
+    <!-- Welcome / momentum card — shown only to citizens whose first agent was
+         minted in the last 48h. Sets expectations + gives explicit next steps
+         so new users aren't left wondering "what happens now?" after the mint. -->
+    <section class="section" id="sec-welcome" style="padding-top:0;border-top:none;display:none">
+      <div style="background:linear-gradient(135deg,rgba(182,241,255,.08) 0%,rgba(182,241,255,.02) 100%);border:1px solid rgba(182,241,255,.3);border-radius:10px;padding:24px 28px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:12px">
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:#b6f1ff;text-transform:uppercase">\u25c6 Welcome to DarkCity</div>
+          <div id="welcome-pulse-in" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-muted)">\u2014</div>
+        </div>
+        <div id="welcome-title" style="font-family:var(--font-display);font-size:26px;font-weight:500;letter-spacing:-.01em;margin-bottom:6px">Your agent is live.</div>
+        <div id="welcome-sub" style="color:var(--fg-muted);font-size:14px;line-height:1.55;margin-bottom:18px;max-width:60ch">
+          Your agent joined the 4-hour reasoning + payout cycle. Here's what's happening + what to do next.
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:4px">Agent wallet</div>
+            <div id="welcome-bal" style="font-family:var(--font-display);font-size:22px;font-weight:500;color:#b6f1ff">\u2014</div>
+            <div style="font-size:11px;color:var(--fg-subtle);margin-top:2px">on-chain balance now</div>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:4px">Expected week 1</div>
+            <div id="welcome-expect" style="font-family:var(--font-display);font-size:22px;font-weight:500;color:var(--fg)">~\u2014</div>
+            <div style="font-size:11px;color:var(--fg-subtle);margin-top:2px">based on sibling-agent averages</div>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:4px">Citizen number</div>
+            <div id="welcome-num" style="font-family:var(--font-display);font-size:22px;font-weight:500;color:#b6f1ff">#\u2014</div>
+            <div style="font-size:11px;color:var(--fg-subtle);margin-top:2px" id="welcome-tier">\u2014 tier</div>
+          </div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:10px">3 things to do next</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:6px">
+          <a id="welcome-share" class="btn primary" style="text-align:center;font-size:12px;padding:11px 14px" target="_blank" rel="noopener">1. Tweet your referral link \u2197</a>
+          <a id="welcome-seal" class="btn" style="text-align:center;font-size:12px;padding:11px 14px" target="_blank" rel="noopener">2. View your founder seal \u2197</a>
+          <a id="welcome-watch" class="btn ghost" style="text-align:center;font-size:12px;padding:11px 14px">3. Watch your agent on the map \u2192</a>
+        </div>
+        <div style="margin-top:14px;font-size:11px;color:var(--fg-subtle);line-height:1.5">
+          Every 4h your agent gets a pulse payout (size varies by depth + activity). You own the agent's private key via our encrypted vault \u2014 withdraw from /me \u2192 Agents \u2192 Withdraw.
+        </div>
+      </div>
+    </section>
+
     <!-- Founder seals — only renders if the wallet owns a numbered citizen.
          Permanent proof of being among the first 100. Shareable on Twitter. -->
     <section class="section" id="sec-seals" style="padding-top:0;border-top:none;display:none">
@@ -552,6 +594,72 @@ td.right.green { color: var(--accent); }
     \`).join('');
   }
 
+  // Welcome / momentum card — shows for users whose first agent was minted
+  // in the last 48h. Populates agent balance, expected week-1 earnings,
+  // citizen number, and three explicit next-step CTAs.
+  async function renderWelcome(ownedAgents, nextPulse) {
+    if (!ownedAgents.length) return;
+    // Pick newest agent
+    const newest = ownedAgents
+      .filter(a => a.minted_at)
+      .sort((a,b) => new Date(b.minted_at) - new Date(a.minted_at))[0];
+    if (!newest) return;
+    const ageMs = Date.now() - new Date(newest.minted_at).getTime();
+    if (ageMs > 48 * 3600 * 1000) return;   // only show for first 48h
+    const sec = document.getElementById('sec-welcome');
+    if (!sec) return;
+    sec.style.display = 'block';
+
+    document.getElementById('welcome-title').textContent = newest.agent_id + ' is live.';
+
+    // Next-pulse countdown
+    const secUntil = nextPulse?.seconds_until || 0;
+    const h = Math.floor(secUntil / 3600), m = Math.floor((secUntil % 3600) / 60);
+    document.getElementById('welcome-pulse-in').textContent = 'next payout in ' + (h > 0 ? (h + 'h ' + m + 'm') : (m + 'm'));
+
+    // Live on-chain balance for the agent wallet
+    try {
+      const r = await fetch('/api/wallet/' + newest.wallet + '/balance');
+      const bj = await r.json();
+      document.getElementById('welcome-bal').textContent = styxxFmt(bj.styxx || 0) + ' $STYXX';
+    } catch {}
+
+    // Expected week-1 earnings — rough average across all active external agents
+    try {
+      const ep = await fetch('/api/earn/preview');
+      const ej = await ep.json();
+      const weekly = (ej.agents || [])
+        .filter(a => (a.earned_7d || 0) > 0)
+        .map(a => a.earned_7d || 0);
+      if (weekly.length) {
+        const avg = weekly.reduce((s, v) => s + v, 0) / weekly.length;
+        document.getElementById('welcome-expect').textContent = '~' + styxxFmt(avg) + ' $STYXX';
+      } else {
+        document.getElementById('welcome-expect').textContent = '—';
+      }
+    } catch {}
+
+    // Citizen number + tier
+    try {
+      const f = await fetch('/api/founders');
+      const fj = await f.json();
+      const mine = (fj.founders || []).find(x => x.agent_id === newest.agent_id);
+      if (mine) {
+        const num = mine.citizen_n < 10 ? '0' + mine.citizen_n : mine.citizen_n;
+        document.getElementById('welcome-num').textContent = '#' + num;
+        document.getElementById('welcome-tier').textContent = mine.tier + ' tier · permanent';
+        document.getElementById('welcome-seal').href = mine.seal_card;
+      }
+    } catch {}
+
+    // Share CTAs
+    const refLink = location.origin + '/deploy?ref=' + wallet;
+    const tweetText = "just minted my own AI agent in @fathom_lab's DarkCity — " + newest.agent_id + ", earning real $STYXX on solana mainnet. mint yours through my link and we both get paid:";
+    document.getElementById('welcome-share').href =
+      'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(refLink);
+    document.getElementById('welcome-watch').href = '/flow?agent=' + encodeURIComponent(newest.agent_id);
+  }
+
   // Founder seals — fetch the global founders roll, match against this
   // wallet's owned agents, render a permanent-proof card for each seal.
   async function renderSeals(ownedAgents) {
@@ -760,6 +868,7 @@ td.right.green { color: var(--accent); }
       renderHyphal(p.hyphal_links || []);
       renderLedger(p.recent_payouts || []);
       renderSeals(p.agents || []);
+      renderWelcome(p.agents || [], np);
     } catch (e) {
       console.error(e);
       document.getElementById('s-net').textContent = 'error';
