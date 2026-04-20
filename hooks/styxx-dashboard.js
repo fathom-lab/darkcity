@@ -301,10 +301,25 @@ td.right.green { color: var(--accent); }
 
   <div id="empty" class="empty" style="display:none">
     <h2>Connect your wallet</h2>
-    <p>Paste your Solana pubkey below to view your DarkCity portfolio. In a future release, we'll connect directly via Phantom — for now this is read-only.</p>
-    <div class="connect-row">
-      <input id="wallet-input" placeholder="Your Solana pubkey…" autocomplete="off">
-      <button class="btn primary" id="wallet-go">View portfolio →</button>
+    <p>One click with Phantom, or paste your Solana pubkey. View-only either way — we never touch your keys.</p>
+    <div style="display:flex;flex-direction:column;gap:14px;max-width:560px">
+      <button class="btn primary" id="wallet-phantom" style="display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;padding:14px 20px;font-weight:700;letter-spacing:.04em">
+        <svg width="18" height="18" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="64" fill="#ab9ff2"/><path fill="#fff" d="M110.58 64.92H99.17c0-23.22-18.89-42.06-42.17-42.06-22.97 0-41.67 18.37-42.15 41.21-.5 23.61 22.03 43.99 45.66 43.99h2.98c20.82 0 48.72-16.24 53.09-36.08.82-3.72-2.26-7.06-6-7.06zM35.95 65.94c0 3.07-2.51 5.57-5.59 5.57-3.08 0-5.58-2.5-5.58-5.57v-8.98c0-3.07 2.5-5.57 5.58-5.57 3.08 0 5.59 2.5 5.59 5.57v8.98zm19.4 0c0 3.07-2.51 5.57-5.59 5.57-3.08 0-5.58-2.5-5.58-5.57v-8.98c0-3.07 2.5-5.57 5.58-5.57 3.08 0 5.59 2.5 5.59 5.57v8.98z"/></svg>
+        Connect Phantom
+      </button>
+      <div style="display:flex;align-items:center;gap:12px;color:var(--fg-subtle);font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase">
+        <div style="flex:1;height:1px;background:var(--line)"></div>
+        <span>or paste pubkey</span>
+        <div style="flex:1;height:1px;background:var(--line)"></div>
+      </div>
+      <div class="connect-row" style="display:flex;gap:10px;flex-wrap:wrap">
+        <input id="wallet-input" placeholder="99nzRdk\u2026" autocomplete="off" style="flex:1;min-width:260px">
+        <button class="btn" id="wallet-go">View \u2192</button>
+      </div>
+      <div id="wallet-err" style="display:none;padding:10px 14px;background:rgba(255,107,138,.06);border:1px solid rgba(255,107,138,.25);border-radius:6px;color:#ff6b8a;font-family:var(--font-mono);font-size:12px"></div>
+    </div>
+    <div style="margin-top:18px;font-size:11px;color:var(--fg-subtle);max-width:560px;line-height:1.5">
+      No Phantom yet? <a href="https://phantom.com" target="_blank" style="color:var(--accent)">Install phantom.com</a> \u2014 it's free, 2-minute setup. Or grab your pubkey from any Solana wallet and paste it.
     </div>
   </div>
 
@@ -535,18 +550,50 @@ td.right.green { color: var(--accent); }
     content.style.display = 'block';
   }
 
+  function showWalletErr(msg) {
+    const el = document.getElementById('wallet-err');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, 6000);
+  }
+  function setWalletAndBoot(pubkey) {
+    wallet = pubkey;
+    localStorage.setItem('dc_wallet', pubkey);
+    history.replaceState({}, '', '/me?wallet=' + encodeURIComponent(pubkey));
+    boot();
+  }
   document.getElementById('wallet-go').onclick = () => {
     const v = document.getElementById('wallet-input').value.trim();
-    if (v && v.length > 30) {
-      wallet = v;
-      localStorage.setItem('dc_wallet', v);
-      history.replaceState({}, '', '/me?wallet=' + encodeURIComponent(v));
-      boot();
-    }
+    if (!v) { showWalletErr('Paste a Solana pubkey first.'); return; }
+    if (v.length < 32 || v.length > 44) { showWalletErr('That doesn\\'t look like a Solana pubkey (32-44 chars).'); return; }
+    setWalletAndBoot(v);
   };
   document.getElementById('wallet-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('wallet-go').click();
   });
+  // One-click Phantom connect — detect, request, boot. No paste needed.
+  document.getElementById('wallet-phantom').onclick = async () => {
+    if (!window.solana || !window.solana.isPhantom) {
+      showWalletErr('Phantom not detected. Install it at phantom.com, then refresh.');
+      setTimeout(() => window.open('https://phantom.com', '_blank'), 400);
+      return;
+    }
+    try {
+      const r = await window.solana.connect();
+      const pk = r.publicKey.toString();
+      setWalletAndBoot(pk);
+    } catch (e) {
+      showWalletErr('Connect cancelled or failed. ' + (e.message || ''));
+    }
+  };
+  // If Phantom is already trusted for this origin, auto-connect silently.
+  if (!wallet && window.solana && window.solana.isPhantom) {
+    window.solana.connect({ onlyIfTrusted: true })
+      .then(r => { if (r?.publicKey) setWalletAndBoot(r.publicKey.toString()); })
+      .catch(() => {});
+  }
 
   let countdownTimer = null, pulseHours = 4;
   function startCountdown(secs) {

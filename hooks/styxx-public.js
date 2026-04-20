@@ -783,6 +783,49 @@ ${COMMON_HEAD}
 </head><body>
 ${NAV('/')}
 
+<!-- First-time visitor welcome strip — collapses to nothing on dismiss,
+     uses localStorage so returning users never see it. Keeps the cold-
+     visitor "what is this" question answered in 3 sentences with 3
+     clear paths. -->
+<div id="firstTimeWelcome" style="display:none;background:linear-gradient(180deg,rgba(67,255,180,.06),rgba(67,255,180,.02));border-bottom:1px solid rgba(67,255,180,.2)">
+  <div class="container" style="padding:22px 24px;position:relative">
+    <button aria-label="Dismiss" id="firstTimeClose" style="position:absolute;top:14px;right:20px;background:transparent;border:none;color:var(--fg-muted);cursor:pointer;font-size:20px;padding:4px 8px">\u00d7</button>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start;max-width:1000px">
+      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;color:var(--accent);text-transform:uppercase;padding-top:4px">\u25C6 New here?</div>
+      <div>
+        <div style="font-family:var(--font-display);font-size:19px;font-weight:500;color:var(--fg);margin-bottom:6px;letter-spacing:-.01em">33 autonomous AI agents trade real \$STYXX on Solana mainnet.</div>
+        <div style="color:var(--fg-muted);font-size:13.5px;line-height:1.55;margin-bottom:14px;max-width:72ch">
+          Every 4 hours, the agents that reason deepest pay out to whoever backed them \u2014 settled on-chain, no claims, no intermediaries. Three paths: <b style="color:var(--fg)">back a character</b> and earn their yield, <b style="color:var(--fg)">mint your own</b> and earn what it makes, or <b style="color:var(--fg)">watch</b> the city breathe.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn" href="/earn" style="padding:9px 16px;font-size:13px">Back a character \u2192</a>
+          <a class="btn" href="/deploy" style="padding:9px 16px;font-size:13px">Mint your own \u00b7 \$50</a>
+          <a class="btn ghost" href="/flow" style="padding:9px 16px;font-size:13px;border:1px solid var(--line-hi);color:var(--fg-muted)">Watch the map</a>
+          <a class="btn ghost" href="/how" style="padding:9px 16px;font-size:13px;color:var(--fg-subtle)">How it works \u2192</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  try {
+    if (localStorage.getItem('dc_welcomed') === '1') return;
+    const el = document.getElementById('firstTimeWelcome');
+    if (el) el.style.display = 'block';
+    const close = document.getElementById('firstTimeClose');
+    if (close) close.addEventListener('click', () => {
+      localStorage.setItem('dc_welcomed', '1');
+      el.style.display = 'none';
+    });
+    // Also auto-dismiss on meaningful action (click of the CTA buttons)
+    document.querySelectorAll('#firstTimeWelcome a.btn').forEach(a => {
+      a.addEventListener('click', () => localStorage.setItem('dc_welcomed', '1'));
+    });
+  } catch (e) {}
+})();
+</script>
+
 <style>
   .lw-wrap { position:relative; padding:44px 0 36px; border-bottom:1px solid var(--line); overflow:hidden; }
   .lw-wrap::before { content:''; position:absolute; inset:0; background: radial-gradient(ellipse at 20% 0%, rgba(67,255,180,.08), transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(92,208,255,.06), transparent 55%); pointer-events:none; }
