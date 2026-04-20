@@ -41,6 +41,7 @@ const { depthMultiplier } = require('./hooks/depth-scorer');
 // ═══ DATA PIPELINE ═══
 const { runDataPipelineMigration, enrichAction, writeEnrichment, registerDaaSRoute, registerExportRoute } = require('./hooks/data-pipeline');
 const { registerDataProduct } = require('./hooks/data-product');
+const { registerMoments } = require('./hooks/moments');
 
 // ═══ NPC BRAIN v2 — LLM-powered agent loop ═══
 const { NPCBrain } = require('./hooks/npc-brain');
@@ -2114,6 +2115,7 @@ app.post('/api/depth/score', async (req, res) => {
 registerDaaSRoute(app, pool, DEPTH_SCORER_URL);
 registerExportRoute(app, pool);
 registerDataProduct(app, pool);
+registerMoments(app, pool);
 
 // ═══════════════════════════════════════════════════════════════
 
