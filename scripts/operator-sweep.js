@@ -37,25 +37,21 @@ const CONFIRM = args.includes('--confirm');
 const amountIdx = args.indexOf('--amount');
 const AMOUNT_REQ = amountIdx >= 0 ? args[amountIdx + 1] : null;
 
-async function main() {
-  const operator = process.env.OPERATOR_PUBKEY;
-  if (!operator) {
-    console.error('[sweep] FATAL: OPERATOR_PUBKEY env var not set.');
-    console.error('[sweep] Set it to the Solana pubkey that should receive operator revenue.');
-    process.exit(2);
-  }
-
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: (process.env.DATABASE_URL || '').includes('railway') ? { rejectUnauthorized: false } : false,
-  });
+/**
+ * Core sweep logic. Parametrized so it can be invoked both from CLI (this
+ * file's main()) and from the in-process scheduler in server.js.
+ *
+ * @param {Pool} pool - pg Pool (caller-owned; NOT ended here)
+ * @param {string} operator - recipient pubkey
+ * @param {string|number|null} requestedAmount - 'max' | number | null (null = preview)
+ * @param {boolean} confirm - true to actually execute
+ * @returns {Promise<{status, amount, signature?, capMax, cityAccumulated, treasuryStyxx}>}
+ */
+async function doSweep({ pool, operator, requestedAmount, confirm }) {
   styxx.init();
 
-  // Current treasury balance
   const tBal = await styxx.getTreasuryBalances();
-  console.log(`[sweep] treasury: ${tBal.styxx.toFixed(2)} STYXX (SOL ${tBal.sol.toFixed(4)})`);
 
-  // Accumulated city share since last sweep
   const { rows: lastSweep } = await pool.query(`
     SELECT MAX(recorded_at) AS last_at FROM distribution_events WHERE kind = 'operator_sweep'
   `);
@@ -68,44 +64,24 @@ async function main() {
       AND recorded_at > $1
   `, [since]);
   const cityAccumulated = Number(cityRows[0].city_accumulated);
-  console.log(`[sweep] city share accumulated since last sweep: ${cityAccumulated.toFixed(2)} STYXX`);
 
-  // Safety caps
-  const capByCity     = cityAccumulated * 0.30;  // ≤ 30% of accumulated city share
-  const capByTreasury = tBal.styxx * 0.10;        // ≤ 10% of current treasury
+  const capByCity     = cityAccumulated * 0.30;
+  const capByTreasury = tBal.styxx * 0.10;
   const capMax        = Math.max(0, Math.min(capByCity, capByTreasury));
-  console.log(`[sweep] caps: city30%=${capByCity.toFixed(2)} treasury10%=${capByTreasury.toFixed(2)} → maxAllowed=${capMax.toFixed(2)}`);
 
-  if (capMax < 1) {
-    console.log('[sweep] nothing meaningful to sweep yet. wait for more activity.');
-    await pool.end();
-    return;
-  }
+  const ctx = { cityAccumulated, treasuryStyxx: tBal.styxx, capByCity, capByTreasury, capMax };
 
-  // Determine actual amount
+  if (capMax < 1) return { status: 'nothing_to_sweep', amount: 0, ...ctx };
+
+  if (requestedAmount == null) return { status: 'preview', amount: 0, ...ctx };
+
   let amount;
-  if (!AMOUNT_REQ) {
-    console.log('[sweep] no --amount given. PREVIEW ONLY.');
-    console.log(`[sweep] to sweep max (${capMax.toFixed(2)} STYXX), run: node scripts/operator-sweep.js --confirm --amount max`);
-    await pool.end();
-    return;
-  }
-  if (AMOUNT_REQ === 'max') {
-    amount = capMax;
-  } else {
-    amount = Math.min(Number(AMOUNT_REQ), capMax);
-    if (amount !== Number(AMOUNT_REQ)) {
-      console.log(`[sweep] requested ${AMOUNT_REQ} exceeds cap; clipping to ${amount.toFixed(2)}`);
-    }
-  }
+  if (requestedAmount === 'max') amount = capMax;
+  else amount = Math.min(Number(requestedAmount), capMax);
+  if (!Number.isFinite(amount) || amount <= 0) return { status: 'nothing_to_sweep', amount: 0, ...ctx };
 
-  if (!CONFIRM) {
-    console.log(`[sweep] DRY (no --confirm): would sweep ${amount.toFixed(2)} STYXX → ${operator}`);
-    await pool.end();
-    return;
-  }
+  if (!confirm) return { status: 'dry_run', amount, ...ctx };
 
-  console.log(`[sweep] executing: ${amount.toFixed(2)} STYXX → ${operator}`);
   const { signature } = await styxx.airdropFromTreasury(operator, amount);
 
   await pool.query(`
@@ -119,13 +95,40 @@ async function main() {
     VALUES ('operator_sweep', $1, $2, $3)
   `, [operator, amount, signature]);
 
-  console.log(`[sweep] DONE  tx=${signature}`);
-  console.log(`[sweep] explorer: https://solscan.io/tx/${signature}`);
-  await pool.end();
+  return { status: 'swept', amount, signature, ...ctx };
+}
+
+async function main() {
+  const operator = process.env.OPERATOR_PUBKEY;
+  if (!operator) {
+    console.error('[sweep] FATAL: OPERATOR_PUBKEY env var not set.');
+    process.exit(2);
+  }
+
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: (process.env.DATABASE_URL || '').includes('railway') ? { rejectUnauthorized: false } : false,
+  });
+
+  try {
+    const r = await doSweep({ pool, operator, requestedAmount: AMOUNT_REQ, confirm: CONFIRM });
+    console.log(`[sweep] treasury: ${r.treasuryStyxx.toFixed(2)} STYXX`);
+    console.log(`[sweep] city share accumulated since last sweep: ${r.cityAccumulated.toFixed(2)} STYXX`);
+    console.log(`[sweep] caps: city30%=${r.capByCity.toFixed(2)} treasury10%=${r.capByTreasury.toFixed(2)} -> maxAllowed=${r.capMax.toFixed(2)}`);
+    if (r.status === 'nothing_to_sweep') console.log('[sweep] nothing meaningful to sweep yet.');
+    else if (r.status === 'preview') console.log(`[sweep] preview: maxAllowed=${r.capMax.toFixed(2)} STYXX. Run with --confirm --amount max to execute.`);
+    else if (r.status === 'dry_run') console.log(`[sweep] DRY (no --confirm): would sweep ${r.amount.toFixed(2)} STYXX -> ${operator}`);
+    else if (r.status === 'swept') {
+      console.log(`[sweep] DONE  tx=${r.signature}`);
+      console.log(`[sweep] explorer: https://solscan.io/tx/${r.signature}`);
+    }
+  } finally {
+    await pool.end();
+  }
 }
 
 if (require.main === module) {
   main().catch(err => { console.error('[sweep] FATAL:', err); process.exit(1); });
 }
 
-module.exports = { main };
+module.exports = { main, doSweep };

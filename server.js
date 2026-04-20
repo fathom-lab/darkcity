@@ -275,6 +275,21 @@ async function initDB() {
         last_active TIMESTAMPTZ DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS agent_interactions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        agent_id TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        interaction_type TEXT NOT NULL DEFAULT 'conversation',
+        summary TEXT NOT NULL,
+        sentiment TEXT DEFAULT 'neutral',
+        district TEXT DEFAULT NULL,
+        new_patterns JSONB DEFAULT NULL,
+        model_updates JSONB DEFAULT NULL,
+        predictions_validated JSONB DEFAULT NULL,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        heartbeat_cycle INTEGER DEFAULT NULL
+      );
+
     `);
 
     // Indexes — run individually so pre-existing tables with different schemas don't crash init
@@ -290,6 +305,9 @@ async function initDB() {
       'CREATE INDEX IF NOT EXISTS idx_agent_actions_agent ON agent_actions(agent_id)',
       'CREATE INDEX IF NOT EXISTS idx_agent_actions_time ON agent_actions(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_external_agents_agent_id ON external_agents(agent_id)',
+      'CREATE INDEX IF NOT EXISTS idx_agent_interactions_pair ON agent_interactions(agent_id, subject_id, recorded_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_agent_interactions_type ON agent_interactions(agent_id, interaction_type)',
+      'CREATE INDEX IF NOT EXISTS idx_agent_interactions_recent ON agent_interactions(recorded_at DESC)',
     ];
     for (const idx of indexes) {
       try { await client.query(idx); } catch (e) { console.warn(`[initDB] skipping index (${e.message.split('\n')[0]})`); }
@@ -3136,6 +3154,42 @@ initDB().then(async () => {
   // Without this, prices are static and arbitrage is impossible.
   const tickerMs = parseInt(process.env.MARKET_TICK_MS) || 90_000;
   marketTicker.start(pool, { intervalMs: tickerMs });
+
+  // Operator sweep — weekly cadence, moves ≤ MIN(30% accumulated city share,
+  // 10% treasury) to OPERATOR_PUBKEY. Safe no-op if env var is unset or
+  // nothing has accumulated. Logs every attempt + every sweep to
+  // distribution_events for audit.
+  if (process.env.OPERATOR_PUBKEY && STYXX_ENABLED) {
+    const { doSweep } = require('./scripts/operator-sweep');
+    const SWEEP_CADENCE_DAYS = parseInt(process.env.OPERATOR_SWEEP_DAYS) || 7;
+    const SWEEP_CHECK_MS = 6 * 60 * 60 * 1000; // check every 6h
+    const runSweepIfDue = async () => {
+      try {
+        const { rows: [last] } = await pool.query(
+          `SELECT MAX(recorded_at) AS last_at FROM distribution_events WHERE kind='operator_sweep'`
+        );
+        const lastMs = last?.last_at ? new Date(last.last_at).getTime() : 0;
+        const due = (Date.now() - lastMs) >= SWEEP_CADENCE_DAYS * 86_400_000;
+        if (!due) return;
+        const r = await doSweep({
+          pool,
+          operator: process.env.OPERATOR_PUBKEY,
+          requestedAmount: 'max',
+          confirm: true,
+        });
+        if (r.status === 'swept') {
+          console.log(`[sweep/scheduled] swept ${r.amount.toFixed(2)} $STYXX to operator, tx=${r.signature}`);
+        } else {
+          console.log(`[sweep/scheduled] ${r.status}  cap=${r.capMax.toFixed(2)}  cityAcc=${r.cityAccumulated.toFixed(2)}`);
+        }
+      } catch (e) { console.error('[sweep/scheduled] error:', e.message); }
+    };
+    setTimeout(runSweepIfDue, 60_000).unref?.();
+    setInterval(runSweepIfDue, SWEEP_CHECK_MS).unref?.();
+    console.log(`[sweep/scheduled] enabled. cadence=${SWEEP_CADENCE_DAYS}d, check every 6h, operator=${process.env.OPERATOR_PUBKEY.slice(0,8)}...`);
+  } else if (STYXX_ENABLED) {
+    console.log('[sweep/scheduled] disabled (OPERATOR_PUBKEY unset). City share recirculates instead of becoming operator revenue.');
+  }
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`

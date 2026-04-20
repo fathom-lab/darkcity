@@ -56,7 +56,7 @@ function tickOnce(pool) {
         `UPDATE market_prices
          SET price = $1,
              change_pct = $2,
-             volume = FLOOR(volume * (0.85 + RANDOM() * 0.3))
+             volume = FLOOR(COALESCE(NULLIF(volume, '')::numeric, 0) * (0.85 + RANDOM() * 0.3))::text
          WHERE resource = $3`,
         [next, Math.round(changePct * 100) / 100, r.resource]
       );
