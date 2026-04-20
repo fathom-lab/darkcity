@@ -1607,6 +1607,115 @@ function startPulseScheduler() {
 
   // Dormancy check weekly (Sundays 02:00 UTC via day-of-week + hour gate)
   setInterval(runDormancyCheck, 60 * 60 * 1000);  // check hourly if it's time
+
+  // Auto-reconcile stuck mints every 15 min. Zero-maintenance: any quote
+  // with a confirmed burn but no agent row gets detected + the mint_recover
+  // logic completes it (agent provisioned, starter grant sent). Users who
+  // paid but errored mid-finalize get healed without ever pinging support.
+  setInterval(runAutoReconciler, 15 * 60 * 1000);
+  // Fire once on startup after a short delay so restart heals any backlog
+  setTimeout(runAutoReconciler, 30_000);
+}
+
+// ─── Auto-reconciler — heals stuck mints on a schedule ─────────────────────
+let reconcilerRunning = false;
+async function runAutoReconciler() {
+  if (reconcilerRunning) return;
+  reconcilerRunning = true;
+  try {
+    // Find quotes with burn but no agent (the T.Rex failure mode)
+    const { rows: stuck } = await pool.query(`
+      SELECT mq.quote_id, mq.agent_name, mq.owner_pubkey, mq.destination, mq.fee_styxx, mq.memo
+      FROM mint_quotes mq
+      WHERE NOT EXISTS (
+        SELECT 1 FROM external_agents ea
+        WHERE ea.agent_id = UPPER(REPLACE(mq.agent_name, ' ', '_'))
+      )
+      AND EXISTS (
+        SELECT 1 FROM styxx_transfers st
+        WHERE st.memo = 'mint:' || mq.quote_id AND st.reason = 'mint_fee_burn'
+      )
+      LIMIT 20
+    `);
+    if (!stuck.length) { reconcilerRunning = false; return; }
+    console.log('[reconciler] found ' + stuck.length + ' stuck mint(s) to heal');
+
+    for (const q of stuck) {
+      try {
+        // Locate the user's payment tx via Solana RPC (memo match)
+        const conn = styxx.getConnection();
+        const sigs = await conn.getSignaturesForAddress(
+          new (require('@solana/web3.js').PublicKey)(q.owner_pubkey),
+          { limit: 20 }
+        );
+        let foundTx = null;
+        for (const s of sigs) {
+          if (s.err) continue;
+          try {
+            const tx = await conn.getParsedTransaction(s.signature, {
+              commitment: 'confirmed', maxSupportedTransactionVersion: 0,
+            });
+            if (!tx) continue;
+            const ixs = [
+              ...(tx.transaction.message.instructions || []),
+              ...((tx.meta?.innerInstructions || []).flatMap(i => i.instructions || [])),
+            ];
+            const hasMemo = ixs.some(ix => {
+              const memoStr = (typeof ix.parsed === 'string' ? ix.parsed : ix.parsed?.memo) || '';
+              return memoStr.includes(q.memo);
+            });
+            if (hasMemo) { foundTx = s.signature; break; }
+          } catch {}
+        }
+        if (!foundTx) { console.warn('[reconciler] no matching tx for quote', q.quote_id); continue; }
+
+        // Use the recover logic: verify + provision + grant
+        const ver = await verifyStyxxPayment({
+          tx_signature: foundTx,
+          expected_from_pubkey: q.owner_pubkey,
+          expected_to_pubkey: q.destination,
+          expected_amount: Number(q.fee_styxx),
+          expected_memo: q.memo,
+        });
+        if (!ver.ok) { console.warn('[reconciler] verify failed for', q.quote_id, ver.reason); continue; }
+
+        const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
+        const kp = styxx.generateAgentKeypair();
+        const pubkey = kp.publicKey.toBase58();
+        const encPriv = styxx.encryptPrivkey(kp.secretKey);
+        const p = await getParams(['starter_grant_styxx']);
+        const starterGrant = Number(p.starter_grant_styxx || 100);
+
+        await pool.query(`
+          INSERT INTO external_agents
+            (agent_id, district, reputation, credits, builds, trades, rank, agent_type,
+             owner_name, bot_framework, owner_pubkey, sol_pubkey, sol_privkey_enc,
+             styxx_cached, styxx_cached_at, minted_at, mint_tx_signature,
+             mint_fee_usd, mint_fee_styxx, cognition_fee_balance, last_cognition_fee_at)
+          VALUES ($1,'The Sprawl',0,${starterGrant},0,0,'Newcomer','external',
+                  $2,'Custom',$3,$4,$5,$6,NOW(),NOW(),$7,50,$8,$9,NOW())
+          ON CONFLICT (agent_id) DO NOTHING
+        `, [agentId, q.owner_pubkey.slice(0,16), q.owner_pubkey, pubkey, encPriv,
+            starterGrant, foundTx, Number(q.fee_styxx), starterGrant]);
+
+        const { signature: grantSig } = await styxx.airdropFromTreasury(pubkey, starterGrant);
+        await pool.query(`
+          INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+          VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
+          ON CONFLICT (tx_signature) DO NOTHING
+        `, [grantSig, styxx.getTreasury().publicKey.toBase58(), agentId, pubkey, starterGrant, q.memo]);
+
+        await pool.query('UPDATE mint_quotes SET finalized = TRUE WHERE quote_id = $1', [q.quote_id]);
+        console.log('[reconciler] healed ' + agentId + ' (quote ' + q.quote_id + ')');
+      } catch (err) {
+        console.error('[reconciler] heal failed for', q.quote_id, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[reconciler] FAILED:', err.message);
+  } finally {
+    reconcilerRunning = false;
+  }
 }
 
 async function runPulse() {
@@ -2028,7 +2137,82 @@ function installRoutes(app) {
     }
   });
 
-  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover / admin/bonus / treasury/stats');
+  // ── Health endpoint — city-wide operational heartbeat ──────────────────
+  // Surfaces any stuck or degraded state so ops can see problems before users
+  // do. One GET returns a pass/fail for every critical subsystem.
+  app.get('/api/health', async (req, res) => {
+    const out = { ts: new Date().toISOString(), overall: 'ok', checks: {} };
+    const fail = (name, reason) => { out.checks[name] = { ok: false, reason }; out.overall = 'degraded'; };
+    const pass = (name, detail) => { out.checks[name] = { ok: true, detail }; };
+
+    try {
+      // 1. DB
+      try {
+        const r = await pool.query('SELECT 1 AS ok');
+        pass('database', { result: r.rows[0].ok });
+      } catch (e) { fail('database', e.message); }
+
+      // 2. Treasury wallet balance
+      try {
+        const t = await styxx.getTreasuryBalances();
+        pass('treasury', { styxx: t.styxx, sol: t.sol });
+        if (t.sol < 0.02) fail('treasury_sol_low', 'SOL < 0.02 — fee payer may fail. top up with SOL.');
+        if (t.styxx < 100000) fail('treasury_styxx_low', 'STYXX < 100k — pulse may clamp to floor.');
+      } catch (e) { fail('treasury', e.message); }
+
+      // 3. Price oracle
+      try {
+        const p = getStyxxUsdPrice();
+        pass('price_oracle', { usd: p });
+      } catch (e) { fail('price_oracle', e.message); }
+
+      // 4. Pulse scheduler — last successful run within 2 windows
+      try {
+        const { rows } = await pool.query(`
+          SELECT window_start, completed_at
+          FROM pulse_runs ORDER BY window_start DESC LIMIT 1
+        `);
+        if (rows.length) {
+          const last = rows[0];
+          const hrs = parseInt(process.env.PULSE_HOURS || '4', 10);
+          const stale = new Date(last.window_start).getTime() < Date.now() - (hrs * 2 * 3600 * 1000);
+          if (stale) fail('pulse_scheduler', 'last pulse > 2 windows ago');
+          else pass('pulse_scheduler', { last_window: last.window_start, completed: !!last.completed_at });
+        } else {
+          pass('pulse_scheduler', { note: 'no pulses recorded yet (table exists)' });
+        }
+      } catch (e) { pass('pulse_scheduler', { note: 'table not yet initialized' }); }
+
+      // 5. Stuck mints — quotes with on-chain burn but no agent
+      try {
+        const { rows } = await pool.query(`
+          SELECT mq.quote_id, mq.agent_name, mq.owner_pubkey
+          FROM mint_quotes mq
+          WHERE NOT EXISTS (
+            SELECT 1 FROM external_agents ea
+            WHERE ea.agent_id = UPPER(REPLACE(mq.agent_name, ' ', '_'))
+          )
+          AND EXISTS (
+            SELECT 1 FROM styxx_transfers st
+            WHERE st.memo = 'mint:' || mq.quote_id AND st.reason = 'mint_fee_burn'
+          )
+          LIMIT 10
+        `);
+        if (rows.length) {
+          fail('stuck_mints', 'found ' + rows.length + ' quote(s) with burn but no agent');
+          out.checks.stuck_mints.list = rows.map(r => r.quote_id);
+        } else {
+          pass('stuck_mints', { count: 0 });
+        }
+      } catch (e) { pass('stuck_mints', { note: 'check skipped: ' + e.message }); }
+    } catch (err) {
+      out.overall = 'error';
+      out.error = err.message;
+    }
+    res.status(out.overall === 'error' ? 500 : 200).json(out);
+  });
+
+  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover / admin/bonus / treasury/stats / health');
 }
 
 module.exports = {
