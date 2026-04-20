@@ -1175,7 +1175,10 @@ function layoutAgents() {
 
   const sorted = [...agents.values()].sort((a, b) => a.id.localeCompare(b.id));
   const primary = Math.min(8, sorted.length);
-  const baseLen = R * 0.56;
+  // baseLen widened from .56 → .68: primary agents sit further from treasury
+  // so children branching off them have more room before they hit the edge
+  // or collide with other branches.
+  const baseLen = R * 0.68;
 
   // Mycelium growth: new agents start at their PARENT's position and ease
   // outward to their target layout spot. Existing agents keep their current
@@ -1205,9 +1208,13 @@ function layoutAgents() {
     const sameDist = placed.filter(n => n.district === a.district);
     const pool = sameDist.length > 0 ? sameDist : placed;
     const parent = pool[Math.floor(hashStr(a.id + 'parent') * pool.length)];
-    const branch = (hashStr(a.id + 'br') - 0.5) * 1.2;
+    // Widen branch spread (1.2 → 1.6 rad max) so siblings don't stack on
+    // the same radial line from treasury. Bump segment length range so
+    // children sprout farther from parent — reduces PRISM/MR_REX-style
+    // overlap where sibling nodes are nearly co-located.
+    const branch = (hashStr(a.id + 'br') - 0.5) * 1.6;
     const branchAng = parent.angle + branch;
-    const segLen = R * (0.22 + hashStr(a.id + 'len') * 0.22);
+    const segLen = R * (0.28 + hashStr(a.id + 'len') * 0.30);
     a.homeX = parent.homeX + Math.cos(branchAng) * segLen;
     a.homeY = parent.homeY + Math.sin(branchAng) * segLen;
     a.tx = a.homeX; a.ty = a.homeY;
@@ -1229,6 +1236,33 @@ function layoutAgents() {
     if (!districts.has(a.district)) districts.set(a.district, { count: 0 });
     districts.get(a.district).count++;
   }
+
+  // ─── Post-layout relaxation ────────────────────────────────────────────
+  // After the mycelium formula plants each agent at (homeX, homeY), some
+  // siblings end up within ~30px of each other because their parent pool
+  // and branch angles collided. A few passes of pairwise repulsion spread
+  // them out evenly without distorting the tree structure (we only nudge
+  // each other's homeX/homeY, not parentX/parentY — so hyphae still
+  // anchor to original parent positions).
+  const MIN_DIST = 70;  // minimum center-to-center separation
+  for (let pass = 0; pass < 4; pass++) {
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        const a = placed[i], b = placed[j];
+        const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > MIN_DIST || d === 0) continue;
+        const push = (MIN_DIST - d) * 0.5;
+        const nx = d ? dx / d : Math.random() - 0.5;
+        const ny = d ? dy / d : Math.random() - 0.5;
+        a.homeX -= nx * push; a.homeY -= ny * push;
+        b.homeX += nx * push; b.homeY += ny * push;
+      }
+    }
+  }
+  // After relaxation, sync targets so the frame loop eases toward the
+  // spread-out positions.
+  for (const a of placed) { a.tx = a.homeX; a.ty = a.homeY; }
 }
 
 function nodeRadius(styxx, online) {
@@ -1812,9 +1846,9 @@ function drawNet(t) {
     // Candidate position: above the node. If too close to any previous
     // label this frame, flip below. If still colliding, nudge +14 more px.
     let lx = a.ax, ly = a.ay - rr - 10;
-    const collides = (window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22);
+    const collides = (window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 30);
     if (collides) ly = a.ay + rr + 16;
-    if ((window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22)) {
+    if ((window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 30)) {
       ly += 14;
     }
     (window.__frameLabels = window.__frameLabels || []).push({ x: lx, y: ly });
