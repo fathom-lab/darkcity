@@ -1083,7 +1083,10 @@ async function portfolio(req, res) {
     const PULSE_HOURS = parseInt(process.env.PULSE_HOURS || '4', 10);
 
     const [agents, sponsorships, referrals, hyphalLinks, recentPayouts, earningsHistory, lifetimeAgg] = await Promise.all([
-      pool.query(`SELECT * FROM v_agent_economy WHERE owner_pubkey = $1 ORDER BY earnings_7d DESC`, [owner]),
+      pool.query(`SELECT v.*, ea.sol_pubkey, ea.styxx_cached AS _cache_styxx
+                  FROM v_agent_economy v
+                  JOIN external_agents ea ON ea.agent_id = v.agent_id
+                  WHERE v.owner_pubkey = $1 ORDER BY v.earnings_7d DESC`, [owner]),
       pool.query(`
         SELECT s.*, ea.rank, ea.reputation, v.earnings_7d AS agent_earnings_7d,
                ea.dormant, ea.minted_at
@@ -1147,23 +1150,29 @@ async function portfolio(req, res) {
     // to styxx_cached. Previously portfolio summed stale cache values and
     // could show net_worth=0 when the agent wallet actually held STYXX.
     const liveBalances = await Promise.all(agents.rows.map(async (a) => {
-      if (!a.sol_pubkey) return { agent_id: a.agent_id, bal: Number(a.styxx_cached || 0) };
+      if (!a.sol_pubkey) return { agent_id: a.agent_id, bal: Number(a._cache_styxx || 0) };
       try {
         const bal = await styxx.getStyxxBalance(a.sol_pubkey);
         // Persist refreshed cache for downstream views/queries
         if (Number.isFinite(bal)) {
           pool.query('UPDATE external_agents SET styxx_cached = $1, styxx_cached_at = NOW() WHERE agent_id = $2', [bal, a.agent_id]).catch(()=>{});
         }
-        return { agent_id: a.agent_id, bal: Number.isFinite(bal) ? bal : Number(a.styxx_cached || 0) };
+        return { agent_id: a.agent_id, bal: Number.isFinite(bal) ? bal : Number(a._cache_styxx || 0) };
       } catch {
-        return { agent_id: a.agent_id, bal: Number(a.styxx_cached || 0) };
+        return { agent_id: a.agent_id, bal: Number(a._cache_styxx || 0) };
       }
     }));
     const balByAgent = new Map(liveBalances.map(b => [b.agent_id, b.bal]));
     // Overwrite the stale values with live on-chain balance so downstream
-    // reads of agents.rows[i].styxx_cached return the fresh number
+    // reads get the fresh number. We set both styxx_cached (for the
+    // agent.styxx_cached field the /me UI reads) and keep _cache_styxx
+    // for internal sums.
     for (const row of agents.rows) {
-      row.styxx_cached = balByAgent.get(row.agent_id) ?? row.styxx_cached;
+      const fresh = balByAgent.get(row.agent_id);
+      if (fresh !== undefined) {
+        row.styxx_cached = fresh;
+        row._cache_styxx = fresh;
+      }
     }
     const totalAgentBalance = agents.rows.reduce((s, a) => s + Number(a.styxx_cached || 0), 0);
     const totalStaked = sponsorships.rows.reduce((s, r) => s + Number(r.amount_staked || 0), 0);
