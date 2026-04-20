@@ -1025,6 +1025,12 @@ function reasonC(r) {
   if (r === 'resource_buy') return C.amber;
   if (r === 'resource_sell') return C.mint;
   if (r === 'contract_reward') return C.mint;
+  if (r === 'agent_tip') return C.rose;        // peer recognition — warm pink
+  if (r === 'social_tip') return C.rose;       // human-to-agent tip
+  if (r === 'hyphal_flow') return C.violet;    // mycelium cross-flow
+  if (r === 'referral_bonus') return C.amber;  // growth payout
+  if (r === 'buyback_burn') return C.rose;     // supply destruction
+  if (r === 'mint_fee_burn') return C.rose;
   if (r === 'p2p_transfer') return C.violet;
   return C.cyan;
 }
@@ -1373,10 +1379,15 @@ function drawNet(t) {
       const p = agents.get(a.parent);
       if (p && p.homeX != null) { a.parentX = p.homeX; a.parentY = p.homeY; }
     }
-    // Subtle breathing drift — tiny sway so even stationary nodes feel organic
+    // Breathing drift — organic sway with a slow secondary orbit so the city
+    // never looks frozen. Amplitudes tuned to read as "alive" without
+    // destabilizing the hyphal tree structure (hyphae anchor at homeX/Y,
+    // not x/y — so drift only perturbs the visible node).
     if (a.driftSeed == null) a.driftSeed = hashStr(a.id + 'drift') * 6.28;
-    const driftA = Math.sin(t * 0.00035 + a.driftSeed) * 1.4;
-    const driftB = Math.cos(t * 0.00041 + a.driftSeed * 1.7) * 1.1;
+    const driftA = Math.sin(t * 0.00035 + a.driftSeed) * 3.0
+                 + Math.sin(t * 0.00012 + a.driftSeed * 2.1) * 1.6;
+    const driftB = Math.cos(t * 0.00041 + a.driftSeed * 1.7) * 2.4
+                 + Math.cos(t * 0.00018 + a.driftSeed * 0.9) * 1.3;
     a.driftX = driftA; a.driftY = driftB;
   }
 
@@ -1610,23 +1621,32 @@ function drawNet(t) {
     netCtx.fillText('$STYXX', treasury.x, treasury.y + 42);
   }
 
-  // Agent nodes — crisp, minimal bloom
+  // Agent nodes — crisp, minimal bloom. The visible position is a.x/a.y
+  // PLUS the per-frame drift (breathing oscillation). a.x/a.y stay as the
+  // easing-target position; drift is added at render time so the underlying
+  // hyphal layout isn't perturbed. Alias to a.ax / a.ay so the rest of this
+  // loop can render + hit-test against the exact pixels on screen.
   hovered = null;
   const nowT = Date.now();
   for (const [id, a] of agents) {
     const rad = nodeRadius(a.styxx, a.online);
     const breath = .85 + .15 * Math.sin(t * .0015 + hashStr(id) * 6.28);
+    a.ax = a.x + (a.driftX || 0);
+    a.ay = a.y + (a.driftY || 0);
     // Hit-test in world coords (account for pan+zoom). rad+8 tolerance
     // shrinks with zoom so it stays roughly constant in screen pixels.
     const wm = screenToWorld(mouseX, mouseY);
-    const isH = Math.hypot(wm.x - a.x, wm.y - a.y) < rad + 8 / view.k;
+    const isH = Math.hypot(wm.x - a.ax, wm.y - a.ay) < rad + 8 / view.k;
     if (isH) hovered = a;
     const color = a.online ? C.cyan : C.agentOff;
     const [r, g, b] = color;
 
     // Activity spark — if this agent fired a tx in the last 900ms, their ring brightens
     const sparkAge = nowT - (a.sparkAt || 0);
-    const sparkAlpha = sparkAge < 900 ? (1 - sparkAge / 900) : 0;
+    // Spark = expanding ring on every real agent action. Extended from 900ms
+    // to 1800ms with a gentler easing curve so the action is more visible
+    // to a viewer catching it in peripheral vision.
+    const sparkAlpha = sparkAge < 1800 ? Math.pow(1 - sparkAge / 1800, 1.6) : 0;
 
     // Depth tier → ring color (the signature move — each agent shows its mind at a glance)
     const tier = a.depth_tier;
@@ -1640,7 +1660,7 @@ function drawNet(t) {
     // Subtle glow only for online + exceptional (restraint)
     if (a.online && (isException || isH)) {
       const glowR = rad * (isException ? 2.4 : 1.8);
-      const halo = netCtx.createRadialGradient(a.x, a.y, rad * 0.7, a.x, a.y, glowR);
+      const halo = netCtx.createRadialGradient(a.ax, a.ay, rad * 0.7, a.x, a.y, glowR);
       halo.addColorStop(0, \`rgba(\${ringR},\${ringG},\${ringB},\${(isException ? .22 : .12) * breath})\`);
       halo.addColorStop(1, 'rgba(0,0,0,0)');
       netCtx.fillStyle = halo;
@@ -1655,7 +1675,7 @@ function drawNet(t) {
       const isLich = rankStr.includes('LICH');
       const rankRoR = rad * (isLich ? 1.95 : 1.75);
       netCtx.beginPath();
-      netCtx.arc(a.x, a.y, rankRoR, 0, 6.28);
+      netCtx.arc(a.ax, a.ay, rankRoR, 0, 6.28);
       netCtx.strokeStyle = isLich
         ? 'rgba(255,107,138,' + (0.30 * breath) + ')'
         : 'rgba(240,200,100,' + (0.22 * breath) + ')';
@@ -1672,14 +1692,14 @@ function drawNet(t) {
       const [hR, hG, hB] = cn <= 3 ? [182, 241, 255] : cn <= 10 ? [255, 209, 102] : [233, 233, 239];
       const halo1 = rad * 2.2, halo2 = rad * 2.55;
       // Outer faint bloom (tier-colored)
-      const bloom = netCtx.createRadialGradient(a.x, a.y, halo1, a.x, a.y, halo2 + 8);
+      const bloom = netCtx.createRadialGradient(a.ax, a.ay, halo1, a.x, a.y, halo2 + 8);
       bloom.addColorStop(0, 'rgba(' + hR + ',' + hG + ',' + hB + ',' + (0.18 + 0.1 * breath) + ')');
       bloom.addColorStop(1, 'rgba(0,0,0,0)');
       netCtx.fillStyle = bloom;
       netCtx.fillRect(a.x - halo2 - 8, a.y - halo2 - 8, (halo2 + 8) * 2, (halo2 + 8) * 2);
       // Crisp halo ring — slightly thicker for diamond tier
       netCtx.beginPath();
-      netCtx.arc(a.x, a.y, halo1, 0, 6.28);
+      netCtx.arc(a.ax, a.ay, halo1, 0, 6.28);
       netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',' + (cn <= 3 ? 0.7 : cn <= 10 ? 0.55 : 0.4) + ')';
       netCtx.lineWidth = cn <= 3 ? 1.6 : cn <= 10 ? 1.3 : 1.0;
       netCtx.stroke();
@@ -1706,7 +1726,7 @@ function drawNet(t) {
     // Outer ring — tier color, thin, not solid
     const rr = rad * (isH ? 1.15 : 1);
     netCtx.beginPath();
-    netCtx.arc(a.x, a.y, rr, 0, 6.28);
+    netCtx.arc(a.ax, a.ay, rr, 0, 6.28);
     netCtx.strokeStyle = a.online
       ? \`rgba(\${ringR},\${ringG},\${ringB},\${ringA * breath})\`
       : \`rgba(\${ringR},\${ringG},\${ringB},\${.18})\`;
@@ -1723,7 +1743,7 @@ function drawNet(t) {
         const offset = 3.5 + i * 2.4;
         const alpha = Math.max(0.05, 0.26 - i * 0.025);
         netCtx.beginPath();
-        netCtx.arc(a.x, a.y, rr + offset, 0, 6.28);
+        netCtx.arc(a.ax, a.ay, rr + offset, 0, 6.28);
         netCtx.strokeStyle = 'rgba(' + ringR + ',' + ringG + ',' + ringB + ',' + alpha + ')';
         netCtx.lineWidth = 0.6;
         netCtx.stroke();
@@ -1736,7 +1756,7 @@ function drawNet(t) {
       netCtx.beginPath();
       const start = -Math.PI / 2;
       const end = start + md * Math.PI * 2;
-      netCtx.arc(a.x, a.y, rr + 2, start, end);
+      netCtx.arc(a.ax, a.ay, rr + 2, start, end);
       netCtx.strokeStyle = \`rgba(\${ringR},\${ringG},\${ringB},\${.55 * breath})\`;
       netCtx.lineWidth = 2;
       netCtx.stroke();
@@ -1745,7 +1765,7 @@ function drawNet(t) {
     // Small core dot — wealth signal, always small (NOT the big solid fill)
     const coreR = Math.max(1.8, Math.min(3.2, rad * 0.26));
     netCtx.beginPath();
-    netCtx.arc(a.x, a.y, coreR, 0, 6.28);
+    netCtx.arc(a.ax, a.ay, coreR, 0, 6.28);
     netCtx.fillStyle = a.online
       ? \`rgba(\${ringR},\${ringG},\${ringB},\${.95 * breath})\`
       : 'rgba(120,125,135,.45)';
@@ -1753,18 +1773,27 @@ function drawNet(t) {
 
     // Activity spark — expanding ring on agent's own node when it fires a tx
     if (sparkAlpha > 0) {
-      const sparkR = rr + 4 + (1 - sparkAlpha) * 16;
+      // Double ring — inner + outer expanding waves for a richer "pulse"
+      // than the old single thin line. Both fade together.
+      const phase = 1 - sparkAlpha;
+      const sparkR = rr + 4 + phase * 22;
+      const innerR = rr + 2 + phase * 10;
       netCtx.beginPath();
-      netCtx.arc(a.x, a.y, sparkR, 0, 6.28);
-      netCtx.strokeStyle = \`rgba(\${ringR},\${ringG},\${ringB},\${sparkAlpha * .7})\`;
-      netCtx.lineWidth = 1.2 * sparkAlpha;
+      netCtx.arc(a.ax, a.ay, sparkR, 0, 6.28);
+      netCtx.strokeStyle = \`rgba(\${ringR},\${ringG},\${ringB},\${sparkAlpha * .8})\`;
+      netCtx.lineWidth = 1.4 * sparkAlpha;
+      netCtx.stroke();
+      netCtx.beginPath();
+      netCtx.arc(a.ax, a.ay, innerR, 0, 6.28);
+      netCtx.strokeStyle = \`rgba(\${ringR},\${ringG},\${ringB},\${sparkAlpha * .45})\`;
+      netCtx.lineWidth = 2 * sparkAlpha;
       netCtx.stroke();
     }
 
     // Hover ring (outermost)
     if (isH) {
       netCtx.beginPath();
-      netCtx.arc(a.x, a.y, rr + 9, 0, 6.28);
+      netCtx.arc(a.ax, a.ay, rr + 9, 0, 6.28);
       netCtx.strokeStyle = 'rgba(67,255,180,.75)';
       netCtx.lineWidth = 1;
       netCtx.stroke();
@@ -1782,9 +1811,9 @@ function drawNet(t) {
     netCtx.textAlign = 'center';
     // Candidate position: above the node. If too close to any previous
     // label this frame, flip below. If still colliding, nudge +14 more px.
-    let lx = a.x, ly = a.y - rr - 10;
+    let lx = a.ax, ly = a.ay - rr - 10;
     const collides = (window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22);
-    if (collides) ly = a.y + rr + 16;
+    if (collides) ly = a.ay + rr + 16;
     if ((window.__frameLabels || []).some(p => Math.hypot(lx - p.x, ly - p.y) < 22)) {
       ly += 14;
     }
