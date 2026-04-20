@@ -629,10 +629,10 @@ body {
   <nav class="nav-links">
     <a href="/flow" class="active">Map</a>
     <a href="/tape">Tape</a>
+    <a href="/moments">Moments</a>
     <a href="/earn">Earn</a>
     <a href="/me">Dashboard</a>
-    <a href="/founders">Founders</a>
-    <a href="/how">How</a>
+    <a href="/data">Data</a>
   </nav>
   <div class="nav-right" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <a href="/deploy" class="nav-cta" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:var(--accent,#43ffb4);color:#000;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;box-shadow:0 0 18px rgba(67,255,180,.35);transition:transform .15s">◆ mint \$50</a>

@@ -758,18 +758,18 @@ footer .tag {
 
 const NAV = (active) => {
   const item = (href, label) => `<a href="${href}"${active===href ? ' class="active"' : ''}>${label}</a>`;
-  // Primary nav: 6 items. Everything else (Citizens, Treasury, Dispatch,
-  // Source) lives in the footer of each page where it's discoverable
-  // without crowding the top bar. Nav should be scannable in one glance.
+  // Primary nav: 6 items by user-action priority. Founders/How/Citizens/
+  // Treasury/Dispatch/Source live in each page's footer — discoverable but
+  // not crowding the top bar. Nav should be scannable in one glance.
   return `<header class="nav"><div class="nav-inner">
     <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
     <nav class="nav-links">
       ${item('/flow', 'Map')}
       ${item('/tape', 'Tape')}
+      ${item('/moments', 'Moments')}
       ${item('/earn', 'Earn')}
       ${item('/me', 'Dashboard')}
-      ${item('/founders', 'Founders')}
-      ${item('/how', 'How')}
+      ${item('/data', 'Data')}
       <button id="dcWalletPill" class="wallet-pill" onclick="window.dcWallet && window.dcWallet.toggle()" title="Connect Phantom">Connect</button>
     </nav>
   </div></header>

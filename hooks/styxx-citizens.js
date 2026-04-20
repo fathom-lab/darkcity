@@ -441,10 +441,10 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
   <nav class="nav-links">
     <a href="/flow">Map</a>
     <a href="/tape">Tape</a>
+    <a href="/moments">Moments</a>
     <a href="/earn">Earn</a>
     <a href="/me">Dashboard</a>
-    <a href="/founders">Founders</a>
-    <a href="/how">How</a>
+    <a href="/data">Data</a>
   </nav>
 </div></header>
 
