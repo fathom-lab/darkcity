@@ -1385,32 +1385,35 @@ function layoutAgents() {
   }
 
   // ─── Post-layout relaxation ────────────────────────────────────────────
-  // After the mycelium formula plants each agent at (homeX, homeY), some
-  // siblings end up within ~30px of each other because their parent pool
-  // and branch angles collided. A few passes of pairwise repulsion spread
-  // them out evenly without distorting the tree structure (we only nudge
-  // each other's homeX/homeY, not parentX/parentY — so hyphae still
-  // anchor to original parent positions).
-  const MIN_DIST = 95;  // minimum center-to-center separation — enough for
-                        // label (text ~60px wide) + node (~20px radius) to
-                        // not overlap neighbors in dense clusters.
-  for (let pass = 0; pass < 6; pass++) {
-    for (let i = 0; i < placed.length; i++) {
-      for (let j = i + 1; j < placed.length; j++) {
-        const a = placed[i], b = placed[j];
-        const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d > MIN_DIST || d === 0) continue;
-        const push = (MIN_DIST - d) * 0.5;
-        const nx = d ? dx / d : Math.random() - 0.5;
-        const ny = d ? dy / d : Math.random() - 0.5;
-        a.homeX -= nx * push; a.homeY -= ny * push;
-        b.homeX += nx * push; b.homeY += ny * push;
+  // Only runs when the agent roster actually changes — once positions settle,
+  // re-running per poll creates oscillation + ghost labels from the motion
+  // trail. Tracked via a module-local roster signature. When the same set of
+  // agents comes in on the next poll, we skip relaxation entirely and let
+  // the frame-loop easing hold positions.
+  const rosterSig = placed.map(p => p.id).sort().join(',');
+  if (rosterSig !== window.__lastRosterSig) {
+    window.__lastRosterSig = rosterSig;
+    // Pairwise repulsion that only spreads overlapping nodes, never pushes
+    // them through each other. Gentle MIN_DIST so the mycelium tree shape
+    // survives intact — we nudge off local collisions, not reflow the topology.
+    const MIN_DIST = 52;  // rad(~20) + rad(~20) + label padding (~12)
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = i + 1; j < placed.length; j++) {
+          const a = placed[i], b = placed[j];
+          const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > MIN_DIST || d === 0) continue;
+          const push = (MIN_DIST - d) * 0.35;  // gentler than 0.5
+          const nx = d ? dx / d : Math.random() - 0.5;
+          const ny = d ? dy / d : Math.random() - 0.5;
+          a.homeX -= nx * push; a.homeY -= ny * push;
+          b.homeX += nx * push; b.homeY += ny * push;
+        }
       }
     }
   }
-  // After relaxation, sync targets so the frame loop eases toward the
-  // spread-out positions.
+  // Always sync targets so the frame loop eases toward current home
   for (const a of placed) { a.tx = a.homeX; a.ty = a.homeY; }
 }
 
