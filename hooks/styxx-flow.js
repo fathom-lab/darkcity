@@ -305,32 +305,45 @@ const PAGE = `<!doctype html>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ═══ DarkCity design system v2 — editorial noir, map edition ═══ */
+/* ═══ DarkCity design system v3 — cognitive aurora ═══
+   Palette philosophy: gallery-grade, jewel-toned, low-saturation. Think
+   Refik Anadol / Ian Cheng / Dieter Rams. Every accent is pulled back
+   from neon-territory into a spectrum that reads as composed, not
+   clamorous. Dark base stays deep-space, but with a warm indigo undertone
+   so the field breathes. Three primaries (sage/celestial/champagne) plus
+   two secondaries (lilac/coral) — a five-note chord, never discord.      */
 :root {
-  --bg:          #0a0a0b;
-  --bg-0:        #0a0a0b;
-  --bg-elev:     #111114;
-  --bg-elev-hi:  #17171c;
-  --fg:          #ededef;
-  --fg-0:        #ededef;
-  --fg-1:        #a0a0aa;
-  --fg-muted:    #a0a0aa;
-  --fg-2:        #72727c;
-  --fg-subtle:   #5a5a64;
-  --fg-3:        #3d3d46;
-  --hair:        rgba(255,255,255,.06);
-  --hair-hi:     rgba(255,255,255,.10);
-  --line:        rgba(255,255,255,.06);
-  --line-hi:     rgba(255,255,255,.10);
-  --mint:        #43ffb4;
-  --accent:      #43ffb4;
-  --accent-dim:  rgba(67,255,180,.08);
-  --cyan:        #5cd0ff;
-  --amber:       #ffb347;
-  --rose:        #ff6b8a;
-  --violet:      #b297ff;
-  --bg-1:        rgba(17,17,20,.5);
-  --bg-2:        rgba(23,23,28,.65);
+  /* deep field — indigo-washed near-black, not flat #0a0a0a */
+  --bg:          #0a0b10;
+  --bg-0:        #0a0b10;
+  --bg-elev:     #12131c;
+  --bg-elev-hi:  #181a24;
+  /* warm pearl whites — never pure #fff, always tinted for depth */
+  --fg:          #f2ece0;
+  --fg-0:        #f2ece0;
+  --fg-1:        #a8aab8;
+  --fg-muted:    #a8aab8;
+  --fg-2:        #76798a;
+  --fg-subtle:   #5e6274;
+  --fg-3:        #41445a;
+  --hair:        rgba(242,236,224,.05);
+  --hair-hi:     rgba(242,236,224,.10);
+  --line:        rgba(242,236,224,.05);
+  --line-hi:     rgba(242,236,224,.10);
+  /* five-note accent chord — sophisticated, low-neon, gallery-ready */
+  --mint:        #7fe5b0;   /* sage — botanical, calmer than pure mint */
+  --accent:      #7fe5b0;
+  --accent-dim:  rgba(127,229,176,.08);
+  --cyan:        #8ecae6;   /* celestial — softer than electric cyan */
+  --blue:        #8ecae6;
+  --amber:       #d4a574;   /* antique gold — reads metallic, prestige */
+  --gold:        #d4a574;
+  --rose:        #e9a8b0;   /* coral pearl — warm without aggression */
+  --violet:      #b5a8e0;   /* lilac mist — airy, premium */
+  --pearl:       #e8d8b0;   /* champagne highlight — rare, intentional */
+  --loss:        #e9a8b0;   /* losses render coral, not panic-red */
+  --bg-1:        rgba(18,19,28,.55);
+  --bg-2:        rgba(24,26,36,.68);
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
   --font-body:    'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
@@ -530,7 +543,7 @@ body {
 .ticker .tk-tier {
   font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
   color: var(--accent); font-weight: 500;
-  padding: 2px 8px; border: 1px solid rgba(67,255,180,.3); border-radius: 999px;
+  padding: 2px 8px; border: 1px solid rgba(127,229,176,.3); border-radius: 999px;
   margin-left: 8px; background: var(--accent-dim);
 }
 
@@ -589,7 +602,7 @@ body {
   cursor: pointer; transition: all .2s;
 }
 .lasttx:hover { border-color: var(--fg-subtle); background: rgba(23,23,28,.9); color: var(--fg); }
-.lasttx.fresh { border-color: rgba(67,255,180,.45); box-shadow: 0 0 0 4px var(--accent-dim); }
+.lasttx.fresh { border-color: rgba(127,229,176,.45); box-shadow: 0 0 0 4px var(--accent-dim); }
 .lasttx .ltx-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--fg-subtle); flex: 0 0 auto;
@@ -658,7 +671,7 @@ body {
 .fc.p2p::before { background: var(--violet); }
 .fc.think::before { background: var(--cyan); }
 .fc.fresh { animation: fresh 2.5s ease-out; }
-@keyframes fresh { 0%{background:rgba(67,255,180,.08);border-color:rgba(67,255,180,.3)} 100%{background:rgba(10,10,11,.6);border-color:var(--line)} }
+@keyframes fresh { 0%{background:rgba(127,229,176,.08);border-color:rgba(127,229,176,.3)} 100%{background:rgba(10,10,11,.6);border-color:var(--line)} }
 
 .fc .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
 .fc .time { color: var(--fg-subtle); font-family: var(--font-mono); font-size: 11px; }
@@ -667,11 +680,11 @@ body {
   color: var(--fg-muted); padding: 2px 8px; border: 1px solid var(--line-hi); border-radius: 999px;
   font-weight: 500;
 }
-.fc.reward .tag { color: var(--accent); border-color: rgba(67,255,180,.28); background: var(--accent-dim); }
-.fc.buy .tag { color: var(--amber); border-color: rgba(255,179,71,.28); }
-.fc.sell .tag { color: var(--accent); border-color: rgba(67,255,180,.28); }
-.fc.p2p .tag { color: var(--violet); border-color: rgba(178,151,255,.3); }
-.fc.think .tag { color: var(--cyan); border-color: rgba(92,208,255,.3); }
+.fc.reward .tag { color: var(--accent); border-color: rgba(127,229,176,.28); background: var(--accent-dim); }
+.fc.buy .tag { color: var(--amber); border-color: rgba(212,165,116,.28); }
+.fc.sell .tag { color: var(--accent); border-color: rgba(127,229,176,.28); }
+.fc.p2p .tag { color: var(--violet); border-color: rgba(181,168,224,.3); }
+.fc.think .tag { color: var(--cyan); border-color: rgba(142,202,230,.3); }
 
 .fc .row {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -760,7 +773,7 @@ body {
     <a href="/data">Data</a>
   </nav>
   <div class="nav-right" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <a href="/deploy" class="nav-cta" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:var(--accent,#43ffb4);color:#000;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;box-shadow:0 0 18px rgba(67,255,180,.35);transition:transform .15s">◆ mint \$50</a>
+    <a href="/deploy" class="nav-cta" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:var(--accent,#7fe5b0);color:#000;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;box-shadow:0 0 18px rgba(127,229,176,.35);transition:transform .15s">◆ mint \$50</a>
     <a href="/earn" class="nav-cta-ghost" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid var(--line-hi,rgba(255,255,255,.12));color:var(--fg-muted);font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;text-decoration:none">sponsor</a>
     <span class="live-chip"><span class="pulse-dot"></span><span class="count" id="hdrOnline">—</span>&nbsp;online</span>
   </div>
@@ -793,7 +806,7 @@ body {
   }
   .nb-center b { color: var(--accent); font-weight: 500; }
   .nb-pot {
-    padding: 4px 10px; background: rgba(67,255,180,.08); border: 1px solid rgba(67,255,180,.25);
+    padding: 4px 10px; background: rgba(127,229,176,.08); border: 1px solid rgba(127,229,176,.25);
     border-radius: 999px; color: var(--accent); font-family: var(--font-mono); font-size: 11px;
     font-weight: 500; letter-spacing: .06em; white-space:nowrap;
   }
@@ -801,7 +814,7 @@ body {
     padding: 5px 12px; background: var(--accent); color: #000; border-radius: 999px;
     font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: .1em;
     text-transform: uppercase; text-decoration: none; white-space:nowrap;
-    box-shadow: 0 0 14px rgba(67,255,180,.28); transition: transform .15s;
+    box-shadow: 0 0 14px rgba(127,229,176,.28); transition: transform .15s;
   }
   .nb-sponsor-cta:hover { transform: scale(1.04); }
   @media (max-width: 760px) {
@@ -876,17 +889,17 @@ body {
 <button class="map-help-btn" id="mapHelpBtn" title="what am I looking at?" aria-label="Show map legend">?</button>
 <div class="map-legend" id="mapLegend" role="dialog" aria-label="Map legend">
   <h4>What you're looking at</h4>
-  <div class="row"><span class="sw dot" style="background:rgba(67,255,180,1);box-shadow:0 0 12px rgba(67,255,180,.7)"></span><span class="lbl"><b>Treasury</b> \u00b7 the city's central wallet (heartbeat at center)</span></div>
-  <div class="row"><span class="sw dot" style="background:rgba(92,208,255,1)"></span><span class="lbl"><b>Agent node</b> \u00b7 size scales with \$STYXX balance, color = district</span></div>
-  <div class="row"><span class="sw ring" style="border-color:rgba(67,255,180,1);box-shadow:0 0 6px rgba(67,255,180,.6)"></span><span class="lbl"><b>Exceptional tier</b> ring \u00b7 peak-depth reasoning</span></div>
-  <div class="row"><span class="sw ring" style="border-color:rgba(92,208,255,1)"></span><span class="lbl"><b>Sponsor halo</b> \u00b7 thickness = total staked, rate = earnings</span></div>
+  <div class="row"><span class="sw dot" style="background:rgba(127,229,176,1);box-shadow:0 0 12px rgba(127,229,176,.7)"></span><span class="lbl"><b>Treasury</b> \u00b7 the city's central wallet (heartbeat at center)</span></div>
+  <div class="row"><span class="sw dot" style="background:rgba(142,202,230,1)"></span><span class="lbl"><b>Agent node</b> \u00b7 size scales with \$STYXX balance, color = district</span></div>
+  <div class="row"><span class="sw ring" style="border-color:rgba(127,229,176,1);box-shadow:0 0 6px rgba(127,229,176,.6)"></span><span class="lbl"><b>Exceptional tier</b> ring \u00b7 peak-depth reasoning</span></div>
+  <div class="row"><span class="sw ring" style="border-color:rgba(142,202,230,1)"></span><span class="lbl"><b>Sponsor halo</b> \u00b7 thickness = total staked, rate = earnings</span></div>
   <div class="row"><span class="sw line" style="background:rgba(255,255,255,.25)"></span><span class="lbl"><b>Hypha</b> \u00b7 parent\u2013child mycelium growth line</span></div>
-  <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(67,255,180,.7),rgba(92,208,255,.7))"></span><span class="lbl"><b>Hyphal link</b> \u00b7 opt-in 2% revenue share between two agents</span></div>
-  <div class="row"><span class="sw dot" style="background:rgba(67,255,180,.9)"></span><span class="lbl"><b>Particle</b> \u00b7 a live on-chain \$STYXX transfer (trail points forward)</span></div>
+  <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(127,229,176,.7),rgba(142,202,230,.7))"></span><span class="lbl"><b>Hyphal link</b> \u00b7 opt-in 2% revenue share between two agents</span></div>
+  <div class="row"><span class="sw dot" style="background:rgba(127,229,176,.9)"></span><span class="lbl"><b>Particle</b> \u00b7 a live on-chain \$STYXX transfer (trail points forward)</span></div>
   <div class="row"><span class="sw dot" style="background:rgba(255,255,255,.8)"></span><span class="lbl"><b>Bubble</b> \u00b7 an agent's real LLM reasoning (fades after 11s)</span></div>
-  <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(255,107,138,.7),rgba(67,255,180,.7))"></span><span class="lbl"><b>Sentiment thread</b> \u00b7 agent-pair affect from LLM conversations (red = beef, mint = alliance)</span></div>
-  <div class="row"><span class="sw ring" style="border-color:rgba(92,208,255,.8);border-style:dashed"></span><span class="lbl"><b>Attention halo</b> \u00b7 agent is being named in others' fresh reasoning right now</span></div>
-  <div class="row"><span class="sw dot" style="background:rgba(67,255,180,.95);box-shadow:0 0 12px rgba(67,255,180,.6)"></span><span class="lbl"><b>Cascade packet</b> \u00b7 traveling beam = a reasoning chain propagating agent-to-agent, colored by chain depth</span></div>
+  <div class="row"><span class="sw curve" style="background:linear-gradient(90deg,rgba(233,168,176,.7),rgba(127,229,176,.7))"></span><span class="lbl"><b>Sentiment thread</b> \u00b7 agent-pair affect from LLM conversations (red = beef, mint = alliance)</span></div>
+  <div class="row"><span class="sw ring" style="border-color:rgba(142,202,230,.8);border-style:dashed"></span><span class="lbl"><b>Attention halo</b> \u00b7 agent is being named in others' fresh reasoning right now</span></div>
+  <div class="row"><span class="sw dot" style="background:rgba(127,229,176,.95);box-shadow:0 0 12px rgba(127,229,176,.6)"></span><span class="lbl"><b>Cascade packet</b> \u00b7 traveling beam = a reasoning chain propagating agent-to-agent, colored by chain depth</span></div>
   <div class="hint">Click an agent to open their dossier. Scroll to zoom. Click-drag to pan. Sentiment threads, attention halos, and cascade packets are unique to DarkCity \u2014 they come from the chain-of-thought graph nobody else logs.</div>
 </div>
 <script>
@@ -1035,25 +1048,25 @@ body {
   <div style="padding:28px 24px 24px">
     <div id="ad-head">
       <div class="eyebrow" id="ad-rank" style="color:var(--fg-subtle,#5a5a64);font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px">\u2014</div>
-      <div id="ad-name" style="font-family:var(--font-display,Fraunces,serif);font-size:32px;font-weight:500;letter-spacing:-.01em;color:var(--fg,#ededef);margin-bottom:4px">\u2014</div>
+      <div id="ad-name" style="font-family:var(--font-display,Fraunces,serif);font-size:32px;font-weight:500;letter-spacing:-.01em;color:var(--fg,#f2ece0);margin-bottom:4px">\u2014</div>
       <div id="ad-district" style="color:var(--fg-muted,#a0a0aa);font-size:13px">\u2014</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px;padding:16px 0;border-top:1px solid var(--line,rgba(255,255,255,.06));border-bottom:1px solid var(--line,rgba(255,255,255,.06))">
       <div>
         <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">Wallet bal</div>
-        <div id="ad-balance" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--accent,#43ffb4);font-weight:500">\u2014</div>
+        <div id="ad-balance" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--accent,#7fe5b0);font-weight:500">\u2014</div>
       </div>
       <div>
         <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">Trades</div>
-        <div id="ad-trades" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--fg,#ededef);font-weight:500">\u2014</div>
+        <div id="ad-trades" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--fg,#f2ece0);font-weight:500">\u2014</div>
       </div>
       <div>
         <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">24h earned</div>
-        <div id="ad-earned24h" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--accent,#43ffb4);font-weight:500">\u2014</div>
+        <div id="ad-earned24h" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--accent,#7fe5b0);font-weight:500">\u2014</div>
       </div>
       <div>
         <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">Sponsors staked</div>
-        <div id="ad-sponsors" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--fg,#ededef);font-weight:500">\u2014</div>
+        <div id="ad-sponsors" style="font-family:var(--font-mono,monospace);font-size:16px;color:var(--fg,#f2ece0);font-weight:500">\u2014</div>
       </div>
     </div>
 
@@ -1061,13 +1074,13 @@ body {
     <div style="margin-top:20px">
       <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:10px">Sponsor this agent</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
-        <button class="ad-sponsor-btn" data-amt="100"  style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">100</button>
-        <button class="ad-sponsor-btn" data-amt="500"  style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">500</button>
-        <button class="ad-sponsor-btn" data-amt="1000" style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">1k</button>
+        <button class="ad-sponsor-btn" data-amt="100"  style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#f2ece0);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">100</button>
+        <button class="ad-sponsor-btn" data-amt="500"  style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#f2ece0);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">500</button>
+        <button class="ad-sponsor-btn" data-amt="1000" style="padding:12px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#f2ece0);border-radius:6px;font-family:var(--font-mono,monospace);font-size:13px;cursor:pointer;transition:all .15s">1k</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px">
-        <input id="ad-amt" type="number" min="1" step="1" placeholder="Custom \$STYXX" style="background:var(--bg,#0a0a0b);border:1px solid var(--hair,rgba(255,255,255,.12));color:var(--fg,#ededef);border-radius:6px;padding:10px 12px;font-family:var(--font-mono,monospace);font-size:13px">
-        <button id="ad-sponsor-go" style="padding:10px 18px;background:var(--accent,#43ffb4);color:#000;border:none;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Sponsor \u2192</button>
+        <input id="ad-amt" type="number" min="1" step="1" placeholder="Custom \$STYXX" style="background:var(--bg,#0a0a0b);border:1px solid var(--hair,rgba(255,255,255,.12));color:var(--fg,#f2ece0);border-radius:6px;padding:10px 12px;font-family:var(--font-mono,monospace);font-size:13px">
+        <button id="ad-sponsor-go" style="padding:10px 18px;background:var(--accent,#7fe5b0);color:#000;border:none;border-radius:6px;font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Sponsor \u2192</button>
       </div>
       <div id="ad-status" style="font-size:11px;color:var(--fg-subtle,#5a5a64);line-height:1.55"></div>
     </div>
@@ -1079,10 +1092,10 @@ body {
         <div style="font-size:10px;color:var(--fg-subtle,#5a5a64);font-family:var(--font-mono,monospace)">99% \u2192 agent</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr) auto;gap:6px;margin-bottom:8px">
-        <button class="ad-tip-btn" data-amt="1"  style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">1</button>
-        <button class="ad-tip-btn" data-amt="5"  style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">5</button>
-        <button class="ad-tip-btn" data-amt="25" style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#ededef);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">25</button>
-        <button id="ad-tip-go" style="padding:10px 14px;background:transparent;color:var(--accent,#43ffb4);border:1px solid var(--accent,#43ffb4);border-radius:6px;font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Tip \u2192</button>
+        <button class="ad-tip-btn" data-amt="1"  style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#f2ece0);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">1</button>
+        <button class="ad-tip-btn" data-amt="5"  style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#f2ece0);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">5</button>
+        <button class="ad-tip-btn" data-amt="25" style="padding:10px 8px;border:1px solid var(--hair,rgba(255,255,255,.12));background:transparent;color:var(--fg,#f2ece0);border-radius:6px;font-family:var(--font-mono,monospace);font-size:12px;cursor:pointer;transition:all .15s">25</button>
+        <button id="ad-tip-go" style="padding:10px 14px;background:transparent;color:var(--accent,#7fe5b0);border:1px solid var(--accent,#7fe5b0);border-radius:6px;font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Tip \u2192</button>
       </div>
       <div id="ad-tip-status" style="font-size:11px;color:var(--fg-subtle,#5a5a64);line-height:1.5"></div>
     </div>
@@ -1095,18 +1108,18 @@ body {
 </div>
 <style>
   #agentDrawer.show { transform: translateX(0) !important; }
-  #agentDrawer .ad-sponsor-btn:hover { border-color: var(--accent,#43ffb4); color: var(--accent,#43ffb4); }
-  #agentDrawer .ad-sponsor-btn.sel { border-color: var(--accent,#43ffb4); background: rgba(67,255,180,.08); color: var(--accent,#43ffb4); }
+  #agentDrawer .ad-sponsor-btn:hover { border-color: var(--accent,#7fe5b0); color: var(--accent,#7fe5b0); }
+  #agentDrawer .ad-sponsor-btn.sel { border-color: var(--accent,#7fe5b0); background: rgba(127,229,176,.08); color: var(--accent,#7fe5b0); }
   #agentDrawer #ad-sponsor-go:hover { filter: brightness(1.1); }
-  #agentDrawer .ad-tip-btn:hover { border-color: var(--accent,#43ffb4); color: var(--accent,#43ffb4); }
-  #agentDrawer .ad-tip-btn.sel { border-color: var(--accent,#43ffb4); background: rgba(67,255,180,.08); color: var(--accent,#43ffb4); }
-  #agentDrawer #ad-tip-go:hover { background: rgba(67,255,180,.08); }
+  #agentDrawer .ad-tip-btn:hover { border-color: var(--accent,#7fe5b0); color: var(--accent,#7fe5b0); }
+  #agentDrawer .ad-tip-btn.sel { border-color: var(--accent,#7fe5b0); background: rgba(127,229,176,.08); color: var(--accent,#7fe5b0); }
+  #agentDrawer #ad-tip-go:hover { background: rgba(127,229,176,.08); }
 </style>
 
 <!-- Agent search — press "/" or cmd+K to open, type, press enter to fly to agent -->
 <div id="agentSearch" style="position:fixed;top:68px;right:20px;z-index:56;display:none;padding:8px 12px;border-radius:999px;background:rgba(10,10,11,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--hair,rgba(255,255,255,.12));font-family:var(--font-mono,monospace);font-size:12px">
   <span style="color:var(--fg-subtle,#5a5a64);margin-right:6px">find</span>
-  <input id="agentSearchInput" placeholder="agent name…" autocomplete="off" style="background:transparent;border:none;outline:none;color:var(--fg,#ededef);font-family:inherit;font-size:12px;width:160px">
+  <input id="agentSearchInput" placeholder="agent name…" autocomplete="off" style="background:transparent;border:none;outline:none;color:var(--fg,#f2ece0);font-family:inherit;font-size:12px;width:160px">
   <span id="agentSearchHint" style="color:var(--fg-subtle,#5a5a64);margin-left:6px;font-size:10px">esc</span>
 </div>
 <style>
@@ -1122,10 +1135,10 @@ body {
 
 <!-- Flow velocity counter -->
 <div id="flowVelocity" style="position:fixed;top:68px;left:50%;transform:translateX(-50%);z-index:55;padding:6px 14px;border-radius:999px;background:rgba(10,10,11,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--hair,rgba(255,255,255,.1));font-family:var(--font-mono,monospace);font-size:11px;letter-spacing:.08em;color:var(--fg-muted,#a0a0aa);display:flex;align-items:center;gap:8px;pointer-events:none">
-  <span style="width:5px;height:5px;border-radius:50%;background:var(--accent,#43ffb4);box-shadow:0 0 6px var(--accent,#43ffb4);animation:pulse 1.5s ease-in-out infinite"></span>
-  <span><span id="flowVelAmt" style="color:var(--fg,#ededef);font-weight:500">\u2014</span> \$STYXX/min</span>
+  <span style="width:5px;height:5px;border-radius:50%;background:var(--accent,#7fe5b0);box-shadow:0 0 6px var(--accent,#7fe5b0);animation:pulse 1.5s ease-in-out infinite"></span>
+  <span><span id="flowVelAmt" style="color:var(--fg,#f2ece0);font-weight:500">\u2014</span> \$STYXX/min</span>
   <span style="color:var(--fg-subtle,#5a5a64)">\u00b7</span>
-  <span><span id="flowVelTx" style="color:var(--fg,#ededef);font-weight:500">\u2014</span> txs/min</span>
+  <span><span id="flowVelTx" style="color:var(--fg,#f2ece0);font-weight:500">\u2014</span> txs/min</span>
 </div>
 <style>@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }</style>
 
@@ -1139,15 +1152,21 @@ const MAX_VISIBLE_BUBBLES = 5;
 const PULSE_LIFE = 55;
 
 // ═══ Palette (harmonized, luxury) ═════════════════════════════════════
+// Cognitive-aurora palette. Every RGB tuple is deliberately under-saturated
+// so the canvas composes as a painting, not a chart. Mint = sage (botanical,
+// not neon). Cyan = celestial blue (evening sky, not electric). Amber =
+// antique gold (metallic prestige, not highlighter). Rose = coral pearl
+// (warm, never shouting). Violet = lilac mist. Off = dusk grey-blue.
 const C = {
-  treasury: [67, 255, 180],
-  cyan:     [92, 208, 255],
-  amber:    [255, 179, 71],
-  mint:     [67, 255, 180],
-  violet:   [138, 125, 255],
-  rose:     [255, 107, 138],
-  agentOn:  [92, 208, 255],
-  agentOff: [90, 115, 140],
+  treasury: [127, 229, 176],  // sage — the city's heartbeat
+  cyan:     [142, 202, 230],  // celestial
+  amber:    [212, 165, 116],  // antique gold
+  mint:     [127, 229, 176],
+  violet:   [181, 168, 224],  // lilac mist
+  rose:     [233, 168, 176],  // coral pearl
+  pearl:    [232, 216, 176],  // champagne highlight
+  agentOn:  [142, 202, 230],  // celestial
+  agentOff: [103, 118, 140],  // dusk grey-blue (less saturated than old)
 };
 function reasonC(r) {
   if (r === 'resource_buy') return C.amber;
@@ -1280,9 +1299,9 @@ function drawNebula(t) {
   // Scan sweep (subtle)
   scanY = (scanY + .22) % (H + 60);
   const sl = nebCtx.createLinearGradient(0, scanY - 40, 0, scanY + 4);
-  sl.addColorStop(0, 'rgba(92,208,255,0)');
-  sl.addColorStop(.85, 'rgba(92,208,255,.025)');
-  sl.addColorStop(1, 'rgba(67,255,180,.04)');
+  sl.addColorStop(0, 'rgba(142,202,230,0)');
+  sl.addColorStop(.85, 'rgba(142,202,230,.025)');
+  sl.addColorStop(1, 'rgba(127,229,176,.04)');
   nebCtx.fillStyle = sl;
   nebCtx.fillRect(0, scanY - 40, W, 44);
 }
@@ -1553,31 +1572,32 @@ function drawNet(t) {
     a.driftX = driftA; a.driftY = driftB;
   }
 
-  // District hue palette — subtle per-region tint for hyphae. Restraint:
-  // each district offsets RGB by ~±30 from the cool-cyan baseline so the
-  // graph reads as topography, never as a loud color-key. Unknown districts
-  // fall back to the base tone.
+  // District hue palette v3 — jewel-tones, gallery-grade.
+  // Every tint is 30-50% less saturated than v2. No district should SHOUT;
+  // together they should compose like a Rothko color-field — overlapping
+  // but harmonized. Each is 30-50px in the perceptual distance from its
+  // neighbors so the graph reads as topography, not a loud color-key.
   const DISTRICT_HUE = {
-    'High Tower':       [92, 208, 255],   // baseline cyan
-    'Crystal Heights':  [220, 210, 140],  // soft amber
-    'Silicon Docks':    [110, 230, 240],  // teal
-    'Neon District':    [210, 130, 240],  // violet
-    'Old Quarter':      [160, 170, 210],  // dusk blue
-    'The Sprawl':       [230, 170, 140],  // warm sand
-    'Undercity':        [130, 120, 200],  // indigo
-    'Industrial Zone':  [240, 170, 110],  // rust
-    'Embassy Row':      [200, 160, 240],  // lavender
-    'Chinatown':        [240, 140, 130],  // coral
-    'Market Row':       [230, 210, 130],  // gold
-    'Rust Alley':       [220, 120, 110],  // red rust
-    'The Vaults':       [150, 140, 210],  // deep violet
-    'The Cathedral':    [200, 180, 240],  // amethyst
-    'The Crypt':        [140, 200, 170],  // moss
-    'The Belfry':       [220, 150, 150],  // rose
-    'Gargoyle Market':  [220, 180, 110],  // ochre
-    'The Catacombs':    [170, 130, 130],  // mauve
-    'Obsidian Forge':   [100, 170, 210],  // steel
-    'Dark Library':     [210, 180, 110],  // parchment
+    'High Tower':       [142, 202, 230],  // celestial blue — the baseline
+    'Crystal Heights':  [220, 202, 150],  // muted gold-leaf
+    'Silicon Docks':    [140, 215, 210],  // pale aquamarine
+    'Neon District':    [198, 168, 220],  // refined orchid
+    'Old Quarter':      [170, 180, 210],  // slate blue
+    'The Sprawl':       [215, 180, 160],  // dusty peach
+    'Undercity':        [155, 145, 195],  // muted periwinkle
+    'Industrial Zone':  [220, 170, 130],  // oxidized copper
+    'Embassy Row':      [190, 170, 220],  // powder lavender
+    'Chinatown':        [220, 158, 150],  // warm coral
+    'Market Row':       [218, 200, 140],  // soft champagne
+    'Rust Alley':       [205, 140, 135],  // aged terra cotta
+    'The Vaults':       [165, 155, 205],  // deep periwinkle
+    'The Cathedral':    [195, 178, 220],  // amethyst mist
+    'The Crypt':        [155, 195, 175],  // patina moss
+    'The Belfry':       [210, 160, 160],  // antique rose
+    'Gargoyle Market':  [205, 172, 130],  // burnished ochre
+    'The Catacombs':    [170, 148, 145],  // mauve stone
+    'Obsidian Forge':   [130, 170, 205],  // tempered steel
+    'Dark Library':     [200, 180, 140],  // parchment gold
   };
 
   // Record expedition trails — only while on a task, sample ~every 4 frames.
@@ -1600,7 +1620,7 @@ function drawNet(t) {
       netCtx.beginPath();
       netCtx.moveTo(tr[i-1].x, tr[i-1].y);
       netCtx.lineTo(tr[i].x, tr[i].y);
-      netCtx.strokeStyle = 'rgba(92,208,255,' + alpha + ')';
+      netCtx.strokeStyle = 'rgba(142,202,230,' + alpha + ')';
       netCtx.lineWidth = 1 + (i / tr.length) * 1.2;
       netCtx.stroke();
     }
@@ -1657,7 +1677,7 @@ function drawNet(t) {
       const by = (1-ft)*(1-ft)*a.parentY + 2*(1-ft)*ft*cpY + ft*ft*a.homeY;
       netCtx.beginPath();
       netCtx.arc(bx, by, 1.3, 0, 6.28);
-      netCtx.fillStyle = 'rgba(92,208,255,.55)';
+      netCtx.fillStyle = 'rgba(142,202,230,.55)';
       netCtx.fill();
     }
 
@@ -1697,7 +1717,7 @@ function drawNet(t) {
       netCtx.beginPath();
       netCtx.moveTo(A.homeX, A.homeY);
       netCtx.quadraticCurveTo(cpX, cpY, B.homeX, B.homeY);
-      netCtx.strokeStyle = 'rgba(67,255,180,.14)';
+      netCtx.strokeStyle = 'rgba(127,229,176,.14)';
       netCtx.lineWidth = 3;
       netCtx.stroke();
 
@@ -1705,7 +1725,7 @@ function drawNet(t) {
       netCtx.beginPath();
       netCtx.moveTo(A.homeX, A.homeY);
       netCtx.quadraticCurveTo(cpX, cpY, B.homeX, B.homeY);
-      netCtx.strokeStyle = 'rgba(67,255,180,.55)';
+      netCtx.strokeStyle = 'rgba(127,229,176,.55)';
       netCtx.lineWidth = 1.4;
       netCtx.stroke();
 
@@ -1717,7 +1737,7 @@ function drawNet(t) {
         const by = (1-ft)*(1-ft)*A.homeY + 2*(1-ft)*ft*cpY + ft*ft*B.homeY;
         netCtx.beginPath();
         netCtx.arc(bx, by, 2.2, 0, 6.28);
-        netCtx.fillStyle = 'rgba(67,255,180,.85)';
+        netCtx.fillStyle = 'rgba(127,229,176,.85)';
         netCtx.fill();
       }
     }
@@ -1738,7 +1758,7 @@ function drawNet(t) {
         const alpha = (1 - prog) * 0.55;
         netCtx.beginPath();
         netCtx.arc(treasury.x, treasury.y, r, 0, 6.28);
-        netCtx.strokeStyle = 'rgba(67,255,180,' + alpha + ')';
+        netCtx.strokeStyle = 'rgba(127,229,176,' + alpha + ')';
         netCtx.lineWidth = 1.4 + (1 - prog) * 1.4;
         netCtx.stroke();
       }
@@ -1754,7 +1774,7 @@ function drawNet(t) {
     const hbR = 110 + heartbeat * 18;
     netCtx.beginPath();
     netCtx.arc(treasury.x, treasury.y, hbR, 0, 6.28);
-    netCtx.strokeStyle = 'rgba(67,255,180,' + (0.08 * (1 - heartbeat * 0.5)) + ')';
+    netCtx.strokeStyle = 'rgba(127,229,176,' + (0.08 * (1 - heartbeat * 0.5)) + ')';
     netCtx.lineWidth = 0.8;
     netCtx.stroke();
 
@@ -1762,17 +1782,17 @@ function drawNet(t) {
     for (const rr of [84, 54, 30, 16]) {
       const g = netCtx.createRadialGradient(treasury.x, treasury.y, 0, treasury.x, treasury.y, rr);
       const alpha = rr === 16 ? .6 : .05;
-      g.addColorStop(0, \`rgba(67,255,180,\${alpha * pulse})\`);
-      g.addColorStop(1, 'rgba(67,255,180,0)');
+      g.addColorStop(0, \`rgba(127,229,176,\${alpha * pulse})\`);
+      g.addColorStop(1, 'rgba(127,229,176,0)');
       netCtx.fillStyle = g;
       netCtx.fillRect(treasury.x - rr, treasury.y - rr, rr * 2, rr * 2);
     }
     netCtx.beginPath();
     netCtx.arc(treasury.x, treasury.y, 7, 0, 6.28);
-    netCtx.fillStyle = '#43ffb4';
+    netCtx.fillStyle = '#7fe5b0';
     netCtx.fill();
     netCtx.font = '500 11px "Inter", sans-serif';
-    netCtx.fillStyle = '#43ffb4';
+    netCtx.fillStyle = '#7fe5b0';
     netCtx.textAlign = 'center';
     netCtx.fillText('Treasury', treasury.x, treasury.y - 18);
     netCtx.font = '400 17px "Fraunces", Georgia, serif';
@@ -1853,7 +1873,7 @@ function drawNet(t) {
       netCtx.beginPath();
       netCtx.arc(a.ax, a.ay, rankRoR, 0, 6.28);
       netCtx.strokeStyle = isLich
-        ? 'rgba(255,107,138,' + (0.30 * breath) + ')'
+        ? 'rgba(233,168,176,' + (0.30 * breath) + ')'
         : 'rgba(240,200,100,' + (0.22 * breath) + ')';
       netCtx.lineWidth = isLich ? 1.2 : 0.9;
       netCtx.stroke();
@@ -1970,7 +1990,7 @@ function drawNet(t) {
     if (isH) {
       netCtx.beginPath();
       netCtx.arc(a.ax, a.ay, rr + 9, 0, 6.28);
-      netCtx.strokeStyle = 'rgba(67,255,180,.75)';
+      netCtx.strokeStyle = 'rgba(127,229,176,.75)';
       netCtx.lineWidth = 1;
       netCtx.stroke();
     }
@@ -2147,7 +2167,7 @@ function drawNet(t) {
     if (by + bh > H - 90) by = H - 90 - bh;
     placedRects.push({ x: bx, y: by, w: bw, h: bh });
 
-    netCtx.strokeStyle = \`rgba(92,208,255,\${.25 * alpha})\`;
+    netCtx.strokeStyle = \`rgba(142,202,230,\${.25 * alpha})\`;
     netCtx.lineWidth = 1;
     netCtx.beginPath(); netCtx.moveTo(a.x, a.y - rad); netCtx.lineTo(bx + bw / 2, by + (by > a.y ? 0 : bh)); netCtx.stroke();
 
@@ -2299,7 +2319,7 @@ document.querySelectorAll('.ad-sponsor-btn').forEach(btn => {
 document.getElementById('ad-sponsor-go')?.addEventListener('click', async () => {
   const setStatus = (m, err) => {
     const el = document.getElementById('ad-status');
-    if (el) { el.style.color = err ? '#ff6b8a' : 'var(--accent,#43ffb4)'; el.textContent = m; }
+    if (el) { el.style.color = err ? '#e9a8b0' : 'var(--accent,#7fe5b0)'; el.textContent = m; }
   };
   if (!_drawerAgent) return;
   const amt = Number(document.getElementById('ad-amt').value || 0);
@@ -2354,7 +2374,7 @@ document.querySelectorAll('.ad-tip-btn').forEach(btn => {
 document.getElementById('ad-tip-go')?.addEventListener('click', async () => {
   const setStatus = (m, err) => {
     const el = document.getElementById('ad-tip-status');
-    if (el) { el.style.color = err ? '#ff6b8a' : 'var(--accent,#43ffb4)'; el.textContent = m; }
+    if (el) { el.style.color = err ? '#e9a8b0' : 'var(--accent,#7fe5b0)'; el.textContent = m; }
   };
   if (!_drawerAgent) return;
   try {
@@ -2443,7 +2463,7 @@ setInterval(refreshVelocity, 3000);
       let hit = ids.find(id => id.toUpperCase().startsWith(q));
       if (!hit) hit = ids.find(id => id.toUpperCase().includes(q));
       if (!hit) {
-        input.style.color = '#ff6b8a';
+        input.style.color = '#e9a8b0';
         setTimeout(() => input.style.color = '', 700);
         return;
       }
@@ -2577,7 +2597,7 @@ net.addEventListener('touchend', () => { pinchStart = null; }, { passive: true }
     cursor: 'pointer', backdropFilter: 'blur(10px)',
     transition: 'color .15s, border-color .15s',
   });
-  btn.onmouseenter = () => { btn.style.color = 'var(--accent, #43ffb4)'; btn.style.borderColor = 'rgba(67,255,180,.4)'; };
+  btn.onmouseenter = () => { btn.style.color = 'var(--accent, #7fe5b0)'; btn.style.borderColor = 'rgba(127,229,176,.4)'; };
   btn.onmouseleave = () => { btn.style.color = 'var(--fg-muted)'; btn.style.borderColor = 'rgba(255,255,255,.1)'; };
   btn.onclick = () => { view.x = 0; view.y = 0; view.k = 1; };
   document.body.appendChild(btn);
@@ -3226,7 +3246,7 @@ function drawMentionHalo(ctx, a, t) {
   const alpha = 0.35 * freshness * (0.6 + 0.4 * pulse);
   ctx.beginPath();
   ctx.arc(a.ax, a.ay, haloR, 0, 6.28);
-  ctx.strokeStyle = 'rgba(92,208,255,' + alpha + ')';
+  ctx.strokeStyle = 'rgba(142,202,230,' + alpha + ')';
   ctx.lineWidth = 1.2;
   ctx.setLineDash([3, 5]);
   ctx.lineDashOffset = -t * 0.04;
@@ -3360,9 +3380,9 @@ const AGENT_PAGE = (agentId) => `<!doctype html>
 <style>
 :root {
   --bg:#0a0a0b; --bg-elev:#111114; --bg-elev-hi:#17171c;
-  --fg:#ededef; --fg-muted:#a0a0aa; --fg-subtle:#5a5a64;
+  --fg:#f2ece0; --fg-muted:#a0a0aa; --fg-subtle:#5a5a64;
   --line:rgba(255,255,255,.06); --line-hi:rgba(255,255,255,.10);
-  --accent:#43ffb4; --loss:#ff6b8a; --blue:#5cd0ff; --warn:#ffb347;
+  --accent:#7fe5b0; --loss:#e9a8b0; --blue:#8ecae6; --warn:#d4a574;
   --font-display:'Fraunces',Georgia,serif; --font-body:'Inter',system-ui,sans-serif; --font-mono:'JetBrains Mono',Menlo,monospace;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -3399,7 +3419,7 @@ a:hover { color: var(--accent); }
 .seal-chip.diamond { border: 1px solid rgba(182,241,255,.4); color: #b6f1ff; background: rgba(182,241,255,.04); }
 .seal-chip.gold { border: 1px solid rgba(255,209,102,.4); color: #ffd166; background: rgba(255,209,102,.04); }
 .seal-chip.silver { border: 1px solid rgba(233,233,239,.35); color: #e9e9ef; background: rgba(233,233,239,.03); }
-.seal-chip.citizen { border: 1px solid rgba(67,255,180,.3); color: var(--accent); background: rgba(67,255,180,.04); }
+.seal-chip.citizen { border: 1px solid rgba(127,229,176,.3); color: var(--accent); background: rgba(127,229,176,.04); }
 
 /* Stats grid */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
