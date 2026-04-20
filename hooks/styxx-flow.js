@@ -1073,6 +1073,26 @@ function updateAgentTask(a, now) {
   if (a.homeX == null) return;
   if (!a.task) {
     a.tx = a.homeX; a.ty = a.homeY;
+    // Ambient wander — keeps the city feeling alive between narratives.
+    // Every 45–120s an agent does a small local expedition (kind=local, no
+    // target outside the tree). This gives the map a living breath even
+    // when the LLM brain is quiet.
+    if (a.nextAmbientAt == null) a.nextAmbientAt = now + 15000 + Math.random() * 45000;
+    if (now >= a.nextAmbientAt) {
+      const r = 12 + Math.random() * 18;
+      const ang = Math.random() * Math.PI * 2;
+      a.task = {
+        kind: 'ambient',
+        targetX: a.homeX + Math.cos(ang) * r,
+        targetY: a.homeY + Math.sin(ang) * r,
+        phase: 'outbound',
+        startedAt: now, phaseStartedAt: now,
+        outboundMs: 2500 + Math.random() * 2500,
+        dwellMs:    800  + Math.random() * 1200,
+        returnMs:   2500 + Math.random() * 2500,
+      };
+      a.nextAmbientAt = now + 45000 + Math.random() * 75000;
+    }
     return;
   }
   const T = a.task;
