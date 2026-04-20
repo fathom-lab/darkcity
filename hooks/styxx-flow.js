@@ -1479,9 +1479,19 @@ function assignTask(agent, action) {
     targetX = pick.homeX; targetY = pick.homeY;
     kind = 'social';
   } else if (act.includes('trade') || act.includes('contract') || act.includes('resource') || act.includes('claim') || act.includes('market')) {
-    // Head to treasury/market center — transactional work
+    // Short step TOWARD treasury but not all the way — otherwise with 33
+    // agents constantly claiming contracts they all pile into the center.
+    // 20-35% of the vector toward treasury + small tangential jitter so
+    // siblings don't overlap on return paths. Reads as "I'm working on a
+    // contract" without reflowing the whole map into the treasury zone.
     if (!treasury) return;
-    targetX = treasury.homeX; targetY = treasury.homeY;
+    const dx = treasury.homeX - agent.homeX, dy = treasury.homeY - agent.homeY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const t = 0.20 + Math.random() * 0.15;
+    const jitterAng = Math.random() * Math.PI * 2;
+    const jitterR = 20 + Math.random() * 14;
+    targetX = agent.homeX + dx * t + Math.cos(jitterAng) * jitterR;
+    targetY = agent.homeY + dy * t + Math.sin(jitterAng) * jitterR;
     kind = 'market';
   } else if (act.includes('build') || act.includes('reason') || act.includes('think')) {
     // Short wobble at home — heads-down work
