@@ -1412,137 +1412,154 @@ function layoutAgents() {
   const cy = (topMargin + H - bottomMargin) / 2;
   const availW = W - leftMargin - rightMargin;
   const availH = H - topMargin - bottomMargin;
-  const R = Math.sqrt(availW * availH) * 0.52;
-  const baseLen = R * 0.85;
 
   if (treasury) { treasury.x = cx; treasury.y = cy; treasury.homeX = cx; treasury.homeY = cy; }
 
-  // ─── District-wedge layout ─────────────────────────────────────────────
-  // The old mycelium tree was beautiful but illegible: newcomers couldn't
-  // tell what the graph was SHOWING. New approach — DarkCity is a literal
-  // CITY, so render it as one: group agents by district, give each district
-  // an angular wedge on the canvas proportional to its population, name the
-  // wedge with an atmospheric banner. Same treasury-centric topology, but
-  // now the map teaches itself: "Undercity lives here. The Sprawl over
-  // there. That's why they're different colors."
+  // ─── Organic district-colony layout ────────────────────────────────────
+  // The old wedge layout looked like a clock face — every agent on a radial
+  // spoke, perfect ring around treasury, contained. That wasn't a mycelium
+  // city; that was a dashboard widget.
+  //
+  // New topology: each district is a COLONY with its own centroid placed
+  // out in the canvas. Agents swarm organically around their colony's
+  // centroid — headliner (top earner) closest to center, others orbit
+  // outward in a spiral. Colonies connect back to treasury with THICK
+  // arterial hyphae (visible in drawNet). Agents in the same colony are
+  // connected to each other via FINE mycelium threads — that's what
+  // gives the map its bacterial-ecosystem texture instead of hub-and-spoke.
   const roster = [...agents.values()];
 
-  // Bucket by district (stable order so the map doesn't spin between polls).
   const byDistrict = new Map();
   for (const a of roster) {
     const d = a.district || 'Unassigned';
     if (!byDistrict.has(d)) byDistrict.set(d, []);
     byDistrict.get(d).push(a);
   }
-  // Sort districts by name for stable placement; within a district, sort by
-  // depth then id so the "headliner" of each district is always in the same
-  // visual slot relative to the banner.
   const districtEntries = [...byDistrict.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  // Sort each colony so the headliner is at index 0 — drives the spiral.
+  // Priority: 7d earnings → styxx balance → mean depth → id.
   for (const [, list] of districtEntries) {
     list.sort((a, b) => {
-      const da = Number(a.depth_24h || 0), db = Number(b.depth_24h || 0);
+      const ea = Number(a.earnings_7d || 0), eb = Number(b.earnings_7d || 0);
+      if (ea !== eb) return eb - ea;
+      const sa = Number(a.styxx || 0), sb = Number(b.styxx || 0);
+      if (sa !== sb) return sb - sa;
+      const da = Number(a.mean_depth || 0), db = Number(b.mean_depth || 0);
       if (da !== db) return db - da;
       return a.id.localeCompare(b.id);
     });
   }
 
-  // Each district gets a wedge proportional to its agent count, minimum 18°
-  // so a one-agent district still reads as a named slice and not a sliver.
-  const totalAgents = roster.length;
-  const minWedge = 18 * Math.PI / 180;
-  const unitWedge = (2 * Math.PI - minWedge * districtEntries.length) / totalAgents;
-  let startAngle = -Math.PI / 2;  // first district sits at top
+  // Each colony gets a direction (angle) around treasury. Bigger colonies
+  // extend FURTHER out — mass = presence. This also varies the orbit radius
+  // so the map isn't a perfect circle of colonies.
+  const N = districtEntries.length || 1;
+  const innerShell = Math.min(availW, availH) * 0.30;   // minimum dist from treasury
+  const outerShell = Math.min(availW, availH) * 0.44;   // max dist
+  const centroids = new Map();
+  for (let i = 0; i < districtEntries.length; i++) {
+    const [name, list] = districtEntries[i];
+    // Golden-angle-ish offset so big districts don't all land top+right.
+    const baseAng = -Math.PI / 2 + (i / N) * Math.PI * 2;
+    // Jitter each district's angle slightly (stable hash) so the colony
+    // pattern looks organic, not polar-grid.
+    const angJitter = (hashStr(name + 'angle') - 0.5) * 0.10;
+    const ang = baseAng + angJitter;
+    // Colony radius: bigger colonies push out further; add stable jitter.
+    const mass = Math.sqrt(list.length);
+    const rJitter = hashStr(name + 'r') * 0.22;
+    const r = innerShell + (outerShell - innerShell) * (mass / 4 + rJitter * 0.6);
+    centroids.set(name, {
+      name,
+      list,
+      x: cx + Math.cos(ang) * r,
+      y: cy + Math.sin(ang) * r,
+      angle: ang,
+      radius: r,
+      count: list.length,
+    });
+  }
 
+  // ─── Place agents organically around each colony centroid ───────────
+  // Headliner sits close to centroid; rest spiral outward in a phyllotaxis-
+  // inspired pattern (golden angle) so density is even + natural-looking.
+  // Agents LINK back to the COLONY CENTROID as their "parent" so hyphae
+  // draw to the colony, not directly to treasury.
   const placed = [];
-  const districtLayout = [];  // for banner rendering
-  for (const [district, list] of districtEntries) {
-    const wedge = minWedge + unitWedge * list.length;
-    const wedgeCenter = startAngle + wedge / 2;
+  const PHI = Math.PI * (3 - Math.sqrt(5));  // golden angle, 137.5°
 
-    // Arc agents across the wedge. Within each wedge, split into an inner
-    // arc (top-earner / deep thinker, closer in) and an outer arc (rest).
-    // This gives the map a sense of DEPTH — the strongest performers sit
-    // tighter to the treasury, not just the first primary.
-    const inner = Math.min(3, Math.ceil(list.length / 3));
+  for (const [name, cent] of centroids) {
+    const list = cent.list;
+    const colonyRadius = 22 + Math.sqrt(list.length) * 18;   // scales with colony size
+
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
-      const isInner = i < inner;
-      const ringFrac = isInner ? 0.55 : 0.92;
-      // spread angles within [startAngle + wedge*0.12, startAngle + wedge*0.88]
-      // so no agent hugs the wedge boundary (prevents adjacent-wedge overlap).
-      const t = list.length === 1 ? 0.5 : (i / (list.length - 1));
-      const ang = startAngle + wedge * (0.15 + 0.7 * t);
-      const jitter = (hashStr(a.id + 'j') - 0.5) * 0.04;   // ±2° so it doesn't look robotic
-      const radJitter = 0.9 + hashStr(a.id + 'rj') * 0.15;
-      const r = baseLen * ringFrac * radJitter;
-      a.homeX = cx + Math.cos(ang + jitter) * r;
-      a.homeY = cy + Math.sin(ang + jitter) * r;
-      a.angle = ang + jitter;
-      a.parent = 'TREASURY';
-      a.parentX = cx; a.parentY = cy;
+      // Spiral: index 0 at center, then phyllotaxis outward
+      // Noise per agent so it doesn't look mechanical
+      const spiralR = 4 + Math.sqrt(i) * 18 * (0.85 + hashStr(a.id + 'sr') * 0.3);
+      const spiralA = i * PHI + hashStr(a.id + 'sa') * 0.4;
+      a.homeX = cent.x + Math.cos(spiralA) * spiralR;
+      a.homeY = cent.y + Math.sin(spiralA) * spiralR;
       a.tx = a.homeX; a.ty = a.homeY;
+      a.angle = spiralA;
+      // Anchor hyphae to the colony centroid (not treasury).
+      // We tag with a colony marker so drawNet draws colony→agent lines
+      // instead of treasury→agent for everything.
+      a.parent = '_colony_' + name;
+      a.parentX = cent.x; a.parentY = cent.y;
+      a.colonyX = cent.x; a.colonyY = cent.y;
+      a.colonyName = name;
+      a.colonyIndex = i;  // rank within colony — used for scale variation
       if (a.x == null || a.y == null) {
-        a.x = cx; a.y = cy;
+        a.x = cent.x; a.y = cent.y;
         a.bornAt = Date.now();
         a.growing = true;
         addPulse(cx, cy, [67, 255, 180]);
       }
       placed.push(a);
     }
-
-    // Banner target — just past the outer ring so it reads like a street sign
-    // at the entrance to the district, not on top of agents.
-    const bannerR = baseLen * 1.08;
-    districtLayout.push({
-      name: district,
-      count: list.length,
-      wedgeCenter,
-      wedgeStart: startAngle,
-      wedgeEnd: startAngle + wedge,
-      bannerX: cx + Math.cos(wedgeCenter) * bannerR,
-      bannerY: cy + Math.sin(wedgeCenter) * bannerR,
-    });
-    startAngle += wedge;
   }
 
+  // ─── Store district layout for banner rendering ─────────────────────
+  // Banner renders AT each colony centroid with an outward offset, so it
+  // labels its cluster like a neighborhood sign hovering above the blob.
   districts.clear();
-  for (const d of districtLayout) {
-    districts.set(d.name, d);
+  for (const [name, cent] of centroids) {
+    // Offset banner outward (away from treasury) by the colony's radius
+    const colonyExtent = 22 + Math.sqrt(cent.count) * 18;
+    const outward = colonyExtent + 30;
+    districts.set(name, {
+      name,
+      count: cent.count,
+      centroidX: cent.x,
+      centroidY: cent.y,
+      wedgeCenter: cent.angle,
+      // Banner position — above the cluster, away from treasury
+      bannerX: cent.x + Math.cos(cent.angle) * outward,
+      bannerY: cent.y + Math.sin(cent.angle) * outward,
+      colonyRadius: colonyExtent,
+    });
   }
 
-  // ─── Post-layout relaxation ────────────────────────────────────────────
-  // Runs every poll (deterministic — same roster → same output positions,
-  // so there's no oscillation between polls). Gentle pairwise repulsion
-  // that only spreads overlapping nodes, never reflows the tree. MIN_DIST
-  // = 2×node_radius + label padding, small enough that the mycelium shape
-  // stays intact.
-  // MIN_DIST widened 62 → 96 so agent labels (typical 80–100px wide at Fraunces
-   // 20px) don't overlap. More passes (4 → 6) to let the field actually settle
-  // at the new spacing without oscillation.
-  // MIN_DIST sized past widest Fraunces-20 label. Relaxation is gentle and
-  // same-district only — we don't want The Sprawl's nodes pushing into
-  // Undercity's territory. The wedge layout already guarantees no overlap
-  // between districts, so we only need local de-overlapping within wedges.
-  const MIN_DIST = 120;
-  for (let pass = 0; pass < 6; pass++) {
+  // ─── Relaxation: prevent overlaps within colonies ───────────────────
+  const MIN_DIST = 68;
+  for (let pass = 0; pass < 8; pass++) {
     for (let i = 0; i < placed.length; i++) {
       for (let j = i + 1; j < placed.length; j++) {
         const a = placed[i], b = placed[j];
-        // skip cross-district pairs — wedges already separate them
-        if (a.district !== b.district) continue;
         const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
         const d = Math.sqrt(dx * dx + dy * dy);
         if (d > MIN_DIST || d === 0) continue;
-        const push = (MIN_DIST - d) * 0.35;
-        const nx = dx / d;
-        const ny = dy / d;
+        const push = (MIN_DIST - d) * 0.5;
+        const nx = dx / d, ny = dy / d;
         a.homeX -= nx * push; a.homeY -= ny * push;
         b.homeX += nx * push; b.homeY += ny * push;
       }
     }
   }
-  // Clamp to margin bounds so stronger repulsion never flings nodes
-  // off-screen on dense rosters.
+
+  // Clamp to margin bounds
   const padX = 40, padY = 36;
   for (const a of placed) {
     a.homeX = Math.max(leftMargin + padX, Math.min(W - rightMargin - padX, a.homeX));
@@ -1551,9 +1568,18 @@ function layoutAgents() {
   }
 }
 
-function nodeRadius(styxx, online) {
+function nodeRadius(styxx, online, earnings_7d, colonyIndex) {
+  // Base radius scales with STYXX balance (log-compressed).
   const base = online ? 4.5 : 3;
-  return base + Math.min(16, Math.log(1 + Math.max(0, styxx)) * 2);
+  let r = base + Math.min(16, Math.log(1 + Math.max(0, styxx)) * 2);
+  // Colony headliner (index 0) gets a visible scale bump — every district
+  // has a protagonist you can spot at a glance.
+  if (colonyIndex === 0) r *= 1.35;
+  else if (colonyIndex === 1) r *= 1.15;
+  // 7d earnings bump — real earners stand out from balance hoarders
+  const e = Math.max(0, Number(earnings_7d || 0));
+  if (e > 0) r += Math.min(7, Math.log10(1 + e) * 1.8);
+  return r;
 }
 
 // ═══ Amoeba membrane path ═════════════════════════════════════════════════
@@ -1833,57 +1859,109 @@ function drawNet(t) {
     }
   }
 
-  // ─── District banners + wedge boundaries ──────────────────────────────
-  // Paint a soft arc behind each district's wedge + the district name at the
-  // outer edge. This is what teaches newcomers the map is a CITY — before
-  // this, it was just dots. The banner sits past the outer ring so it reads
-  // like a street sign, not a label on top of an agent.
+  // ─── Colony aura + banners — replaces the old wedge-arc topology ───
+  // No more circular fence. Each colony has its own radial bloom (haze
+  // over its agents) and a floating serif name above the cluster. This
+  // is what gets rid of the "contained dashboard" look and makes the map
+  // feel like scattered neighborhoods in fog.
   if (treasury && districts.size > 0) {
-    const tcx = treasury.homeX, tcy = treasury.homeY;
-    const innerR = Math.hypot((treasury.homeX || 0) - (agents.values().next().value?.homeX || 0), 0);
-    // Use stable geometry from the layout — bannerX/Y for label, wedgeStart/End for arc
     for (const [name, d] of districts) {
-      if (d.bannerX == null) continue;  // skip if not yet laid out
+      if (d.centroidX == null) continue;
       const tint = DISTRICT_HUE[name] || [160, 180, 200];
       const [hR, hG, hB] = tint;
 
-      // Subtle boundary arc — a dim radial separator between districts. Rendered
-      // at the outer ring so it looks like a district fence, not a pie slice.
-      const R_banner = Math.hypot(d.bannerX - tcx, d.bannerY - tcy) * 0.95;
+      // Colony bloom — soft radial haze, NO hard edge, NO boundary line.
+      const bloomR = (d.colonyRadius || 60) * 2.4;
+      const bloom = netCtx.createRadialGradient(d.centroidX, d.centroidY, (d.colonyRadius || 60) * 0.2,
+                                                 d.centroidX, d.centroidY, bloomR);
+      bloom.addColorStop(0, \`rgba(\${hR},\${hG},\${hB},0.10)\`);
+      bloom.addColorStop(0.55, \`rgba(\${hR},\${hG},\${hB},0.04)\`);
+      bloom.addColorStop(1, \`rgba(\${hR},\${hG},\${hB},0)\`);
+      netCtx.fillStyle = bloom;
       netCtx.beginPath();
-      netCtx.arc(tcx, tcy, R_banner, d.wedgeStart, d.wedgeEnd);
-      netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.08)';
-      netCtx.lineWidth = 28;
-      netCtx.stroke();
+      netCtx.arc(d.centroidX, d.centroidY, bloomR, 0, 6.28);
+      netCtx.fill();
 
-      // Thin definition line on top of the soft arc — reads like a contour.
-      netCtx.beginPath();
-      netCtx.arc(tcx, tcy, R_banner, d.wedgeStart + 0.02, d.wedgeEnd - 0.02);
-      netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.22)';
-      netCtx.lineWidth = 0.8;
-      netCtx.stroke();
-
-      // District banner — italic serif along the wedge arc. Reads like
-      // a gallery plaque, not a subway sign.
+      // District banner — floats above colony, horizontal italic serif.
       netCtx.save();
-      netCtx.translate(d.bannerX, d.bannerY);
-      let rot = d.wedgeCenter + Math.PI / 2;
-      if (d.wedgeCenter > 0 && d.wedgeCenter < Math.PI) rot -= Math.PI;
-      netCtx.rotate(rot);
-      // Primary name: italic serif, tracked-out, generous
-      netCtx.font = '400 italic 14px "Fraunces", "EB Garamond", Georgia, serif';
+      netCtx.font = '400 italic 15px "Fraunces", "EB Garamond", Georgia, serif';
       netCtx.textAlign = 'center';
       netCtx.textBaseline = 'middle';
-      // Subtle shadow for depth on the cell-dense backdrop
       netCtx.fillStyle = 'rgba(0,0,0,0.55)';
-      netCtx.fillText(name, 0.5, 0.5);
-      netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.78)';
-      netCtx.fillText(name, 0, 0);
-      // Sub-label: agent count in tight monospace, desaturated
+      netCtx.fillText(name, d.bannerX + 0.5, d.bannerY + 0.5);
+      netCtx.fillStyle = \`rgba(\${hR},\${hG},\${hB},0.85)\`;
+      netCtx.fillText(name, d.bannerX, d.bannerY);
       netCtx.font = '500 9px "JetBrains Mono", "Geist Mono", monospace';
-      netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.42)';
-      netCtx.fillText(String(d.count).padStart(2, '0') + '  AGENTS', 0, 15);
+      netCtx.fillStyle = \`rgba(\${hR},\${hG},\${hB},0.42)\`;
+      netCtx.fillText(String(d.count).padStart(2, '0') + '  AGENTS', d.bannerX, d.bannerY + 15);
       netCtx.restore();
+    }
+
+    // Intra-colony mycelium threads — fine lines between nearby cells in
+    // the same colony. Slow breathing pulse. This is the bacterial-
+    // ecosystem texture. Alpha is low (0.03-0.08) so it's atmospheric,
+    // not loud.
+    const THREAD_MAX_DIST = 110;
+    const colonyGroups = new Map();
+    for (const a of agents.values()) {
+      const cn = a.colonyName || a.district;
+      if (!cn) continue;
+      if (!colonyGroups.has(cn)) colonyGroups.set(cn, []);
+      colonyGroups.get(cn).push(a);
+    }
+    for (const [cName, members] of colonyGroups) {
+      if (members.length < 2) continue;
+      const tint = DISTRICT_HUE[cName] || [160, 180, 200];
+      const [hR, hG, hB] = tint;
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          const a = members[i], b = members[j];
+          if (a.homeX == null || b.homeX == null) continue;
+          const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
+          const dd = Math.sqrt(dx * dx + dy * dy);
+          if (dd > THREAD_MAX_DIST || dd < 22) continue;
+          const alphaBase = Math.max(0, (THREAD_MAX_DIST - dd) / THREAD_MAX_DIST) * 0.08;
+          if (alphaBase < 0.008) continue;
+          const p = 0.55 + 0.45 * Math.sin(t * 0.001 + hashStr(a.id + b.id) * 6.28);
+          const alpha = alphaBase * p;
+          const mx = (a.homeX + b.homeX) / 2, my = (a.homeY + b.homeY) / 2;
+          const px = -dy / dd, py = dx / dd;
+          const bend = (hashStr(a.id + b.id + 'bend') - 0.5) * 10;
+          netCtx.beginPath();
+          netCtx.moveTo(a.homeX, a.homeY);
+          netCtx.quadraticCurveTo(mx + px * bend, my + py * bend, b.homeX, b.homeY);
+          netCtx.strokeStyle = \`rgba(\${hR},\${hG},\${hB},\${alpha})\`;
+          netCtx.lineWidth = 0.6;
+          netCtx.stroke();
+        }
+      }
+    }
+
+    // Arterial trunk — treasury → each colony centroid. Thick curved vein.
+    for (const [name, d] of districts) {
+      const tint = DISTRICT_HUE[name] || [140, 160, 190];
+      const [hR, hG, hB] = tint;
+      const pulse = 0.5 + 0.5 * Math.sin(t * 0.0007 + hashStr(name) * 6.28);
+      const dxl = d.centroidX - treasury.homeX;
+      const dyl = d.centroidY - treasury.homeY;
+      const lenl = Math.hypot(dxl, dyl) || 1;
+      const pxl = -dyl / lenl, pyl = dxl / lenl;
+      const bend = (hashStr(name + 'trunk') - 0.5) * lenl * 0.12;
+      const mx = (treasury.homeX + d.centroidX) / 2, my = (treasury.homeY + d.centroidY) / 2;
+      // Soft underlayer
+      netCtx.beginPath();
+      netCtx.moveTo(treasury.homeX, treasury.homeY);
+      netCtx.quadraticCurveTo(mx + pxl * bend, my + pyl * bend, d.centroidX, d.centroidY);
+      netCtx.strokeStyle = \`rgba(\${hR},\${hG},\${hB},\${0.18 + 0.10 * pulse})\`;
+      netCtx.lineWidth = 1.6;
+      netCtx.stroke();
+      // Thin crisp overlay for definition
+      netCtx.beginPath();
+      netCtx.moveTo(treasury.homeX, treasury.homeY);
+      netCtx.quadraticCurveTo(mx + pxl * bend, my + pyl * bend, d.centroidX, d.centroidY);
+      netCtx.strokeStyle = \`rgba(\${hR},\${hG},\${hB},\${0.35 + 0.2 * pulse})\`;
+      netCtx.lineWidth = 0.5;
+      netCtx.stroke();
     }
   }
 
@@ -2026,42 +2104,87 @@ function drawNet(t) {
     }
   }
 
-  // Treasury node (big, commanding)
+  // Treasury nucleus — stellar body at the heart of the mycelium city.
+  // Concentric radial blooms, slow heartbeat ring, rotating light rays,
+  // and a solid mint-green core. This is THE focal point; everything
+  // orbits it.
   if (treasury) {
     const pulse = .75 + .25 * Math.sin(t * .0018);
-    // Slow heartbeat — one outer ring breathing at ~0.7Hz gives the treasury
-    // center an organic living feel without any loud motion. Restraint.
     const heartbeat = 0.5 + 0.5 * Math.sin(t * 0.0018);
-    const hbR = 110 + heartbeat * 18;
+    const tx = treasury.x, ty = treasury.y;
+
+    // Furthest halo — giant soft bloom so the treasury reads as a luminous body
+    // even at zoom-out. Mint-green nebula around the center.
+    const megaBloom = netCtx.createRadialGradient(tx, ty, 0, tx, ty, 240);
+    megaBloom.addColorStop(0, \`rgba(127,229,176,\${0.11 * pulse})\`);
+    megaBloom.addColorStop(0.35, \`rgba(127,229,176,\${0.04 * pulse})\`);
+    megaBloom.addColorStop(1, 'rgba(127,229,176,0)');
+    netCtx.fillStyle = megaBloom;
     netCtx.beginPath();
-    netCtx.arc(treasury.x, treasury.y, hbR, 0, 6.28);
-    netCtx.strokeStyle = 'rgba(127,229,176,' + (0.08 * (1 - heartbeat * 0.5)) + ')';
-    netCtx.lineWidth = 0.8;
+    netCtx.arc(tx, ty, 240, 0, 6.28);
+    netCtx.fill();
+
+    // Rotating light rays — 12 faint spokes radiating outward, slow rotation,
+    // give the nucleus a sense of active emission. Like a slow-mo Kirlian
+    // aura, not a spinning fan.
+    const rayCount = 12;
+    const rayLen = 180;
+    const rayRot = t * 0.00018;
+    for (let i = 0; i < rayCount; i++) {
+      const ang = rayRot + (i / rayCount) * Math.PI * 2;
+      const r1 = 18, r2 = rayLen * (0.75 + 0.25 * Math.sin(t * 0.0006 + i * 1.3));
+      const x2 = tx + Math.cos(ang) * r2;
+      const y2 = ty + Math.sin(ang) * r2;
+      const grad = netCtx.createLinearGradient(tx + Math.cos(ang) * r1, ty + Math.sin(ang) * r1, x2, y2);
+      grad.addColorStop(0, \`rgba(127,229,176,\${0.28 * pulse})\`);
+      grad.addColorStop(1, 'rgba(127,229,176,0)');
+      netCtx.beginPath();
+      netCtx.moveTo(tx + Math.cos(ang) * r1, ty + Math.sin(ang) * r1);
+      netCtx.lineTo(x2, y2);
+      netCtx.strokeStyle = grad;
+      netCtx.lineWidth = 1.3;
+      netCtx.stroke();
+    }
+
+    // Outer heartbeat ring — slow breathing boundary
+    const hbR = 96 + heartbeat * 20;
+    netCtx.beginPath();
+    netCtx.arc(tx, ty, hbR, 0, 6.28);
+    netCtx.strokeStyle = \`rgba(127,229,176,\${0.13 * (1 - heartbeat * 0.5)})\`;
+    netCtx.lineWidth = 0.9;
     netCtx.stroke();
 
-    // Outer rings
-    for (const rr of [84, 54, 30, 16]) {
-      const g = netCtx.createRadialGradient(treasury.x, treasury.y, 0, treasury.x, treasury.y, rr);
-      const alpha = rr === 16 ? .6 : .05;
-      g.addColorStop(0, \`rgba(127,229,176,\${alpha * pulse})\`);
+    // Inner concentric gradients — body of the nucleus
+    for (const rr of [64, 38, 20, 10]) {
+      const g = netCtx.createRadialGradient(tx, ty, 0, tx, ty, rr);
+      const alpha = rr === 10 ? 0.85 : rr === 20 ? 0.35 : rr === 38 ? 0.13 : 0.06;
+      g.addColorStop(0, \`rgba(168,235,180,\${alpha * pulse})\`);
+      g.addColorStop(0.6, \`rgba(127,229,176,\${alpha * 0.8 * pulse})\`);
       g.addColorStop(1, 'rgba(127,229,176,0)');
       netCtx.fillStyle = g;
-      netCtx.fillRect(treasury.x - rr, treasury.y - rr, rr * 2, rr * 2);
+      netCtx.fillRect(tx - rr, ty - rr, rr * 2, rr * 2);
     }
+
+    // Solid mint core
     netCtx.beginPath();
-    netCtx.arc(treasury.x, treasury.y, 7, 0, 6.28);
-    netCtx.fillStyle = '#7fe5b0';
+    netCtx.arc(tx, ty, 8, 0, 6.28);
+    const coreGrad = netCtx.createRadialGradient(tx - 2, ty - 2, 0, tx, ty, 8);
+    coreGrad.addColorStop(0, '#d8f8e4');
+    coreGrad.addColorStop(1, '#7fe5b0');
+    netCtx.fillStyle = coreGrad;
     netCtx.fill();
-    netCtx.font = '500 11px "Inter", sans-serif';
-    netCtx.fillStyle = '#7fe5b0';
+
+    // Labels — gallery-plaque style
+    netCtx.font = '500 10px "JetBrains Mono", monospace';
+    netCtx.fillStyle = 'rgba(127,229,176,0.85)';
     netCtx.textAlign = 'center';
-    netCtx.fillText('Treasury', treasury.x, treasury.y - 18);
-    netCtx.font = '400 17px "Fraunces", Georgia, serif';
-    netCtx.fillStyle = 'rgba(237,237,239,.92)';
-    netCtx.fillText(treasury.styxx ? Math.round(treasury.styxx).toLocaleString() : '', treasury.x, treasury.y + 28);
-    netCtx.font = '500 9px "Inter", sans-serif';
+    netCtx.fillText('TREASURY', tx, ty - 24);
+    netCtx.font = '400 italic 18px "Fraunces", Georgia, serif';
+    netCtx.fillStyle = 'rgba(237,237,239,.95)';
+    netCtx.fillText(treasury.styxx ? Math.round(treasury.styxx).toLocaleString() : '—', tx, ty + 32);
+    netCtx.font = '500 9px "JetBrains Mono", monospace';
     netCtx.fillStyle = 'rgba(160,160,170,.7)';
-    netCtx.fillText('$STYXX', treasury.x, treasury.y + 42);
+    netCtx.fillText('\$STYXX', tx, ty + 48);
   }
 
   // Cognitive layer — sentiment threads run between agents whose LLM-vs-LLM
@@ -2086,7 +2209,7 @@ function drawNet(t) {
   hovered = null;
   const nowT = Date.now();
   for (const [id, a] of agents) {
-    const rad = nodeRadius(a.styxx, a.online);
+    const rad = nodeRadius(a.styxx, a.online, a.earnings_7d, a.colonyIndex);
     const breath = .85 + .15 * Math.sin(t * .0015 + hashStr(id) * 6.28);
     a.ax = a.x + (a.driftX || 0);
     a.ay = a.y + (a.driftY || 0);
@@ -2469,7 +2592,7 @@ function drawNet(t) {
     const fo = Math.max(0, 1 - Math.max(0, age - (BUBBLE_LIFE_MS - 700)) / 700);
     const alpha = fi * fo;
     if (alpha < 0.02) continue;
-    const rad = nodeRadius(a.styxx, a.online);
+    const rad = nodeRadius(a.styxx, a.online, a.earnings_7d, a.colonyIndex);
     netCtx.font = 'italic 400 12px "Fraunces", Georgia, serif';
     const words = b.text.split(/\\s+/);
     const maxW = 240;
@@ -3618,7 +3741,7 @@ function drawMentionHalo(ctx, a, t) {
   // Weight curve capped so a heavily-mentioned agent doesn't dominate
   // the composition. 3 mentions = 0.15, 8 = 0.55, 15+ = plateau at 0.65.
   const weight = Math.min(0.65, (m.count - 2) / 15 + 0.1);
-  const r = nodeRadius(a.styxx, a.online);
+  const r = nodeRadius(a.styxx, a.online, a.earnings_7d, a.colonyIndex);
   const pulse = 0.5 + 0.5 * Math.sin(t * 0.004);
   const haloR = r + 10 + pulse * 5;
   const alpha = 0.18 * freshness * weight * (0.6 + 0.4 * pulse);
