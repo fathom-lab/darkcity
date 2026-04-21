@@ -3199,6 +3199,16 @@ initDB().then(async () => {
         const styxxChatUI = require('./hooks/styxx-chat-ui');
         styxxChatUI.installChatUIRoutes(app, pool);
       } catch (e) { console.warn('[STYXX] chat UI failed to install:', e.message); }
+      // THE ARENA — AI crash casino. Starts in shadow mode (arena_enabled=false
+      // in economy_params). Flip that flag to 'true' via SQL when ready to go
+      // live with real stakes. Engine self-runs: queue maintenance, round
+      // scheduling, resolution, payouts, founder cut distribution.
+      try {
+        const arenaCrash = require('./hooks/arena-crash');
+        const arenaUI = require('./hooks/arena-ui');
+        arenaUI.installArenaUI(app, pool);
+        arenaCrash.start(pool);
+      } catch (e) { console.warn('[STYXX] arena failed to install:', e.message); }
       // Shared one-click Phantom signer — served as /js/dc-auto-sign.js so
       // every page (public, flow, agent dossier, dashboard) can load it
       // uniformly. Without this, pages outside styxx-public.js's COMMON_HEAD
