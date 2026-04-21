@@ -601,18 +601,34 @@ async function cashOut(pool, { bet_id, user_wallet }) {
 }
 
 async function getCurrentRound(pool) {
-  const { rows } = await pool.query(`
+  // Prefer a live round (betting/running/resolving). If none live, fall back
+  // to the most-recently-resolved round for up to 4 seconds so the UI can
+  // render crash cinematics — the resolving→resolved window is too brief
+  // for 900ms UI polls to reliably catch otherwise.
+  const { rows: live } = await pool.query(`
     SELECT r.id, r.round_uuid, r.agent_id, r.prompt, r.status, r.pot_styxx, r.bets_count,
            r.betting_window_ends_at, r.started_at, r.crash_multiplier, r.crash_at_sentence,
-           r.sentences, r.multiplier_curve, ea.district, ea.rank
+           r.sentences, r.multiplier_curve, ea.district, ea.rank, r.resolved_at
       FROM arena_rounds r
       LEFT JOIN external_agents ea ON ea.agent_id = r.agent_id
      WHERE r.status IN ('betting', 'running', 'resolving')
      ORDER BY r.created_at DESC LIMIT 1
   `);
-  if (!rows.length) return null;
-  const r = rows[0];
-  // If running, also return elapsed_ms
+  let r = live[0];
+  let usingJustResolved = false;
+  if (!r) {
+    const { rows: recent } = await pool.query(`
+      SELECT r.id, r.round_uuid, r.agent_id, r.prompt, r.status, r.pot_styxx, r.bets_count,
+             r.betting_window_ends_at, r.started_at, r.crash_multiplier, r.crash_at_sentence,
+             r.sentences, r.multiplier_curve, ea.district, ea.rank, r.resolved_at
+        FROM arena_rounds r
+        LEFT JOIN external_agents ea ON ea.agent_id = r.agent_id
+       WHERE r.status = 'resolved' AND r.resolved_at > NOW() - INTERVAL '4 seconds'
+       ORDER BY r.resolved_at DESC LIMIT 1
+    `);
+    if (recent.length) { r = recent[0]; usingJustResolved = true; }
+  }
+  if (!r) return null;
   const resp = {
     id: r.id, round_uuid: r.round_uuid, agent_id: r.agent_id, prompt: r.prompt,
     status: r.status, pot_styxx: Number(r.pot_styxx), bets_count: r.bets_count,
@@ -620,13 +636,12 @@ async function getCurrentRound(pool) {
     betting_window_ends_at: r.betting_window_ends_at,
     started_at: r.started_at,
   };
-  if (r.status === 'running' || r.status === 'resolving') {
-    // Only reveal sentences + curve once round is running
+  if (r.status === 'running' || r.status === 'resolving' || usingJustResolved) {
     resp.sentences = r.sentences;
     resp.multiplier_curve = r.multiplier_curve;
     resp.elapsed_ms = r.started_at ? Date.now() - new Date(r.started_at).getTime() : 0;
   }
-  if (r.status === 'resolving' || r.status === 'resolved') {
+  if (r.status === 'resolving' || r.status === 'resolved' || usingJustResolved) {
     resp.crash_multiplier = Number(r.crash_multiplier);
     resp.crash_at_sentence = r.crash_at_sentence;
   }
