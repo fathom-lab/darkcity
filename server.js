@@ -3188,6 +3188,13 @@ initDB().then(async () => {
       styxxPay.init(pool);
       await styxxEconomy.init(pool);
       styxxEconomy.installRoutes(app);
+      // Chat — the obvious use case. Anyone can talk to a DarkCity agent,
+      // paying $STYXX per message, getting character-true responses backed
+      // by the agent's real on-chain lived history.
+      try {
+        const styxxChat = require('./hooks/styxx-chat');
+        styxxChat.installChatRoutes(app, pool);
+      } catch (e) { console.warn('[STYXX] chat routes failed to install:', e.message); }
       // Shared one-click Phantom signer — served as /js/dc-auto-sign.js so
       // every page (public, flow, agent dossier, dashboard) can load it
       // uniformly. Without this, pages outside styxx-public.js's COMMON_HEAD

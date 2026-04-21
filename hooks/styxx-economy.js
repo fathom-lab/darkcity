@@ -1682,6 +1682,7 @@ async function runMigration(pgPool) {
     'holder-pool-v1.sql',
     'known-wallets-v1.sql',
     'currency-of-life-v1.sql',
+    'chat-v1.sql',
   ];
   for (const name of files) {
     const sqlPath = path.join(__dirname, '..', 'migrations', name);
