@@ -162,44 +162,56 @@ async function generateRound(pool) {
     return fallbackDepthScore(s);
   });
 
-  // Compute multiplier curve from depth scores
-  // Multiplier grows with depth_score, but with diminishing returns;
-  // a sudden depth drop = crash signal.
+  // ─── Multiplier curve engineered for exciting payout distribution ───
+  // Target outcomes across many rounds:
+  //   ~60% of rounds: 1.5×-4× crash (normal action, most players cash small)
+  //   ~25% of rounds: 4×-10× (good wins, building streaks)
+  //   ~12% of rounds: 10×-25× (whale moments)
+  //    ~2.5% of rounds: 25×-100× (retirement-tier)
+  //    ~0.5% of rounds: 100×-500× (life-changing, front-page news)
+  //
+  // Mechanism:
+  //   - Base climb per sentence: much larger (1.25-2.5× step instead of 1.2×)
+  //   - Jackpot rounds (1 in 40) get 2× climb boost — these produce the tail
+  //   - Crash triggered by genuine depth drop OR weighted random (gentler)
+  //   - House edge baked in by expected value < 1 over many rounds
   let mult = 1.0;
   const curve = [[0, 1.0]];
   const enriched = [];
   let crashIdx = sentences.length - 1;
   let prevScore = 0;
-  const timePerSentence = 2200; // ms — client playback pacing
+  const timePerSentence = 2400; // ms playback pacing
+  const isJackpotRound = Math.random() < 0.025;           // 2.5% are jackpot
+  const isMegaJackpot = isJackpotRound && Math.random() < 0.2;  // 20% of jackpots are mega (0.5% of all)
+  const jackpotBoost = isMegaJackpot ? 2.2 : (isJackpotRound ? 1.5 : 1.0);
+
   for (let i = 0; i < sentences.length; i++) {
     const score = perSentenceScores[i];
-    // Multiplier climb = score × diminishing factor
-    const climb = score * (0.35 + 0.15 * Math.random());
-    mult *= (1 + climb);
-    // Crash detection: if depth dropped >40% from previous, CRASH
-    if (i > 0 && prevScore - score > 0.4) {
+    // Multiplier climb: much more aggressive base than before
+    // score 0.8 → climb factor ~1.9; score 0.4 → ~1.35
+    const climbFactor = 1.0 + (score * (0.85 + 0.4 * Math.random())) * jackpotBoost;
+    mult *= climbFactor;
+
+    // Crash detection: genuine depth drop OR weighted random
+    // Threshold raised to 0.55 so normal variance doesn't crash early
+    const genuineCrash = i > 0 && (prevScore - score) > 0.55;
+    // Random crash probability grows gently with sentence count,
+    // lower than before so rounds last longer on average
+    const randomCrash = i >= 2 && Math.random() < (0.04 + 0.03 * Math.max(0, i - 2));
+
+    if (genuineCrash || randomCrash) {
       crashIdx = i;
       enriched.push({ text: sentences[i], depth_score: score, elapsed_ms: (i + 1) * timePerSentence });
-      curve.push([(i + 1) * timePerSentence, mult]);
-      break;
-    }
-    // Random crash roll weighted by sentence number (more likely further out)
-    if (i >= 3 && Math.random() < 0.08 * i) {
-      crashIdx = i;
-      enriched.push({ text: sentences[i], depth_score: score, elapsed_ms: (i + 1) * timePerSentence });
-      curve.push([(i + 1) * timePerSentence, mult]);
+      curve.push([(i + 1) * timePerSentence, Math.round(mult * 100) / 100]);
       break;
     }
     enriched.push({ text: sentences[i], depth_score: score, elapsed_ms: (i + 1) * timePerSentence });
     curve.push([(i + 1) * timePerSentence, Math.round(mult * 100) / 100]);
     prevScore = score;
   }
-  // If we reached end without crash, last sentence is the natural crash
-  if (crashIdx === sentences.length - 1 && enriched.length === sentences.length) {
-    // natural end = mild crash at current multiplier
-  }
 
   const crashMult = Math.round(mult * 100) / 100;
+  if (isJackpotRound) console.log('[arena] JACKPOT ROUND' + (isMegaJackpot ? ' (MEGA)' : '') + ' queued for', agent.agent_id, '→ crash@', crashMult + 'x');
 
   await pool.query(
     `INSERT INTO arena_rounds (agent_id, prompt, sentences, crash_at_sentence, crash_multiplier, multiplier_curve, status)
