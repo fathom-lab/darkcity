@@ -187,17 +187,31 @@ async function generateRound(pool) {
 
   for (let i = 0; i < sentences.length; i++) {
     const score = perSentenceScores[i];
-    // Multiplier climb: much more aggressive base than before
-    // score 0.8 → climb factor ~1.9; score 0.4 → ~1.35
-    const climbFactor = 1.0 + (score * (0.85 + 0.4 * Math.random())) * jackpotBoost;
+    // Multiplier climb — BASELINE + DEPTH BONUS + JACKPOT BOOST
+    //   Baseline 1.40× per sentence (regardless of score) so rounds climb
+    //   visibly even when depth scorer returns low values.
+    //   Depth bonus adds up to +0.6× for a max-depth sentence.
+    //   Jackpot boost multiplies the delta: 1.5× / 2.2× for jackpot / mega.
+    //
+    // Expected per-sentence step:
+    //   score 0.1 → 1.46× (common)
+    //   score 0.5 → 1.70×
+    //   score 0.8 → 1.88×
+    //   jackpot × score 0.5 → 2.05×
+    //   mega × score 0.7 → 2.32×
+    //
+    // After ~5 sentences (typical crash point): 6×–15× is normal, 25–40×
+    // for hot runs, 80×+ for mega jackpots reaching full length.
+    const baseStep = 1.40;
+    const depthBonus = score * 0.6;
+    const delta = depthBonus * jackpotBoost;
+    const climbFactor = baseStep + delta;
     mult *= climbFactor;
 
     // Crash detection: genuine depth drop OR weighted random
-    // Threshold raised to 0.55 so normal variance doesn't crash early
     const genuineCrash = i > 0 && (prevScore - score) > 0.55;
-    // Random crash probability grows gently with sentence count,
-    // lower than before so rounds last longer on average
-    const randomCrash = i >= 2 && Math.random() < (0.04 + 0.03 * Math.max(0, i - 2));
+    // Random crash grows gently; sentences 2+ eligible, curve lets some runs go long
+    const randomCrash = i >= 2 && Math.random() < (0.10 + 0.04 * Math.max(0, i - 2));
 
     if (genuineCrash || randomCrash) {
       crashIdx = i;
