@@ -1047,7 +1047,7 @@ body::after {
       renderRound(currentRound);
       renderStats(jpR);
       renderFeed(jpR.recent_results || []);
-      renderTicker(jpR.recent_results || [], jpR.big_win_24h);
+      renderTicker(jpR.recent_results || [], jpR.big_win_24h, histR.rounds || []);
       renderBigWin(jpR.big_win_24h);
       renderHistory(histR.rounds || []);
     } catch (e) { console.warn('poll err', e); }
@@ -1070,11 +1070,11 @@ body::after {
     document.getElementById('bigWinBody').innerHTML = short(big.user_wallet) + ' cashed <span class="mx">' + Number(big.cashout_multiplier||0).toFixed(2) + '×</span> on <b>' + big.agent_id + '</b> for <span class="mx">+' + fmt(big.payout_styxx) + ' $STYXX</span>';
   }
 
-  function renderTicker(recent, big) {
-    if (!recent || !recent.length) return;
+  let _lastTickerSig = '';
+  function renderTicker(recent, big, historyRounds) {
     const items = [];
     if (big && big.user_wallet) {
-      items.push('<span class="item big">★ BIGGEST ' + Number(big.cashout_multiplier||0).toFixed(2) + '× · +' + fmt(big.payout_styxx) + ' $STYXX</span>');
+      items.push('<span class="item big">★ BIGGEST 24H · ' + short(big.user_wallet) + ' cashed ' + Number(big.cashout_multiplier||0).toFixed(2) + '× · +' + fmt(big.payout_styxx) + ' $STYXX</span>');
     }
     for (const r of recent) {
       const won = r.status === 'cashed_out';
@@ -1084,6 +1084,20 @@ body::after {
         items.push('<span class="item"><span class="lose">✗ ' + short(r.user_wallet) + ' rugged</span> on <b>' + r.agent_id + '</b> −' + fmt(r.stake_styxx) + '</span>');
       }
     }
+    // Fallback: show recent round results so the ticker is never empty
+    if (items.length < 6 && historyRounds && historyRounds.length) {
+      for (const r of historyRounds.slice(0, 15)) {
+        const m = Number(r.multiplier || 1);
+        const cls = m >= 50 ? 'big' : (m >= 10 ? 'win' : 'bet');
+        items.push('<span class="item"><span class="' + cls + '">' + r.agent_id + '</span> crashed @ <b>' + m.toFixed(2) + '×</b></span>');
+      }
+    }
+    if (!items.length) {
+      items.push('<span class="item">waiting for first call on the felt...</span>');
+    }
+    const sig = items.length + '|' + items[0].slice(0, 40);
+    if (sig === _lastTickerSig) return;
+    _lastTickerSig = sig;
     // duplicate track for infinite scroll
     document.getElementById('tickerTrack').innerHTML = items.join('') + items.join('');
   }
