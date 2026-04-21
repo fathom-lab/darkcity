@@ -21,12 +21,44 @@
 
 'use strict';
 
-const Anthropic = require('@anthropic-ai/sdk');
 const solanaStyxx = require('../lib/solana-styxx');
 const { PublicKey } = require('@solana/web3.js');
 
 const CHAT_MODEL = process.env.CHAT_MODEL_ID || 'claude-haiku-4-5-20251001';
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+
+// Native fetch-based LLM call (matches npc-brain.js pattern — no extra SDK).
+async function callAnthropic({ system, messages, max_tokens = 400 }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY missing');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+  try {
+    const res = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({ model: CHAT_MODEL, max_tokens, system, messages }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error('LLM ' + res.status + ': ' + body.substring(0, 200));
+    }
+    const data = await res.json();
+    return {
+      text: (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim(),
+      input_tokens: data.usage?.input_tokens || 0,
+      output_tokens: data.usage?.output_tokens || 0,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function asyncLog(label, fn) {
   return Promise.resolve().then(fn).catch(e => console.warn('[chat:' + label + ']', e.message));
@@ -342,15 +374,14 @@ function installChatRoutes(app, pool) {
       let response = '';
       let tokIn = 0, tokOut = 0;
       try {
-        const r = await anthropic.messages.create({
-          model: CHAT_MODEL,
-          max_tokens: 400,
+        const r = await callAnthropic({
           system: systemPrompt,
           messages: messagesForLLM,
+          max_tokens: 400,
         });
-        response = (r.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-        tokIn = r.usage?.input_tokens || 0;
-        tokOut = r.usage?.output_tokens || 0;
+        response = r.text;
+        tokIn = r.input_tokens;
+        tokOut = r.output_tokens;
       } catch (e) {
         await pool.query(
           "UPDATE chat_messages SET status='failed', error=$2 WHERE id=$1",
