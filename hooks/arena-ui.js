@@ -792,10 +792,12 @@ body::after {
     b.addEventListener('click', () => { document.getElementById('stakeInput').value = b.dataset.amt; });
   });
 
-  // Pool of RPC endpoints. mainnet-beta throttles browser requests aggressively
-  // (403 Access Forbidden). We try several in order until one returns a valid
-  // blockhash, then stick with it for the session.
+  // Backend proxy first — uses the server's SOLANA_RPC_URL (Helius/paid) and
+  // rotates public fallbacks server-side. Public endpoints stay as last-resort
+  // in case the backend proxy itself is down. Without the proxy, browsers hit
+  // 403/429 on mainnet-beta and all public RPCs within minutes.
   const RPC_ENDPOINTS = [
+    window.location.origin + '/api/arena/rpc',
     'https://solana-rpc.publicnode.com',
     'https://rpc.ankr.com/solana',
     'https://solana.api.onfinality.io/public',
@@ -843,10 +845,16 @@ body::after {
     });
     const tx = new solanaWeb3.Transaction().add(ix);
     tx.feePayer = payer;
-    const { blockhash } = await c.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await c.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     const signed = await window.solana.signAndSendTransaction(tx);
-    await c.confirmTransaction(signed.signature, 'confirmed');
+    // Blockhash strategy = HTTP polling. The proxy doesn't speak WS, so the
+    // signature-subscription form of confirmTransaction would fail hard.
+    await c.confirmTransaction({
+      signature: signed.signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, 'confirmed');
     return signed.signature;
   }
 
@@ -1272,7 +1280,69 @@ function installArenaUI(app, pool) {
       res.status(r.ok ? 200 : 400).json(r);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  console.log('[arena-ui] registered: /arena, /api/arena/{round,jackpot,history,bet,cashout}');
+
+  // Solana RPC proxy. Browsers hit 403/429 on public endpoints within minutes —
+  // server-side, one paid SOLANA_RPC_URL (Helius/QuickNode) + public fallbacks
+  // absorb the load. Whitelist to read-only + send/simulate so this isn't an
+  // open proxy for arbitrary Solana traffic.
+  const RPC_ALLOWED_METHODS = new Set([
+    'getLatestBlockhash', 'getRecentBlockhash', 'getBlockHeight', 'getSlot',
+    'getBalance', 'getAccountInfo', 'getMultipleAccounts',
+    'getTokenAccountBalance', 'getTokenAccountsByOwner',
+    'getSignatureStatus', 'getSignatureStatuses', 'getTransaction',
+    'sendTransaction', 'simulateTransaction',
+    'getMinimumBalanceForRentExemption', 'getFeeForMessage',
+  ]);
+  const RPC_PROXY_UPSTREAMS = [
+    process.env.SOLANA_RPC_URL,
+    'https://solana-rpc.publicnode.com',
+    'https://rpc.ankr.com/solana',
+    'https://solana.api.onfinality.io/public',
+    'https://api.mainnet-beta.solana.com',
+  ].filter(Boolean);
+  async function proxyRpcOne(body) {
+    let lastErr = null;
+    for (const url of RPC_PROXY_UPSTREAMS) {
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) { lastErr = `${url}: HTTP ${r.status}`; continue; }
+        const json = await r.json();
+        const errStr = json.error ? JSON.stringify(json.error) : '';
+        if (errStr && /429|rate.?limit|too many|forbidden/i.test(errStr)) {
+          lastErr = `${url}: ${errStr}`;
+          continue;
+        }
+        return json;
+      } catch (e) {
+        lastErr = `${url}: ${e.message}`;
+      }
+    }
+    throw new Error(lastErr || 'all upstream rpcs failed');
+  }
+  app.post('/api/arena/rpc', async (req, res) => {
+    const body = req.body;
+    const payloads = Array.isArray(body) ? body : [body];
+    if (!payloads.length || !payloads.every(p => p && typeof p.method === 'string')) {
+      return res.status(400).json({ error: 'invalid jsonrpc payload' });
+    }
+    for (const p of payloads) {
+      if (!RPC_ALLOWED_METHODS.has(p.method)) {
+        return res.status(403).json({ error: 'method not allowed: ' + p.method });
+      }
+    }
+    try {
+      const result = await proxyRpcOne(body);
+      res.json(result);
+    } catch (e) {
+      res.status(502).json({ error: 'rpc upstream failed', detail: e.message });
+    }
+  });
+
+  console.log('[arena-ui] registered: /arena, /api/arena/{round,jackpot,history,bet,cashout,rpc}');
 }
 
 module.exports = { installArenaUI };
