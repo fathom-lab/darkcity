@@ -5,3 +5,9 @@ node_modules/
 .env
 .env.*.local
 .styxx-treasury.*
+
+# Agent key backups — NEVER commit these
+agent-keys-backup-*.json
+keys-backup.json
+keys-emergency.json
+keys-*.json

@@ -2117,6 +2117,72 @@ function installRoutes(app) {
   app.get('/api/portfolio',       portfolio);
   app.get('/api/portfolio/:owner', portfolio);
   app.post('/api/agents/:id/withdraw',           agentWithdraw);
+
+  // Owner self-custody export — the "you will never lose access to your
+  // agent" guarantee. Owner signs a fresh message with their wallet, we
+  // return their agent's decrypted private key in Phantom-importable
+  // base58 format. The owner can then import to their own Phantom if
+  // they want full custody. We keep our operational copy so the agent
+  // still earns via pulses + chat wages, but the owner now has a key
+  // they control independently. Single-use signatures; all exports logged.
+  app.post('/api/agents/:id/export-key', async (req, res) => {
+    try {
+      const agentId = req.params.id;
+      const { owner_pubkey, signature, message } = req.body || {};
+      if (!agentId || !owner_pubkey) return res.status(400).json({ error: 'agent_id and owner_pubkey required' });
+
+      const { rows } = await pool.query(
+        'SELECT sol_pubkey, sol_privkey_enc, owner_pubkey FROM external_agents WHERE agent_id = $1',
+        [agentId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'agent_not_found' });
+      const a = rows[0];
+      if (a.owner_pubkey !== owner_pubkey) return res.status(403).json({ error: 'not_owner' });
+
+      const verified = verifyOwnershipSignature({
+        pubkey: owner_pubkey, signatureB58: signature, message,
+        expectedPrefix: 'darkcity:export-key:' + agentId + ':',
+      });
+      if (!verified.ok) {
+        return res.status(401).json({ error: 'signature_required', reason: verified.reason,
+          hint: 'Sign the message "darkcity:export-key:' + agentId + ':<unix-ts>" in your wallet and send { message, signature }.' });
+      }
+      const fresh = await consumeSignedMessage(message, owner_pubkey);
+      if (!fresh) return res.status(409).json({ error: 'signature_already_used',
+        hint: 'Each signature is single-use. Fresh timestamp + re-sign.' });
+
+      // Decrypt with the server master key, return as base58 (Phantom import format)
+      const keypair = styxx.keypairFromEncrypted(a.sol_privkey_enc);
+      const bs58 = require('bs58');
+      const privkeyB58 = bs58.encode(keypair.secretKey);
+
+      // Log the export — audit trail of who asked for what when
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS key_exports (
+           id BIGSERIAL PRIMARY KEY,
+           agent_id TEXT NOT NULL,
+           owner_pubkey TEXT NOT NULL,
+           exported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+           sig TEXT
+         )`
+      ).catch(()=>{});
+      await pool.query(
+        "INSERT INTO key_exports (agent_id, owner_pubkey, sig) VALUES ($1, $2, $3)",
+        [agentId, owner_pubkey, signature]
+      ).catch(()=>{});
+
+      res.json({
+        ok: true,
+        agent_id: agentId,
+        sol_pubkey: a.sol_pubkey,
+        sol_privkey_base58: privkeyB58,
+        note: 'Import this into Phantom (Add Account → Import Private Key). DarkCity retains a copy so your agent keeps earning via pulses + chat wages. If you want us to delete our copy permanently, contact support. You are now responsible for the safety of this key — write it down, use a password manager.',
+      });
+    } catch (e) {
+      console.error('[export-key]', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
   app.post('/api/agents/:id/payout-wallet',      updatePayoutWallet);
   app.get('/api/map/live',                       mapLive);
   app.get('/api/wallet/:pubkey/balance', async (req, res) => {
