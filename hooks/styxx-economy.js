@@ -1145,6 +1145,20 @@ async function portfolio(req, res) {
     const owner = req.query.owner || req.params.owner;
     if (!owner) return res.status(400).json({ error: 'owner pubkey required' });
 
+    // Record any wallet that touches /me so holder-pool distribution can find
+    // pump.fun buyers (their wallets never appear in styxx_transfers since the
+    // tokens came from a bonding curve, not our treasury). Best-effort, cheap.
+    try {
+      const { PublicKey } = require('@solana/web3.js');
+      new PublicKey(owner); // throws if invalid
+      await pool.query(
+        `INSERT INTO known_wallets (pubkey, first_seen_at, last_seen_at, source)
+         VALUES ($1, NOW(), NOW(), 'portfolio')
+         ON CONFLICT (pubkey) DO UPDATE SET last_seen_at = NOW()`,
+        [owner]
+      );
+    } catch (_) { /* invalid pubkey or table not yet migrated — ignore */ }
+
     const PULSE_HOURS = parseInt(process.env.PULSE_HOURS || '4', 10);
 
     const [agents, sponsorships, referrals, hyphalLinks, recentPayouts, earningsHistory, lifetimeAgg] = await Promise.all([
@@ -1666,6 +1680,7 @@ async function runMigration(pgPool) {
   const files = [
     'styxx-economy-v1.sql',
     'holder-pool-v1.sql',
+    'known-wallets-v1.sql',
   ];
   for (const name of files) {
     const sqlPath = path.join(__dirname, '..', 'migrations', name);

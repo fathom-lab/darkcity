@@ -152,13 +152,51 @@ async function discoverHoldersFromLedger(pgPool) {
      GROUP BY pubkey
     HAVING GREATEST(SUM(inflow) - SUM(outflow), 0) > 0
   `);
-  // Drop synthetic markers like 'BURN' — not real Solana pubkeys. Base58
-  // addresses are 32–44 chars; our markers are short ALL-CAPS strings.
+  // Drop synthetic markers like 'BURN' — not real Solana pubkeys.
   return rows
     .filter(r => {
       try { new PublicKey(r.pubkey); return true; } catch { return false; }
     })
     .map(r => ({ pubkey: r.pubkey, holding: Number(r.holding) }));
+}
+
+/**
+ * Union ledger-derived holders with any known wallet we've seen touch DarkCity
+ * (mint, sponsor, /me visit, seed). Known wallets get their on-chain balance
+ * looked up individually — single getTokenAccountsByOwner calls aren't blocked
+ * by the RPC the way getProgramAccounts is. This is what closes the pump.fun
+ * gap: buyers whose tokens came from a bonding curve appear in known_wallets
+ * but never in our styxx_transfers ledger.
+ */
+async function discoverHoldersUnion(pgPool) {
+  const ledgerHolders = await discoverHoldersFromLedger(pgPool);
+  const byPubkey = new Map(ledgerHolders.map(h => [h.pubkey, h.holding]));
+
+  let known = [];
+  try {
+    const { rows } = await pgPool.query('SELECT pubkey FROM known_wallets');
+    known = rows.map(r => r.pubkey);
+  } catch (_) { /* table missing → no known wallets */ }
+
+  const solanaStyxx = require('../lib/solana-styxx');
+  // Fetch on-chain balance for each known wallet. Serial + small backoff so
+  // we don't trip RPC rate limits. ~50 wallets × ~400ms = 20s worst case —
+  // acceptable for a per-pulse operation.
+  for (const pk of known) {
+    try { new PublicKey(pk); } catch { continue; }
+    try {
+      const bal = await solanaStyxx.getStyxxBalance(pk);
+      if (Number.isFinite(bal) && bal > 0) {
+        // On-chain is source of truth — replace ledger estimate if present.
+        byPubkey.set(pk, bal);
+      }
+    } catch (e) {
+      // Individual lookup failure shouldn't kill distribution — keep going.
+      if (/429|rate/i.test(String(e.message))) await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  return [...byPubkey.entries()].map(([pubkey, holding]) => ({ pubkey, holding }));
 }
 
 /**
@@ -193,12 +231,12 @@ async function runDistribution(pool, { connection } = {}) {
   try {
     holders = await discoverHoldersOnChain(conn);
   } catch (e) {
-    console.warn('[holder-pool] on-chain discovery failed, falling back to ledger:', e.message);
+    console.warn('[holder-pool] on-chain discovery failed, falling back to ledger+known_wallets:', e.message);
     try {
-      holders = await discoverHoldersFromLedger(pool);
-      discoverySource = 'ledger';
+      holders = await discoverHoldersUnion(pool);
+      discoverySource = 'ledger+known';
     } catch (e2) {
-      console.warn('[holder-pool] ledger fallback also failed:', e2.message);
+      console.warn('[holder-pool] union fallback also failed:', e2.message);
       return { ok: false, reason: 'discovery_failed', error: e2.message };
     }
   }
