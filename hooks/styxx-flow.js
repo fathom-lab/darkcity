@@ -1163,6 +1163,18 @@ body {
       </div>
     </div>
 
+    <!-- Latest reasoning — shows the agent's most recent LLM thought as a
+         premium blockquote. This is what makes the drawer feel like a live
+         dossier instead of a stat panel. -->
+    <div id="ad-thought-wrap" style="margin-top:22px;display:none">
+      <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:8px">Latest reasoning</div>
+      <div style="border-left:2px solid var(--accent,#7fe5b0);padding:4px 0 4px 14px">
+        <div id="ad-thought-action" style="font-family:var(--font-mono,monospace);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent,#7fe5b0);margin-bottom:6px">\u2014</div>
+        <div id="ad-thought-text" style="font-family:var(--font-display,Fraunces,Georgia,serif);font-style:italic;font-size:14px;line-height:1.55;color:var(--fg,#f2ece0)">\u2014</div>
+        <div id="ad-thought-when" style="font-family:var(--font-mono,monospace);font-size:10px;color:var(--fg-subtle,#5a5a64);margin-top:8px">\u2014</div>
+      </div>
+    </div>
+
     <!-- Sponsor CTA -->
     <div style="margin-top:20px">
       <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:10px">Sponsor this agent</div>
@@ -2877,6 +2889,25 @@ function openAgentDrawer(a) {
   if (a.solscan)   $('ad-solscan').href   = a.solscan;
   if (a.id)        $('ad-dossier').href   = '/styxx-trial?agent=' + encodeURIComponent(a.id);
   $('ad-status').textContent = '';
+
+  // Latest reasoning block — populated if we have a last_thought, hidden otherwise
+  const thoughtWrap = $('ad-thought-wrap');
+  if (a.last_thought && a.last_thought.text) {
+    thoughtWrap.style.display = 'block';
+    $('ad-thought-action').textContent = (a.last_thought.action || 'think').replace(/_/g, ' ');
+    $('ad-thought-text').textContent = '\u201c' + a.last_thought.text + '\u201d';
+    const when = a.last_thought.at ? new Date(a.last_thought.at) : null;
+    if (when) {
+      const ago = Math.max(0, Math.floor((Date.now() - when.getTime()) / 1000));
+      const agoTxt = ago < 60 ? ago + 's ago' : ago < 3600 ? Math.floor(ago/60) + 'm ago' : Math.floor(ago/3600) + 'h ago';
+      $('ad-thought-when').textContent = agoTxt;
+    } else {
+      $('ad-thought-when').textContent = '';
+    }
+  } else {
+    thoughtWrap.style.display = 'none';
+  }
+
   d.classList.add('show');
   // Lazy-load earn-preview data for this agent (earnings, sponsor count)
   fetch('/api/earn/preview').then(r => r.json()).then(p => {
