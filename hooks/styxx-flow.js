@@ -16,7 +16,7 @@ function register(app, pool) {
       let where = '';
       if (since) { params.push(new Date(since)); where = 'WHERE confirmed_at > $1'; }
 
-      const [ledger, leaderboard, treasury, narratives, hyphalLinks, recentPulse] = await Promise.all([
+      const [ledger, leaderboard, treasury, narratives, hyphalLinks, recentPulse, recentInteractions] = await Promise.all([
         pool.query(`
           SELECT tx_signature, from_agent_id, to_agent_id, amount, reason, memo, confirmed_at
           FROM styxx_transfers ${where}
@@ -104,6 +104,14 @@ function register(app, pool) {
           FROM hyphal_links WHERE status = 'active'
           LIMIT 200
         `).catch(() => ({ rows: [] })),
+        // Recent agent-to-agent conversations — the "live talking" layer.
+        // Each row is a real LLM→LLM exchange with sentiment tagged.
+        pool.query(`
+          SELECT agent_a, agent_b, sentiment, district, summary, recorded_at
+          FROM agent_interactions
+          WHERE recorded_at > NOW() - INTERVAL '5 minutes'
+          ORDER BY recorded_at DESC LIMIT 60
+        `).catch(() => ({ rows: [] })),
         // A recent pulse within the last 90s triggers the treasury wave animation
         pool.query(`
           SELECT window_start, completed_at FROM pulse_runs
@@ -156,6 +164,17 @@ function register(app, pool) {
           window_start: recentPulse.rows[0].window_start,
           completed_at: recentPulse.rows[0].completed_at,
         } : null,
+        // Live agent-to-agent conversations from agent_interactions table.
+        // Each is a real LLM→LLM exchange with sentiment tagged. The map
+        // renders an animated curved thread between the pair with a
+        // dialogue snippet, fading over ~8s. This is the "talking" layer.
+        recent_interactions: (recentInteractions?.rows || []).map(r => ({
+          a: r.agent_a, b: r.agent_b,
+          sentiment: r.sentiment,
+          district: r.district,
+          summary: (r.summary || '').slice(0, 220),
+          at: r.recorded_at,
+        })),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -1314,6 +1333,8 @@ let mouseX = -999, mouseY = -999;
 let hovered = null;
 let hyphalLinks = [];          // real 25-STYXX links, rendered distinct from parent-child tree
 let recentPulse = null;        // { window_start, completed_at } if pulse fired in last 90s
+let conversations = [];        // live agent-to-agent dialogue threads, fade over ~9s
+let knownConvs = new Set();    // dedupe conversation keys
 // ═══ Pan/zoom camera ═══════════════════════════════════════════════════
 // view.x / view.y are pan offsets in screen pixels, view.k is zoom level.
 // Applied inside drawNet after the motion-trail wipe so the background
@@ -2243,6 +2264,72 @@ function drawNet(t) {
     netCtx.font = '500 9px "JetBrains Mono", monospace';
     netCtx.fillStyle = 'rgba(160,160,170,.7)';
     netCtx.fillText('\$STYXX', tx, ty + 48);
+  }
+
+  // ─── Live conversations — the "agents talking" layer ──────────────
+  // For every recent agent_interaction, draw an animated curved thread
+  // between the pair with a traveling dialogue packet. Sentiment colors
+  // the thread (mint = alliance/positive, coral = antagonistic, muted =
+  // neutral). Fades over 9s. This is literally a visible LLM→LLM
+  // conversation happening on the map.
+  if (conversations.length > 0) {
+    const nowC = Date.now();
+    conversations = conversations.filter(c => {
+      const age = nowC - c.bornAt;
+      if (age > c.life || !c.a || !c.b) return false;
+      const prog = age / c.life;
+      let alpha;
+      if (prog < 0.15)      alpha = prog / 0.15;
+      else if (prog < 0.72) alpha = 1;
+      else                  alpha = 1 - (prog - 0.72) / 0.28;
+      alpha = Math.max(0, Math.min(1, alpha));
+
+      // Sentiment → color (mint = positive, coral = negative, slate = neutral)
+      const s = (c.sentiment || 'neutral').toLowerCase();
+      const color = s.includes('pos') || s.includes('ally') || s.includes('alliance')
+                  ? [127, 229, 176]  // mint
+                  : s.includes('neg') || s.includes('hostile') || s.includes('beef')
+                  ? [233, 168, 176]  // coral
+                  : [180, 200, 220]; // slate
+
+      const ax = c.a.x + (c.a.driftX || 0), ay = c.a.y + (c.a.driftY || 0);
+      const bx = c.b.x + (c.b.driftX || 0), by = c.b.y + (c.b.driftY || 0);
+      const mx = (ax + bx) / 2, my = (ay + by) / 2;
+      const dxC = bx - ax, dyC = by - ay;
+      const lenC = Math.max(1, Math.hypot(dxC, dyC));
+      const pxC = -dyC / lenC, pyC = dxC / lenC;
+      const bend = (hashStr(c.a.id + c.b.id + 'conv') - 0.5) * lenC * 0.18;
+      const cpX = mx + pxC * bend, cpY = my + pyC * bend;
+
+      // Base arc — thin dotted curve
+      netCtx.beginPath();
+      netCtx.moveTo(ax, ay);
+      netCtx.quadraticCurveTo(cpX, cpY, bx, by);
+      netCtx.strokeStyle = \`rgba(\${color[0]},\${color[1]},\${color[2]},\${0.35 * alpha})\`;
+      netCtx.lineWidth = 1.0;
+      netCtx.setLineDash([3, 6]);
+      netCtx.lineDashOffset = -(t * 0.04);
+      netCtx.stroke();
+      netCtx.setLineDash([]);
+
+      // Dialogue packet traveling back-and-forth along the curve — visible
+      // motion of conversation. ~2s per full cycle.
+      const cycle = ((t * 0.0006 + hashStr(c.a.id + c.b.id) * 2) % 2);
+      const et = cycle > 1 ? (2 - cycle) : cycle;  // triangle wave 0→1→0
+      const u = 1 - et;
+      const px = u * u * ax + 2 * u * et * cpX + et * et * bx;
+      const py = u * u * ay + 2 * u * et * cpY + et * et * by;
+      const pktR = 2.4;
+      const bloom = netCtx.createRadialGradient(px, py, 0, px, py, pktR * 4);
+      bloom.addColorStop(0, \`rgba(\${color[0]},\${color[1]},\${color[2]},\${0.55 * alpha})\`);
+      bloom.addColorStop(1, \`rgba(\${color[0]},\${color[1]},\${color[2]},0)\`);
+      netCtx.fillStyle = bloom;
+      netCtx.beginPath(); netCtx.arc(px, py, pktR * 4, 0, 6.28); netCtx.fill();
+      netCtx.beginPath(); netCtx.arc(px, py, pktR, 0, 6.28);
+      netCtx.fillStyle = \`rgba(\${color[0] + 20},\${color[1] + 20},\${color[2] + 20},\${0.95 * alpha})\`;
+      netCtx.fill();
+      return true;
+    });
   }
 
   // Cognitive layer — sentiment threads run between agents whose LLM-vs-LLM
@@ -3459,6 +3546,27 @@ async function poll() {
     if (d.treasury) treasury = { ...d.treasury, x: treasury?.x, y: treasury?.y, homeX: treasury?.homeX, homeY: treasury?.homeY };
     hyphalLinks = d.hyphal_links || [];
     recentPulse = d.recent_pulse || null;
+
+    // Live conversations — agent-to-agent threads. Dedupe by (a+b+at) and
+    // push into conversations[] with a birth timestamp; render pulses
+    // animate between the pair, fade out after ~9s. The "talking" layer.
+    for (const c of (d.recent_interactions || [])) {
+      const key = c.a + '|' + c.b + '|' + c.at;
+      if (knownConvs.has(key)) continue;
+      knownConvs.add(key);
+      const aNode = agents.get(c.a), bNode = agents.get(c.b);
+      if (!aNode || !bNode) continue;
+      conversations.push({
+        a: aNode, b: bNode,
+        sentiment: c.sentiment,
+        summary: c.summary,
+        bornAt: Date.now(),
+        life: 9000,
+      });
+    }
+    // Cap to 40 active conversations so we don't leak memory
+    if (conversations.length > 40) conversations.splice(0, conversations.length - 40);
+
     layoutAgents();
 
     for (const tx of (d.new_transfers || []).slice().reverse()) {
