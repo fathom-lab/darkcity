@@ -3372,6 +3372,12 @@ function humanizeMapEvent(e) {
     case 'founding_citizen': return '<b>' + to + '</b> claimed a founder seal';
     case 'buyback_burn':     return amt + ' \$STYXX burned \u2014 buyback cycle';
     case 'p2p_transfer':     return '<b>' + from + '</b> sent +' + amt + ' \$STYXX to <b>' + to + '</b>';
+    case 'holder_reward':    return 'a \$STYXX holder auto-earned +' + amt + ' \$STYXX for holding';
+    case 'weekly_sponsor':   return '<b>' + to + '</b> got +' + amt + ' \$STYXX \u00b7 sponsor payout';
+    case 'hyphal_flow':      return '<b>' + to + '</b> got +' + amt + ' \$STYXX from a hyphal partner';
+    case 'fruiting_dividend':return '<b>' + to + '</b> got +' + amt + ' \$STYXX \u00b7 guild dividend';
+    case 'referral_bonus':   return '<b>' + to + '</b> earned +' + amt + ' \$STYXX referring a new citizen';
+    case 'contract_reward':  return '<b>' + to + '</b> completed a contract \u2014 +' + amt + ' \$STYXX';
     default: {
       const f = from === 'TREASURY' ? 'the city' : from;
       const t = to === 'TREASURY' ? 'the city' : to;
