@@ -1226,20 +1226,46 @@ app.get("/api/chronicle/highlights", async (req, res) => {
 
 app.get("/api/city/newspaper", async (req, res) => {
   try {
-    const latest = await pool.query("SELECT content FROM daily_reports ORDER BY day DESC LIMIT 1");
-    if (latest.rows.length) return res.json(JSON.parse(latest.rows[0].content));
-    // Generate one if none exists
+    const day = getCityDay();
+    const fresh = req.query.fresh === '1';
+    // Prefer today's cached report. Regenerate if missing, stale (empty pop
+    // but externals exist), or ?fresh=1. The old code returned the LATEST
+    // cached report from any day, so day 58 kept serving day-57's empty JSON.
+    if (!fresh) {
+      const cached = await pool.query("SELECT content FROM daily_reports WHERE day=$1", [day]);
+      if (cached.rows.length) {
+        const parsed = JSON.parse(cached.rows[0].content);
+        if (parsed.population > 0) return res.json(parsed);
+      }
+    }
     const report = await generateDailyReport();
     res.json(report);
-  } catch { res.json({ headline: "Dark City Awakens", day: getCityDay(), population: 0 }); }
+  } catch (e) {
+    console.error('[newspaper]', e.message);
+    res.json({ headline: "Dark City Awakens", day: getCityDay(), population: 0 });
+  }
 });
 
 async function generateDailyReport() {
   const day = getCityDay();
-  const pop = await pool.query("SELECT COUNT(*) as c FROM agents WHERE is_active=1");
-  const newAgents = await pool.query("SELECT name, job FROM agents WHERE arrival_day=$1 LIMIT 5", [day]);
-  const topXP = await pool.query("SELECT name, xp FROM agents ORDER BY xp DESC LIMIT 1");
-  const richest = await pool.query("SELECT name, wallet FROM agents ORDER BY wallet DESC LIMIT 1");
+  // Population + newcomers come from external_agents (the live table).
+  // The old query hit `agents` (internal/seed) which is empty, so the
+  // newspaper stayed stuck on population=0 / newArrivals=[].
+  const pop = await pool.query("SELECT COUNT(*) as c FROM external_agents");
+  const newAgents = await pool.query(
+    `SELECT agent_id AS name, district, rank, agent_type
+     FROM external_agents
+     WHERE agent_type = 'external'
+       AND created_at > NOW() - INTERVAL '48 hours'
+     ORDER BY created_at DESC LIMIT 8`
+  );
+  const topCitizen = await pool.query(
+    "SELECT agent_id AS name, reputation, rank FROM external_agents ORDER BY reputation DESC LIMIT 1"
+  );
+  const richest = await pool.query(
+    `SELECT agent_id AS name, sol_pubkey AS wallet, COALESCE(styxx_cached,0)::float AS styxx
+     FROM external_agents ORDER BY COALESCE(styxx_cached,0) DESC LIMIT 1`
+  );
   const events = await pool.query("SELECT * FROM chronicle WHERE day=$1 ORDER BY significance DESC LIMIT 3", [day]);
   const bldToday = await pool.query("SELECT COUNT(*) as c FROM buildings WHERE created_at > NOW() - INTERVAL '24 hours'");
   const atm = await pool.query("SELECT weather FROM atmosphere LIMIT 1");
@@ -1249,7 +1275,7 @@ async function generateDailyReport() {
     headline: events.rows[0]?.headline || `Day ${day} in Dark City`,
     population: parseInt(pop.rows[0].c),
     newArrivals: newAgents.rows,
-    topCitizen: topXP.rows[0] || null,
+    topCitizen: topCitizen.rows[0] || null,
     richestCitizen: richest.rows[0] || null,
     buildingsToday: parseInt(bldToday.rows[0].c),
     weather: atm.rows[0]?.weather || "clear",
@@ -3136,6 +3162,14 @@ initDB().then(async () => {
   try {
     await runDataPipelineMigration(pool);
   } catch (e) { console.log('[DataPipeline] Migration:', e.message); }
+
+  // Rank progression — fix externals stuck at 'Newcomer'
+  try {
+    const fs = require('fs'); const path = require('path');
+    const sql = fs.readFileSync(path.join(__dirname, 'migrations', 'rank-progression-v1.sql'), 'utf-8');
+    await pool.query(sql);
+    console.log('[RANK] Progression trigger + backfill applied');
+  } catch (e) { console.log('[RANK] Migration:', e.message); }
 
   // ═══ NPC BRAIN v2 — LLM-powered agent tick loop ═══
   try {
