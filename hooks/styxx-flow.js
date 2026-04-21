@@ -1553,6 +1553,52 @@ function nodeRadius(styxx, online) {
   return base + Math.min(16, Math.log(1 + Math.max(0, styxx)) * 2);
 }
 
+// ═══ Amoeba membrane path ═════════════════════════════════════════════════
+// Every agent is a single-celled organism in a mycelium city. The shape is
+// an irregular closed curve whose perimeter is perturbed by three octaves of
+// phase-offset sine waves — gives a living, breathing body that never quite
+// repeats. Each agent's seed makes its wobble unique (so MR_REX and ATLAS
+// don't look like twins).
+//
+// Returns the extreme extents (min/max) so callers can size halos, sparks,
+// and hit-tests correctly. The pseudopod arg (0..1) lets the shape extrude
+// one tendril outward — used when an agent is on expedition / reasoning.
+function buildAmoebaPath(ctx, cx, cy, rBase, t, seed, pseudopod = 0) {
+  const N = 16;                             // resolution of the membrane
+  const phase = t * 0.0009 + seed;
+  const pseudopodAng = seed * 6.28 + t * 0.0004;  // slowly rotates
+  let maxR = 0, minR = Infinity;
+  const pts = [];
+  for (let i = 0; i < N; i++) {
+    const theta = (i / N) * Math.PI * 2;
+    // Multi-octave wobble — avoids the uniform "gummy bear" look of single sin
+    const wobble =
+      0.20 * Math.sin(phase + theta * 2 + seed * 3.1) +
+      0.11 * Math.sin(phase * 1.4 + theta * 3 + seed * 1.7) +
+      0.06 * Math.sin(phase * 0.6 + theta * 4 + seed * 5.2);
+    // Pseudopod — a gaussian bump around one angle that stretches the membrane
+    const dTheta = Math.atan2(Math.sin(theta - pseudopodAng), Math.cos(theta - pseudopodAng));
+    const bump = pseudopod * 0.35 * Math.exp(-(dTheta * dTheta) * 4.5);
+    const r = rBase * (1 + wobble + bump);
+    pts.push({ x: cx + Math.cos(theta) * r, y: cy + Math.sin(theta) * r, r });
+    if (r > maxR) maxR = r;
+    if (r < minR) minR = r;
+  }
+  // Smooth closed curve via quadratic-through-midpoints — rounds off each
+  // control point so the membrane reads as organic, not polygonal.
+  const first = { x: (pts[0].x + pts[N-1].x) / 2, y: (pts[0].y + pts[N-1].y) / 2 };
+  ctx.beginPath();
+  ctx.moveTo(first.x, first.y);
+  for (let i = 0; i < N; i++) {
+    const p = pts[i];
+    const next = pts[(i + 1) % N];
+    const mid = { x: (p.x + next.x) / 2, y: (p.y + next.y) / 2 };
+    ctx.quadraticCurveTo(p.x, p.y, mid.x, mid.y);
+  }
+  ctx.closePath();
+  return { maxR, minR };
+}
+
 // ═══ Expedition task system ═══════════════════════════════════════════════
 // Each narrative (thought) can trigger an expedition: the agent leaves its
 // home slot in the mycelium tree, travels to a target that reflects its
@@ -2133,23 +2179,34 @@ function drawNet(t) {
       }
     }
 
-    // Outer ring — DISTRICT color (primary identity). Thin, not solid.
+    // ─── Amoeba body ───────────────────────────────────────────────────
+    // Each agent renders as a single-cell organism — breathing membrane,
+    // translucent cytoplasm, visible nucleus. When on expedition/active
+    // task the cell extrudes a pseudopod (tendril) in the travel direction.
+    // This is the "bacteria living in mycelium" aesthetic — a real city of
+    // cells, not dots.
     const rr = rad * (isH ? 1.15 : 1);
-    netCtx.beginPath();
-    netCtx.arc(a.ax, a.ay, rr, 0, 6.28);
+    const amSeed = (a.driftSeed != null) ? a.driftSeed : hashStr(id + 'amoeba') * 6.28;
+    // Active reasoning / expedition triggers a pseudopod. Idle = stable blob.
+    const pseudopodStrength = a.task ? 1.0 : (sparkAlpha > 0 ? 0.6 * sparkAlpha : 0);
+    // Cytoplasm fill — very translucent district hue, so overlaps glow
+    // like watercolor washes rather than opaque discs.
+    buildAmoebaPath(netCtx, a.ax, a.ay, rr, t, amSeed, pseudopodStrength);
+    netCtx.fillStyle = a.online
+      ? \`rgba(\${ringR},\${ringG},\${ringB},\${0.14 * breath + 0.04})\`
+      : 'rgba(90,95,110,0.06)';
+    netCtx.fill();
+    // Membrane stroke — the visible cell wall, using district hue.
     netCtx.strokeStyle = a.online
       ? \`rgba(\${ringR},\${ringG},\${ringB},\${ringA * breath})\`
-      : \`rgba(\${ringR},\${ringG},\${ringB},\${.18})\`;
+      : \`rgba(\${ringR},\${ringG},\${ringB},0.22)\`;
     netCtx.lineWidth = 1.5;
     netCtx.stroke();
 
-    // Exceptional-tier accent: a thin sage-mint inner ring sits just inside
-    // the district ring as a depth marker. Only on exceptional agents,
-    // readable as "this one is thinking at peak tier" without painting all
-    // exceptional agents the same color.
+    // Exceptional-tier: a second inner membrane, thinner + sage-mint. Reads
+    // as a double-walled cell — "this one is thinking at peak tier".
     if (a.online && isException) {
-      netCtx.beginPath();
-      netCtx.arc(a.ax, a.ay, rr - 2.8, 0, 6.28);
+      buildAmoebaPath(netCtx, a.ax, a.ay, rr - 2.8, t * 1.1, amSeed + 2.3, 0);
       netCtx.strokeStyle = \`rgba(\${accentR},\${accentG},\${accentB},\${0.55 * breath})\`;
       netCtx.lineWidth = 1;
       netCtx.stroke();
