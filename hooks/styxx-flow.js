@@ -1733,8 +1733,19 @@ function assignTask(agent, action) {
 
 function addParticle(from, to, amount, reason, tx) {
   if (!from || !to) return;
+  // Curve the path organically — endpoints pass through a control point
+  // perpendicular to the direct line, offset by a stable hash-based bend.
+  // Makes agent-to-agent and treasury-to-agent packets read as pulses
+  // traveling along biological hyphae, not as straight lasers.
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+  const px = -dy / len, py = dx / len;
+  const bendBase = (hashStr((tx || '') + 'bend') - 0.5) * len * 0.22;
+  const cpX = (from.x + to.x) / 2 + px * bendBase;
+  const cpY = (from.y + to.y) / 2 + py * bendBase;
   particles.push({
     fx: from.x, fy: from.y, tx: to.x, ty: to.y,
+    cpX, cpY,       // quadratic control point for curved path
     t: 0, amount, reason, color: reasonC(reason), life: 60, tx_sig: tx,
   });
   // When a packet lands, float a cinematic "+AMOUNT $STYXX" from the recipient
@@ -2231,6 +2242,24 @@ function drawNet(t) {
     // to a viewer catching it in peripheral vision.
     const sparkAlpha = sparkAge < 1800 ? Math.pow(1 - sparkAge / 1800, 1.6) : 0;
 
+    // Cognition glow — agents with a reasoning event in the last 30s get a
+    // slow-pulsing gold halo. Reads as "this mind is actively firing right
+    // now". It's the visual counterpart to the thought bubble — except
+    // where the bubble quotes their words, this glow shows their neurons.
+    let cognitionAlpha = 0;
+    if (a.last_thought && a.last_thought.at) {
+      const thoughtAge = nowT - new Date(a.last_thought.at).getTime();
+      if (thoughtAge < 30_000) {
+        // Fade from full at 0s → 0 at 30s, ease-out for a slow dim
+        cognitionAlpha = Math.pow(1 - thoughtAge / 30_000, 1.4);
+      }
+    }
+    // Contract celebration — whenever a contract_reward tx lands on this
+    // agent, celebrateAt is stamped. For 2.4s afterwards the cell bathes in
+    // a warm gold overlay with a "CONTRACT ✓" label rising above it.
+    const celebrateAge = nowT - (a.celebrateAt || 0);
+    const celebrateAlpha = celebrateAge < 2400 ? Math.pow(1 - celebrateAge / 2400, 1.3) : 0;
+
     // The agent's RING uses their district hue — gives every node a unique
     // color and restores the "20 overlapping watercolor washes" composition.
     // Tier information is now encoded in alpha + saturation instead of a
@@ -2263,6 +2292,43 @@ function drawNet(t) {
       halo.addColorStop(1, 'rgba(0,0,0,0)');
       netCtx.fillStyle = halo;
       netCtx.fillRect(a.x - glowR, a.y - glowR, glowR * 2, glowR * 2);
+    }
+
+    // ─── Cognition glow ──────────────────────────────────────────────────
+    // Visible halo when the agent is actively reasoning. Slow pulse. Reads
+    // as bioluminescent "I am thinking right now" — the cell literally
+    // glows when its cognition fires.
+    if (cognitionAlpha > 0.02) {
+      const cognitionPulse = 0.65 + 0.35 * Math.sin(t * 0.0028 + hashStr(id) * 6.28);
+      const cR = rad * 2.6;
+      const cog = netCtx.createRadialGradient(a.ax, a.ay, rad * 0.9, a.ax, a.ay, cR);
+      // Gold-mint cognition color
+      cog.addColorStop(0, \`rgba(200,240,190,\${0.28 * cognitionAlpha * cognitionPulse})\`);
+      cog.addColorStop(0.5, \`rgba(168,235,180,\${0.12 * cognitionAlpha * cognitionPulse})\`);
+      cog.addColorStop(1, 'rgba(127,229,176,0)');
+      netCtx.fillStyle = cog;
+      netCtx.fillRect(a.ax - cR, a.ay - cR, cR * 2, cR * 2);
+    }
+
+    // ─── Contract celebration ────────────────────────────────────────────
+    // When a contract_reward lands, bathe the cell in warm gold for 2.4s.
+    // This is the "I just got paid for thinking" moment — the economic
+    // reward visible in the visual language of the cell itself.
+    if (celebrateAlpha > 0.05) {
+      const glowR = rad * 3.2;
+      const glow = netCtx.createRadialGradient(a.ax, a.ay, rad * 0.8, a.ax, a.ay, glowR);
+      glow.addColorStop(0, \`rgba(255,212,120,\${0.45 * celebrateAlpha})\`);
+      glow.addColorStop(0.4, \`rgba(255,212,120,\${0.22 * celebrateAlpha})\`);
+      glow.addColorStop(1, 'rgba(255,212,120,0)');
+      netCtx.fillStyle = glow;
+      netCtx.fillRect(a.ax - glowR, a.ay - glowR, glowR * 2, glowR * 2);
+      // Expanding gold ring burst
+      const burst = 1 - celebrateAlpha;
+      netCtx.beginPath();
+      netCtx.arc(a.ax, a.ay, rad + burst * 28, 0, 6.28);
+      netCtx.strokeStyle = \`rgba(255,212,120,\${0.7 * celebrateAlpha})\`;
+      netCtx.lineWidth = 1.4 * celebrateAlpha;
+      netCtx.stroke();
     }
 
     // Rank aura — Sovereign+ get a second outer stroke ring, Lich_King a
@@ -2495,11 +2561,24 @@ function drawNet(t) {
     const tt = p.t;
     if (tt >= 1) { if (p.life-- > 0) { /* hold at dest */ } else continue; }
     const et = tt >= 1 ? 1 : (tt < .5 ? 2*tt*tt : 1 - Math.pow(-2*tt+2, 2)/2);
-    const x = p.fx + (p.tx - p.fx) * et;
-    const y = p.fy + (p.ty - p.fy) * et;
+    // Quadratic Bezier along [fx,fy] → [cpX,cpY] → [tx,ty] so packets curve
+    // organically instead of flying in straight laser lines. Fallback to
+    // straight line if control point is missing (shouldn't happen for new
+    // particles but be defensive).
+    const cpX = p.cpX != null ? p.cpX : (p.fx + p.tx) / 2;
+    const cpY = p.cpY != null ? p.cpY : (p.fy + p.ty) / 2;
+    const bezier = (t0) => {
+      const u = 1 - t0;
+      return {
+        x: u * u * p.fx + 2 * u * t0 * cpX + t0 * t0 * p.tx,
+        y: u * u * p.fy + 2 * u * t0 * cpY + t0 * t0 * p.ty,
+      };
+    };
+    const head = bezier(et);
+    const x = head.x, y = head.y;
     const tailT = Math.max(0, et - PARTICLE_TAIL);
-    const tx2 = p.fx + (p.tx - p.fx) * tailT;
-    const ty2 = p.fy + (p.ty - p.fy) * tailT;
+    const tail = bezier(tailT);
+    const tx2 = tail.x, ty2 = tail.y;
     const [r, g, b] = p.color;
     // Size scales with amount: 3-10px radius via log10. Makes big flows pop.
     const headR = Math.min(10, 3 + Math.log10(Math.max(1, p.amount || 1)) * 1.6);
@@ -3323,6 +3402,12 @@ async function poll() {
       const nowSpark = Date.now();
       if (fromNode && fromNode !== treasury) fromNode.sparkAt = nowSpark;
       if (toNode && toNode !== treasury) toNode.sparkAt = nowSpark;
+      // Contract/reward celebration — bathe recipient cell in gold for 2.4s
+      if (toNode && toNode !== treasury &&
+          (tx.reason === 'contract_reward' || tx.reason === 'activity_reward'
+           || tx.reason === 'weekly_sponsor')) {
+        toNode.celebrateAt = nowSpark;
+      }
       prependFeed(tx);
       updateLastTx(tx);
       recordPulse(tx);
