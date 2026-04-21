@@ -116,8 +116,9 @@ CREATE TABLE IF NOT EXISTS airdrop_log (
 -- ─── Arena config (tunable without deploy via economy_params) ──────────
 INSERT INTO economy_params (key, value) VALUES
   ('arena_enabled',                'false'),                  -- safety switch, flip to 'true' to go live
-  ('arena_min_bet_styxx',          '100000'),                 -- HIGH STAKES ONLY — 100k $STYXX floor (~$6.50)
-  ('arena_max_bet_styxx',          '10000000'),               -- 10M $STYXX ceiling (~$650) — degen territory
+  ('arena_min_bet_styxx',          '100000'),                 -- 100k $STYXX floor (~$6.50)
+  ('arena_max_bet_styxx',          '500000'),                 -- 500k $STYXX ceiling (~$32) — bounded so treasury survives tail events
+  ('arena_payout_cap_bps',         '2500'),                   -- max single-payout = 25% of treasury (safety net vs freak multipliers)
   ('arena_betting_window_secs',    '15'),
   ('arena_round_interval_secs',    '60'),                    -- between rounds
   ('arena_queue_depth',            '5'),                     -- pre-generated rounds to keep ready

@@ -365,15 +365,31 @@ async function settleRound(pool, round) {
   const { rows: genesisRows } = await pool.query("SELECT wallet_pubkey, effective_multiplier FROM v_genesis_real_humans");
   const genesisMap = new Map(genesisRows.map(g => [g.wallet_pubkey, Number(g.effective_multiplier)]));
 
+  // ─── Treasury solvency check + per-payout cap ───
+  // Never pay more than (arena_payout_cap_bps / 10000) of treasury balance
+  // in a single cashout. Protects against a freak 500× whale bet bankrupting
+  // the house. Default: 25% of treasury per payout.
+  let payoutCap = Infinity;
+  if (!shadowMode) {
+    try {
+      const treasuryPk = solanaStyxx.getTreasury().publicKey.toBase58();
+      const treasuryBal = Number(await solanaStyxx.getBalance(treasuryPk));
+      const capBps = Number(params.arena_payout_cap_bps || 2500);
+      payoutCap = treasuryBal * (capBps / 10000);
+    } catch (e) { console.warn('[arena] treasury balance check failed, using default cap', e.message); payoutCap = 2_500_000; }
+  }
+
   let totalBurn = 0, publicJackpot = 0, founderCut = 0, founderJackpot = 0;
 
   for (const bet of bets) {
     const stake = Number(bet.stake_styxx);
     if (bet.cashed_out_at && Number(bet.cashout_multiplier) < crashMult + 0.001) {
-      // WINNER — paid stake × cashout_mult × genesis_mult
+      // WINNER — paid stake × cashout_mult × genesis_mult (capped at payoutCap)
       const genesisMult = genesisMap.get(bet.user_wallet) || 1.0;
       const rawPayout = stake * Number(bet.cashout_multiplier);
-      const payout = rawPayout * genesisMult;
+      const uncappedPayout = rawPayout * genesisMult;
+      const payout = Math.min(uncappedPayout, payoutCap);
+      const wasCapped = payout < uncappedPayout;
       if (!shadowMode) {
         try {
           const { signature } = await solanaStyxx.airdropFromTreasury(bet.user_wallet, payout);
@@ -381,9 +397,15 @@ async function settleRound(pool, round) {
             `UPDATE arena_bets SET status='cashed_out', payout_styxx=$1, payout_tx=$2, genesis_multiplier=$3 WHERE id=$4`,
             [payout, signature, genesisMult, bet.id]
           );
+          if (wasCapped) console.warn('[arena] payout CAPPED for bet', bet.id, '· requested', uncappedPayout.toFixed(0), '· paid', payout.toFixed(0));
         } catch (e) {
-          console.error('[arena] payout failed for bet', bet.id, e.message);
-          // Leave bet open, will retry next settlement pass
+          // Payout failed (RPC flake, SOL balance, etc). Mark bet as pending
+          // so the retry loop can reprocess it without orphaning.
+          console.error('[arena] payout failed for bet', bet.id, '·', e.message);
+          await pool.query(
+            `UPDATE arena_bets SET status='payout_pending', payout_styxx=$1, genesis_multiplier=$2 WHERE id=$3`,
+            [payout, genesisMult, bet.id]
+          );
           continue;
         }
       } else {
@@ -507,6 +529,28 @@ async function loadParams(pool) {
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
 }
 
+// ─── Retry failed payouts ─────────────────────────────────────────
+// Any bet stuck in payout_pending (because an airdrop call failed) gets
+// retried here. Bounded retries: 8 attempts then we give up and flag it.
+async function retryPendingPayouts(pool) {
+  const params = await loadParams(pool);
+  const shadowMode = String(params.arena_shadow_mode || 'true').toLowerCase() === 'true';
+  if (shadowMode) return;
+  const { rows } = await pool.query(
+    "SELECT id, user_wallet, payout_styxx FROM arena_bets WHERE status = 'payout_pending' AND payout_styxx > 0 LIMIT 10"
+  );
+  for (const bet of rows) {
+    try {
+      const { signature } = await solanaStyxx.airdropFromTreasury(bet.user_wallet, Number(bet.payout_styxx));
+      await pool.query(
+        `UPDATE arena_bets SET status='cashed_out', payout_tx=$1 WHERE id=$2`,
+        [signature, bet.id]
+      );
+      console.log('[arena] retry succeeded: bet', bet.id, '→', signature.slice(0, 12));
+    } catch (e) { console.warn('[arena] retry failed for bet', bet.id, e.message); }
+  }
+}
+
 // ─── Main loop — runs every 2s, drives the whole system ─────────────────
 let _running = false;
 async function tick(pool) {
@@ -517,6 +561,7 @@ async function tick(pool) {
     await activateNextRound(pool).catch(e => console.warn('[arena] activate', e.message));
     await startRunningRounds(pool).catch(e => console.warn('[arena] run', e.message));
     await resolveRunningRounds(pool).catch(e => console.warn('[arena] resolve', e.message));
+    await retryPendingPayouts(pool).catch(e => console.warn('[arena] retry', e.message));
   } finally { _running = false; }
 }
 

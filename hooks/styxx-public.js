@@ -1756,7 +1756,7 @@ ${NAV('/earn')}
         <a class="btn" href="/arena">Enter the Felt <span class="arr">→</span></a>
         <a class="btn ghost" href="/arena">See live round</a>
       </div>
-      <div class="muted" style="font-size:12px;margin-top:14px;letter-spacing:.03em">Min 100,000 \$STYXX · max 10M · genesis wallets earn 1.50×–3.75× multipliers on every cashout</div>
+      <div class="muted" style="font-size:12px;margin-top:14px;letter-spacing:.03em">Min 100,000 \$STYXX · max 500,000 · genesis wallets earn 1.50×–3.75× multipliers on every cashout</div>
     </div>
     <div style="position:relative">
       <div style="border:1px solid var(--line);border-radius:14px;padding:28px 24px;background:linear-gradient(180deg,rgba(67,255,180,.03),transparent);position:relative;overflow:hidden">

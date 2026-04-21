@@ -674,10 +674,10 @@ body::after {
   </div>
 
   <div class="betrow" id="betForm">
-    <input type="number" id="stakeInput" placeholder="100000" min="100000" max="10000000">
+    <input type="number" id="stakeInput" placeholder="100000" min="100000" max="500000">
     <button class="quick" data-amt="100000">100k</button>
+    <button class="quick" data-amt="250000">250k</button>
     <button class="quick" data-amt="500000">500k</button>
-    <button class="quick" data-amt="1000000">1M</button>
     <button class="buyin" id="buyinBtn">BUY IN</button>
   </div>
 
@@ -689,7 +689,7 @@ body::after {
   <div class="msg" id="statusMsg"></div>
 
   <div class="hint">
-    <span>min 100k · max 10M $STYXX · house never blinks</span>
+    <span>min 100k · max 500k $STYXX · payouts capped at 25% of treasury</span>
     <span>94% loss burn · 4% kitty · 1% founders · 1% founder jackpot</span>
   </div>
 </div>
@@ -831,7 +831,7 @@ body::after {
     if (!currentRound || currentRound.status !== 'betting') { setMsg('window closed. wait for next round.', 'err'); return; }
     const amt = Number(document.getElementById('stakeInput').value || 0);
     if (amt < 100000) { setMsg('min buy-in: 100,000 $STYXX.', 'err'); return; }
-    if (amt > 10000000) { setMsg('max bet: 10,000,000 $STYXX.', 'err'); return; }
+    if (amt > 500000) { setMsg('max bet: 500,000 $STYXX. (safety cap while treasury builds)', 'err'); return; }
     setMsg('signing... sending ' + fmt(amt) + ' $STYXX to the house', 'ok');
     let tx;
     try { tx = await payStake(amt); }
