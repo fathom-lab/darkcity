@@ -16,17 +16,17 @@ const { Pool } = require('pg');
 
   // Pulse: last distribution_events pulse
   const { rows: pulseRows } = await pool.query(
-    `SELECT kind, COUNT(*)::int AS n, MAX(created_at) AS last
+    `SELECT kind, COUNT(*)::int AS n, MAX(recorded_at) AS last
        FROM distribution_events
-      WHERE created_at > NOW() - INTERVAL '7 days'
+      WHERE recorded_at > NOW() - INTERVAL '7 days'
       GROUP BY kind ORDER BY n DESC`
-  ).catch(() => ({ rows: [] }));
+  ).catch(e => { console.error('pulse_events_7d ERR', e.message); return { rows: [] }; });
   r.pulse_events_7d = pulseRows;
 
   // Most recent pulse
   const { rows: lastPulse } = await pool.query(
-    `SELECT created_at FROM treasury_snapshots ORDER BY created_at DESC LIMIT 1`
-  ).catch(() => ({ rows: [] }));
+    `SELECT snapshot_at FROM treasury_snapshots ORDER BY snapshot_at DESC LIMIT 1`
+  ).catch(e => { console.error('treasury ERR', e.message); return { rows: [] }; });
   r.last_treasury_snapshot = lastPulse[0] || null;
 
   // Holder pool: pending + distributed events

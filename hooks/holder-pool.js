@@ -107,7 +107,6 @@ async function accrueFromMint(pool, { quote_id, fee_styxx }) {
  */
 async function discoverHoldersOnChain(connection) {
   const STYXX_MINT = solanaStyxx.STYXX_MINT_ADDR;
-  const STYXX_DECIMALS = solanaStyxx.STYXX_DECIMALS || 6;
   // Token-2022 accounts have the mint at offset 0 (first 32 bytes).
   const accounts = await connection.getParsedProgramAccounts(TOKEN_2022_PROGRAM_ID, {
     commitment: 'confirmed',
@@ -125,6 +124,41 @@ async function discoverHoldersOnChain(connection) {
     holders.push({ pubkey: owner, holding: amt });
   }
   return holders;
+}
+
+/**
+ * Fallback holder discovery from our own transfer ledger.
+ * Public Solana RPC endpoints reject getProgramAccounts on Token-2022
+ * ("excluded from account secondary indexes"). Rather than leaving the
+ * pool stuck, derive net holdings from styxx_transfers — we signed every
+ * distribution, so the ledger is a complete record of who received STYXX.
+ * This UNDER-counts holders who bought on pump.fun and never interacted
+ * with DarkCity, but those wallets can't be paid automatically anyway
+ * (they aren't in any of our tables). Covers 100% of our ecosystem.
+ */
+async function discoverHoldersFromLedger(pgPool) {
+  const { rows } = await pgPool.query(`
+    WITH flows AS (
+      SELECT to_pubkey   AS pubkey, SUM(amount)::float AS inflow,  0::float AS outflow
+        FROM styxx_transfers WHERE to_pubkey IS NOT NULL GROUP BY to_pubkey
+      UNION ALL
+      SELECT from_pubkey AS pubkey, 0::float AS inflow, SUM(amount)::float AS outflow
+        FROM styxx_transfers WHERE from_pubkey IS NOT NULL GROUP BY from_pubkey
+    )
+    SELECT pubkey,
+           GREATEST(SUM(inflow) - SUM(outflow), 0)::float AS holding
+      FROM flows
+     WHERE pubkey IS NOT NULL
+     GROUP BY pubkey
+    HAVING GREATEST(SUM(inflow) - SUM(outflow), 0) > 0
+  `);
+  // Drop synthetic markers like 'BURN' — not real Solana pubkeys. Base58
+  // addresses are 32–44 chars; our markers are short ALL-CAPS strings.
+  return rows
+    .filter(r => {
+      try { new PublicKey(r.pubkey); return true; } catch { return false; }
+    })
+    .map(r => ({ pubkey: r.pubkey, holding: Number(r.holding) }));
 }
 
 /**
@@ -155,12 +189,20 @@ async function runDistribution(pool, { connection } = {}) {
   if (!conn) return { ok: false, reason: 'no_connection' };
 
   let holders;
+  let discoverySource = 'onchain';
   try {
     holders = await discoverHoldersOnChain(conn);
   } catch (e) {
-    console.warn('[holder-pool] on-chain discovery failed, skipping pulse:', e.message);
-    return { ok: false, reason: 'discovery_failed', error: e.message };
+    console.warn('[holder-pool] on-chain discovery failed, falling back to ledger:', e.message);
+    try {
+      holders = await discoverHoldersFromLedger(pool);
+      discoverySource = 'ledger';
+    } catch (e2) {
+      console.warn('[holder-pool] ledger fallback also failed:', e2.message);
+      return { ok: false, reason: 'discovery_failed', error: e2.message };
+    }
   }
+  console.log(`[holder-pool] discovered ${holders.length} holders via ${discoverySource}`);
 
   // Filter dust + exclusions. Also filter the treasury itself (it shouldn't
   // pay itself), burn address, and well-known contract/LP/CEX wallets.
