@@ -3195,6 +3195,10 @@ initDB().then(async () => {
         const styxxChat = require('./hooks/styxx-chat');
         styxxChat.installChatRoutes(app, pool);
       } catch (e) { console.warn('[STYXX] chat routes failed to install:', e.message); }
+      try {
+        const styxxChatUI = require('./hooks/styxx-chat-ui');
+        styxxChatUI.installChatUIRoutes(app, pool);
+      } catch (e) { console.warn('[STYXX] chat UI failed to install:', e.message); }
       // Shared one-click Phantom signer — served as /js/dc-auto-sign.js so
       // every page (public, flow, agent dossier, dashboard) can load it
       // uniformly. Without this, pages outside styxx-public.js's COMMON_HEAD
