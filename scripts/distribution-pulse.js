@@ -278,6 +278,28 @@ async function main() {
         VALUES ($1, $2, 'activity_reward', $3, $4, TRUE, NOW())
       `, [a.agent_id, gross, `pulse_${new Date().toISOString()}`, Number(a.avg_depth)]);
 
+      // Pulse payouts need to land in BOTH tables:
+      //   distribution_events  — internal accounting / audit
+      //   styxx_transfers      — the public ledger that feeds /api/tape/feed,
+      //                          /api/styxx/ledger, and the /flow map.
+      // Previously only distribution_events got written, so every pulse was
+      // invisible to users: tape showed 0 txs/min, map showed no flow, and
+      // users (correctly) thought payouts had stopped even though STYXX was
+      // actually moving on-chain.
+      const treasuryPubkey = treasuryBal.pubkey;
+      const recordTransfer = async (signature, toAgentId, toPubkey, amount, reason, memo) => {
+        try {
+          await pool.query(`
+            INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
+            VALUES ($1, 'TREASURY', $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (tx_signature) DO NOTHING
+          `, [signature, treasuryPubkey, toAgentId, toPubkey, amount, reason, memo]);
+        } catch (e) {
+          console.warn(`[pulse:${a.agent_id}] styxx_transfers insert skipped:`, e.message);
+        }
+      };
+      const pulseMemo = `pulse:${new Date().toISOString().slice(0,13)}:${a.agent_id}`;
+
       // Hyphal flows
       for (const link of links) {
         if (!link.counterparty_pubkey || hyphalPerLink < DUST_THRESHOLD_STYXX) {
@@ -289,6 +311,7 @@ async function main() {
           INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature, window_end)
           VALUES ('hyphal_flow', $1, $2, $3, $4, NOW())
         `, [a.agent_id, link.counterparty_pubkey, hyphalPerLink, signature]);
+        await recordTransfer(signature, link.counterparty || null, link.counterparty_pubkey, hyphalPerLink, 'hyphal_flow', pulseMemo);
       }
 
       // Fruiting dividend
@@ -298,6 +321,7 @@ async function main() {
           INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature, window_end)
           VALUES ('fruiting_dividend', $1, $2, $3, $4, NOW())
         `, [a.agent_id, fbs[0].guild_pubkey, fruitingShare, signature]);
+        await recordTransfer(signature, null, fbs[0].guild_pubkey, fruitingShare, 'fruiting_dividend', pulseMemo);
       }
 
       // Referral
@@ -307,6 +331,7 @@ async function main() {
           INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature, window_end)
           VALUES ('referral_bonus', $1, $2, $3, $4, NOW())
         `, [a.agent_id, refRows[0].referrer_pubkey, referralShare, signature]);
+        await recordTransfer(signature, null, refRows[0].referrer_pubkey, referralShare, 'referral_bonus', pulseMemo);
         await pool.query(`
           UPDATE referrals SET total_yield_bonus_styxx = total_yield_bonus_styxx + $1
           WHERE referred_agent_id = $2 AND expires_at > NOW()
@@ -326,6 +351,7 @@ async function main() {
           INSERT INTO distribution_events (kind, agent_id, recipient_pubkey, amount, tx_signature, window_end)
           VALUES ('weekly_sponsor', $1, $2, $3, $4, NOW())
         `, [a.agent_id, lp.pubkey, share, signature]);
+        await recordTransfer(signature, null, lp.pubkey, share, 'weekly_sponsor', pulseMemo);
         if (!lp.is_owner) {
           await pool.query(`
             UPDATE sponsorships SET total_distributed = total_distributed + $1
