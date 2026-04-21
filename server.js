@@ -593,7 +593,23 @@ app.use(cookieParser());
 // Trust the Railway/Cloudflare proxy so express-rate-limit sees real client IPs.
 app.set('trust proxy', 1);
 
-const globalLimiter = rateLimit({ windowMs: 60000, max: 100, message: { error: "Too many requests." }, standardHeaders: true, legacyHeaders: false });
+// Raise the global limit and skip the read-only public polling endpoints
+// used by /arena, /flow, /chat, /me (any page polling more than once a second
+// would otherwise exhaust the old 100 req/min window in ~30 seconds).
+const POLL_PATHS = /^\/(api\/arena\/(round|jackpot|history)|api\/treasury\/pubkey|api\/flow\/|api\/map\/|api\/citizens\/|api\/tape\/|api\/me\/public|api\/style\.css|api\/chat\/feed|api\/agents\/list|api\/stats|api\/leaderboard)/;
+const globalLimiter = rateLimit({
+  windowMs: 60000,
+  max: 600,
+  message: { error: "Too many requests." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Static pages + read-only polling feeds are exempt from the global bucket.
+    if (req.method === 'GET' && POLL_PATHS.test(req.path)) return true;
+    if (req.method === 'GET' && !req.path.startsWith('/api/')) return true; // html pages
+    return false;
+  },
+});
 app.use(globalLimiter);
 
 const authLimiter = rateLimit({ windowMs: 900000, max: 10, message: { error: "Too many auth attempts. Try again in 15 minutes." }, keyGenerator: (req) => req.ip + (req.body?.email || "") });
