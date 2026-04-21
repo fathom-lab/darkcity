@@ -1782,6 +1782,33 @@ function drawNet(t) {
   netCtx.translate(view.x, view.y);
   netCtx.scale(view.k, view.k);
 
+  // ── Pre-compute hover state so hyphae/banners/cells all respect it ──
+  // Determine which agent (if any) is under the cursor BEFORE we draw
+  // anything, so everything else can dim in concert. Focus mode: when
+  // hovered is non-null, non-focused elements render at a reduced alpha
+  // and the hovered agent's colony stays at full brightness. Teaches the
+  // graph topology by making the hovered cell's economic neighborhood
+  // visible at a glance.
+  let focusedAgent = null;
+  {
+    const wm = screenToWorld(mouseX, mouseY);
+    let bestDist = Infinity;
+    for (const a of agents.values()) {
+      if (a.x == null) continue;
+      const rad = nodeRadius(a.styxx, a.online, a.earnings_7d, a.colonyIndex);
+      const ax = a.x + (a.driftX || 0), ay = a.y + (a.driftY || 0);
+      const hit = Math.hypot(wm.x - ax, wm.y - ay);
+      if (hit < rad + 10 / view.k && hit < bestDist) {
+        bestDist = hit;
+        focusedAgent = a;
+      }
+    }
+  }
+  const focusMode = focusedAgent != null;
+  const focusColony = focusedAgent ? focusedAgent.colonyName : null;
+  // Opacity multiplier for non-focused elements — dim but not invisible
+  const dimMul = focusMode ? 0.35 : 1.0;
+
   // ── Mycelium physics: ease every agent toward its target + subtle drift
   // so the network feels alive even when nothing's flowing.
   const now = Date.now();
@@ -1882,11 +1909,15 @@ function drawNet(t) {
       const [hR, hG, hB] = tint;
 
       // Colony bloom — soft radial haze, NO hard edge, NO boundary line.
+      // When another colony is focused, this one dims; if THIS is the focused
+      // colony, boost the bloom so the neighborhood reads as highlighted.
       const bloomR = (d.colonyRadius || 60) * 2.4;
+      const isFocusCol = focusColony === name;
+      const colonyAlpha = focusMode ? (isFocusCol ? 1.35 : 0.35) : 1.0;
       const bloom = netCtx.createRadialGradient(d.centroidX, d.centroidY, (d.colonyRadius || 60) * 0.2,
                                                  d.centroidX, d.centroidY, bloomR);
-      bloom.addColorStop(0, \`rgba(\${hR},\${hG},\${hB},0.10)\`);
-      bloom.addColorStop(0.55, \`rgba(\${hR},\${hG},\${hB},0.04)\`);
+      bloom.addColorStop(0, \`rgba(\${hR},\${hG},\${hB},\${0.10 * colonyAlpha})\`);
+      bloom.addColorStop(0.55, \`rgba(\${hR},\${hG},\${hB},\${0.04 * colonyAlpha})\`);
       bloom.addColorStop(1, \`rgba(\${hR},\${hG},\${hB},0)\`);
       netCtx.fillStyle = bloom;
       netCtx.beginPath();
@@ -1953,6 +1984,10 @@ function drawNet(t) {
       const tint = DISTRICT_HUE[name] || [140, 160, 190];
       const [hR, hG, hB] = tint;
       const pulse = 0.5 + 0.5 * Math.sin(t * 0.0007 + hashStr(name) * 6.28);
+      // Dim trunks of non-focused colonies so the hovered colony's arterial
+      // reads as the single bright path back to treasury.
+      const isFocusCol = focusColony === name;
+      const trunkMul = focusMode ? (isFocusCol ? 1.5 : 0.25) : 1.0;
       const dxl = d.centroidX - treasury.homeX;
       const dyl = d.centroidY - treasury.homeY;
       const lenl = Math.hypot(dxl, dyl) || 1;
@@ -1963,14 +1998,14 @@ function drawNet(t) {
       netCtx.beginPath();
       netCtx.moveTo(treasury.homeX, treasury.homeY);
       netCtx.quadraticCurveTo(mx + pxl * bend, my + pyl * bend, d.centroidX, d.centroidY);
-      netCtx.strokeStyle = \`rgba(\${hR},\${hG},\${hB},\${0.18 + 0.10 * pulse})\`;
+      netCtx.strokeStyle = \`rgba(\${hR},\${hG},\${hB},\${(0.18 + 0.10 * pulse) * trunkMul})\`;
       netCtx.lineWidth = 1.6;
       netCtx.stroke();
       // Thin crisp overlay for definition
       netCtx.beginPath();
       netCtx.moveTo(treasury.homeX, treasury.homeY);
       netCtx.quadraticCurveTo(mx + pxl * bend, my + pyl * bend, d.centroidX, d.centroidY);
-      netCtx.strokeStyle = \`rgba(\${hR},\${hG},\${hB},\${0.35 + 0.2 * pulse})\`;
+      netCtx.strokeStyle = \`rgba(\${hR},\${hG},\${hB},\${(0.35 + 0.2 * pulse) * trunkMul})\`;
       netCtx.lineWidth = 0.5;
       netCtx.stroke();
     }
@@ -2217,18 +2252,22 @@ function drawNet(t) {
   // easing-target position; drift is added at render time so the underlying
   // hyphal layout isn't perturbed. Alias to a.ax / a.ay so the rest of this
   // loop can render + hit-test against the exact pixels on screen.
-  hovered = null;
+  hovered = focusedAgent;
   const nowT = Date.now();
   for (const [id, a] of agents) {
     const rad = nodeRadius(a.styxx, a.online, a.earnings_7d, a.colonyIndex);
     const breath = .85 + .15 * Math.sin(t * .0015 + hashStr(id) * 6.28);
     a.ax = a.x + (a.driftX || 0);
     a.ay = a.y + (a.driftY || 0);
-    // Hit-test in world coords (account for pan+zoom). rad+8 tolerance
-    // shrinks with zoom so it stays roughly constant in screen pixels.
-    const wm = screenToWorld(mouseX, mouseY);
-    const isH = Math.hypot(wm.x - a.ax, wm.y - a.ay) < rad + 8 / view.k;
-    if (isH) hovered = a;
+    const isH = (a === focusedAgent);
+    // Focus-mode alpha for this agent — focused stays at 1.0, same-colony
+    // members dim lightly, other colonies dim harder.
+    let focusAlpha = 1.0;
+    if (focusMode) {
+      if (isH) focusAlpha = 1.0;
+      else if (a.colonyName === focusColony) focusAlpha = 0.72;
+      else focusAlpha = 0.28;
+    }
     // Agent color = DISTRICT_HUE (each district gets its own jewel-tone).
     // Falls back to celestial blue for online, dusk-grey-blue for offline —
     // but every agent with a known district paints in that district's hue so
@@ -2401,13 +2440,13 @@ function drawNet(t) {
     // like watercolor washes rather than opaque discs.
     buildAmoebaPath(netCtx, a.ax, a.ay, rr, t, amSeed, pseudopodStrength);
     netCtx.fillStyle = a.online
-      ? \`rgba(\${ringR},\${ringG},\${ringB},\${0.14 * breath + 0.04})\`
-      : 'rgba(90,95,110,0.06)';
+      ? \`rgba(\${ringR},\${ringG},\${ringB},\${(0.14 * breath + 0.04) * focusAlpha})\`
+      : \`rgba(90,95,110,\${0.06 * focusAlpha})\`;
     netCtx.fill();
     // Membrane stroke — the visible cell wall, using district hue.
     netCtx.strokeStyle = a.online
-      ? \`rgba(\${ringR},\${ringG},\${ringB},\${ringA * breath})\`
-      : \`rgba(\${ringR},\${ringG},\${ringB},0.22)\`;
+      ? \`rgba(\${ringR},\${ringG},\${ringB},\${ringA * breath * focusAlpha})\`
+      : \`rgba(\${ringR},\${ringG},\${ringB},\${0.22 * focusAlpha})\`;
     netCtx.lineWidth = 1.5;
     netCtx.stroke();
 
@@ -2496,10 +2535,10 @@ function drawNet(t) {
     // any given time because low-balance agents have radius ~4.5. Result:
     // first-time viewer sees unnamed dots. Now every rendered agent is named.
     // Collision avoidance keeps ECHO+WRAITH from stacking into "ECHOWRAITH".
-    netCtx.font = (isH ? '600 12px' : a.online ? '500 11px' : '500 10px') + ' "Inter", sans-serif';
-    netCtx.fillStyle = isH ? '#ffffff'
-                    : a.online ? 'rgba(237,237,239,.92)'
-                    : 'rgba(160,160,175,.65)';
+    netCtx.font = (isH ? '600 13px' : a.online ? '500 11px' : '500 10px') + ' "Inter", sans-serif';
+    const labelBase = isH ? 255 : a.online ? 237 : 160;
+    const labelAlpha = (isH ? 1.0 : a.online ? 0.92 : 0.65) * focusAlpha;
+    netCtx.fillStyle = \`rgba(\${labelBase},\${labelBase},\${isH ? 255 : labelBase + 15},\${labelAlpha})\`;
     netCtx.textAlign = 'center';
     // Candidate position: above the node. If too close to any previous
     // label this frame, flip below. If still colliding, nudge +14 more px.
