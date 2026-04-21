@@ -752,11 +752,11 @@ body::after {
   async function loadWalletBalance() {
     if (!wallet) return;
     try {
-      if (!conn) conn = new solanaWeb3.Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+      const c = await getConn();
       const owner = new solanaWeb3.PublicKey(wallet);
       const mint = new solanaWeb3.PublicKey(STYXX_MINT);
       const [ata] = solanaWeb3.PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
-      const info = await conn.getTokenAccountBalance(ata).catch(() => null);
+      const info = await c.getTokenAccountBalance(ata).catch(() => null);
       const bal = info?.value?.uiAmount || 0;
       const el = document.getElementById('wBal');
       el.innerHTML = 'bal: <b>' + fmt(bal) + '</b> $STYXX';
@@ -792,9 +792,33 @@ body::after {
     b.addEventListener('click', () => { document.getElementById('stakeInput').value = b.dataset.amt; });
   });
 
+  // Pool of RPC endpoints. mainnet-beta throttles browser requests aggressively
+  // (403 Access Forbidden). We try several in order until one returns a valid
+  // blockhash, then stick with it for the session.
+  const RPC_ENDPOINTS = [
+    'https://solana-rpc.publicnode.com',
+    'https://rpc.ankr.com/solana',
+    'https://solana.api.onfinality.io/public',
+    'https://api.mainnet-beta.solana.com',
+  ];
+  async function getConn() {
+    if (conn) return conn;
+    for (const url of RPC_ENDPOINTS) {
+      try {
+        const c = new solanaWeb3.Connection(url, 'confirmed');
+        await c.getLatestBlockhash();
+        conn = c;
+        return c;
+      } catch (e) {
+        console.warn('rpc failed:', url, e.message);
+      }
+    }
+    throw new Error('no working solana rpc — all endpoints rate-limited');
+  }
+
   async function payStake(amount) {
     if (!wallet) throw new Error('connect first');
-    if (!conn) conn = new solanaWeb3.Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    const c = await getConn();
     if (!treasuryPk) { treasuryPk = (await fetch('/api/treasury/pubkey').then(r=>r.json())).pubkey; }
     const payer = new solanaWeb3.PublicKey(wallet);
     const treasury = new solanaWeb3.PublicKey(treasuryPk);
@@ -819,10 +843,10 @@ body::after {
     });
     const tx = new solanaWeb3.Transaction().add(ix);
     tx.feePayer = payer;
-    const { blockhash } = await conn.getLatestBlockhash();
+    const { blockhash } = await c.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     const signed = await window.solana.signAndSendTransaction(tx);
-    await conn.confirmTransaction(signed.signature, 'confirmed');
+    await c.confirmTransaction(signed.signature, 'confirmed');
     return signed.signature;
   }
 
