@@ -86,26 +86,56 @@ async function callLLM({ system, messages, max_tokens = 600, model }) {
   } finally { clearTimeout(timeout); }
 }
 
-// ─── Depth scorer integration ──────────────────────────────────────────
-// Uses the same depth-scoring logic that powers the economy. Scores a piece
-// of reasoning text on [0, 1] where higher = deeper/more specific.
-let _scoreReasoning;
-function getDepthScorer() {
-  if (!_scoreReasoning) {
-    try { _scoreReasoning = require('./depth-scorer').scoreReasoning; }
-    catch { _scoreReasoning = null; }
-  }
-  return _scoreReasoning;
-}
-
-function fallbackDepthScore(text) {
-  // Simple heuristic if depth-scorer unavailable: length + concrete refs
+// ─── Sentence-level depth scorer (purpose-built for arena) ─────────────
+// The generic depth-scorer.js is built for full structured LLM actions
+// (with agent_state, alternatives, choice_reason, reasoning_trace). It only
+// gives meaningful signal when scoring that full shape. For single sentences
+// we need a scorer that grades THIS sentence's concreteness vs vagueness.
+//
+// High-depth markers: specific proper nouns (districts, agents), numbers/
+// percentages/timeframes, causal/conditional reasoning, tradeoff vocabulary.
+// Low-depth markers: hedge words, filler, roleplay without content.
+function sentenceDepth(text) {
   if (!text) return 0;
-  const len = Math.min(1, text.length / 400);
-  const hasNumbers = /\d/.test(text) ? 0.15 : 0;
-  const hasProperNoun = /\b[A-Z][a-z]+|[A-Z]{2,}/.test(text) ? 0.1 : 0;
-  const hasBecause = /because|since|therefore|if.*then|means that/i.test(text) ? 0.15 : 0;
-  return Math.min(1, 0.3 + len * 0.3 + hasNumbers + hasProperNoun + hasBecause);
+  const t = text.trim();
+  const len = t.length;
+  let s = 0;
+
+  // 1. Length baseline — 0 to 0.20
+  s += Math.min(0.20, len / 500);
+
+  // 2. Concrete numbers / percentages / multipliers — 0 to 0.22
+  const numHits = (t.match(/\b\d+(\.\d+)?[%kKmM×x]?\b/g) || []).length;
+  s += Math.min(0.22, numHits * 0.055);
+
+  // 3. Proper-noun density (agent names, districts, Silicon Docks, MR_REX etc.)
+  //    Exclude the first word of the sentence (which is always capitalized).
+  //    0 to 0.18
+  const rest = t.replace(/^[^A-Za-z]*[A-Z][a-z]*\s*/, ' ');
+  const proper = (rest.match(/\b[A-Z][a-zA-Z_]{2,}\b/g) || []).length;
+  s += Math.min(0.18, proper * 0.045);
+
+  // 4. Causal / conditional reasoning — 0 to 0.18
+  if (/\b(because|since|therefore|if\s+\w+.+then|means that|which means|that's why|otherwise|unless|as long as)\b/i.test(t)) s += 0.18;
+  else if (/\b(so|but|while|whereas|though|however|still|instead|rather)\b/i.test(t)) s += 0.10;
+
+  // 5. Strategy / tradeoff vocabulary — 0 to 0.14
+  const strategyHits = (t.match(/\b(leverage|capital|asymmetry|edge|tradeoff|risk|exposure|position|hedge|stake|margin|consolidate|expand|alliance|reserve|depth|arbitrage|liquidity|volatility|concentrate|diversify)\b/gi) || []).length;
+  s += Math.min(0.14, strategyHits * 0.045);
+
+  // 6. Time-awareness (specific horizons) — 0 to 0.08
+  if (/\b(\d+\s+)?(pulse|cycle|week|day|hour|minute|next|this|soon|immediately|later)\s*(s|es)?\b/i.test(t)) s += 0.08;
+
+  // 7. Vagueness penalty
+  const vague = (t.match(/\b(maybe|probably|somewhat|kind of|sort of|might be|could be|should be|i guess|not sure|whatever|anyway|basically)\b/gi) || []).length;
+  s -= Math.min(0.18, vague * 0.06);
+
+  // 8. Pure-roleplay penalty (if the sentence is mostly *asterisk actions* with no content)
+  const asteriskBlocks = (t.match(/\*[^*]{4,}\*/g) || []);
+  const asteriskLen = asteriskBlocks.reduce((n, b) => n + b.length, 0);
+  if (len > 0 && asteriskLen / len > 0.45) s -= 0.10;
+
+  return Math.max(0, Math.min(1, s));
 }
 
 // ─── Round generator — pre-fills the queue ─────────────────────────────
@@ -152,15 +182,8 @@ async function generateRound(pool) {
     .filter(s => s.length > 10);
   if (sentences.length < 2) return null;
 
-  // Depth-score each sentence
-  const scorer = getDepthScorer();
-  const perSentenceScores = sentences.map(s => {
-    if (scorer) {
-      try { return scorer({ reasoning_trace: s })?.normalized_score ?? fallbackDepthScore(s); }
-      catch { return fallbackDepthScore(s); }
-    }
-    return fallbackDepthScore(s);
-  });
+  // Depth-score each sentence (purpose-built for sentence granularity)
+  const perSentenceScores = sentences.map(sentenceDepth);
 
   // ─── Multiplier curve engineered for exciting payout distribution ───
   // Target outcomes across many rounds:

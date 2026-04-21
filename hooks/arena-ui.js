@@ -749,6 +749,21 @@ body::after {
   }
 
   // ─── WALLET ─────────────────────────────────────────────────────────
+  async function loadWalletBalance() {
+    if (!wallet) return;
+    try {
+      if (!conn) conn = new solanaWeb3.Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+      const owner = new solanaWeb3.PublicKey(wallet);
+      const mint = new solanaWeb3.PublicKey(STYXX_MINT);
+      const [ata] = solanaWeb3.PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
+      const info = await conn.getTokenAccountBalance(ata).catch(() => null);
+      const bal = info?.value?.uiAmount || 0;
+      const el = document.getElementById('wBal');
+      el.innerHTML = 'bal: <b>' + fmt(bal) + '</b> $STYXX';
+      el.style.display = 'inline';
+    } catch {}
+  }
+
   async function connect() {
     if (!window.solana?.isPhantom) { setMsg('phantom required. no phantom, no play.', 'err'); window.open('https://phantom.com', '_blank'); return; }
     try {
@@ -757,6 +772,7 @@ body::after {
       document.getElementById('wChip').textContent = short(wallet);
       document.getElementById('wChip').classList.add('ok');
       document.getElementById('wConnect').style.display = 'none';
+      loadWalletBalance();
     } catch { setMsg('user declined.', 'err'); }
   }
   document.getElementById('wConnect').addEventListener('click', connect);
@@ -767,6 +783,7 @@ body::after {
       document.getElementById('wChip').textContent = short(wallet);
       document.getElementById('wChip').classList.add('ok');
       document.getElementById('wConnect').style.display = 'none';
+      loadWalletBalance();
     } catch {}
   })();
 
@@ -1123,7 +1140,8 @@ body::after {
     if (r.status === 'betting') {
       betForm.style.display = 'grid';
       cashBtn.disabled = true;
-      cashBtn.innerHTML = '<span class="big">CASH OUT</span><span class="sub">place a bet first</span>';
+      const lastCrash = window._lastCrashMult ? ('prev crashed @ ' + window._lastCrashMult.toFixed(2) + '× · ') : '';
+      cashBtn.innerHTML = '<span class="big">PLACE YOUR BET</span><span class="sub">' + lastCrash + 'betting window open</span>';
       document.getElementById('multiplier').textContent = '1.00×';
       document.getElementById('multiplier').classList.remove('crashed');
       document.getElementById('multLabel').classList.remove('crashed');
@@ -1138,10 +1156,16 @@ body::after {
       if (r.sentences && r.elapsed_ms != null) {
         renderSentences(r.sentences, r.elapsed_ms, r.crash_at_sentence, false);
       }
+      // Cashout state when user didn't bet this round — stop nagging "place a bet first"
+      if (!myBetId) {
+        cashBtn.disabled = true;
+        cashBtn.innerHTML = '<span class="big">WATCHING</span><span class="sub">missed this one · next window in ~60s</span>';
+      }
       startAnimation();
     } else if (r.status === 'resolving' || r.status === 'resolved') {
       betForm.style.display = 'none';
       const m = r.crash_multiplier || 1;
+      window._lastCrashMult = Number(m);
       document.getElementById('multiplier').textContent = Number(m).toFixed(2) + '×';
 
       // Crash effects (only fire once per round)
