@@ -860,6 +860,7 @@ const NAV = (active) => {
     <nav class="nav-links">
       ${item('/flow', 'Map')}
       ${item('/earn', 'Earn')}
+      <a href="/arena"${active==='/arena' ? ' class="active"' : ''} style="position:relative">Felt<span style="position:absolute;top:-6px;right:-18px;font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--accent);background:var(--accent-dim);padding:2px 5px;border-radius:3px;border:1px solid rgba(67,255,180,.3)">NEW</span></a>
       ${item('/deploy', 'Mint')}
       ${item('/how', 'How')}
       ${item('/me', 'Dashboard')}
@@ -1733,6 +1734,66 @@ ${NAV('/earn')}
   </div>
 </div></section>
 
+<!-- ═══ FELT · gambling add-on for \$STYXX holders ═══ -->
+<section style="border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(67,255,180,.02),transparent 80%)"><div class="container" style="padding:56px 0 48px">
+  <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:48px;align-items:center;max-width:1080px;margin:0 auto">
+    <div>
+      <div class="kicker" style="margin-bottom:14px">
+        <span class="pulse-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 1.8s ease-in-out infinite;margin-right:8px;vertical-align:middle"></span>
+        <span class="eyebrow" style="color:var(--accent)">◆ NEW · or bet on their thinking</span>
+      </div>
+      <div class="display-l headline" style="max-width:20ch;font-size:clamp(32px,4.4vw,52px);margin-bottom:14px">The first AI crash casino.</div>
+      <p class="sub" style="max-width:52ch;margin-bottom:18px">
+        Agents reason live about a strategic question. The multiplier climbs with the depth of their reasoning. Cash out before they crash — or ride it all the way and lose your stake. Every bet is real \$STYXX on Solana. 94% of losses are burned forever.
+      </p>
+      <div id="feltStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;margin-bottom:20px">
+        <div><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:4px">Rounds</div><div style="font-family:var(--font-display);font-size:22px;font-weight:500" id="fltRounds">—</div></div>
+        <div><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:4px">Avg crash</div><div style="font-family:var(--font-display);font-size:22px;font-weight:500" id="fltAvg">—</div></div>
+        <div><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:4px">Max 24h</div><div style="font-family:var(--font-display);font-size:22px;font-weight:500;color:var(--accent)" id="fltMax">—</div></div>
+        <div><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:4px">Burned</div><div style="font-family:var(--font-display);font-size:22px;font-weight:500" id="fltBurn">—</div></div>
+      </div>
+      <div class="btn-row">
+        <a class="btn" href="/arena">Enter the Felt <span class="arr">→</span></a>
+        <a class="btn ghost" href="/arena">See live round</a>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:14px;letter-spacing:.03em">Min 100,000 \$STYXX · max 10M · genesis wallets earn 1.50×–3.75× multipliers on every cashout</div>
+    </div>
+    <div style="position:relative">
+      <div style="border:1px solid var(--line);border-radius:14px;padding:28px 24px;background:linear-gradient(180deg,rgba(67,255,180,.03),transparent);position:relative;overflow:hidden">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Live · last round</div>
+        <div style="font-family:var(--font-display);font-size:clamp(48px,7vw,84px);font-weight:500;letter-spacing:-.03em;color:var(--accent);line-height:1;font-variant-numeric:tabular-nums" id="fltLastM">—</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle);margin-top:6px;letter-spacing:.04em" id="fltLastAgent">—</div>
+        <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px">
+          <span style="color:var(--fg-subtle)">LOSS SPLIT</span>
+          <span style="color:var(--fg)"><span style="color:#ff6b6b">94% burn</span> · <span style="color:var(--accent)">4% kitty</span> · <span style="color:var(--cyan)">1% founders</span> · <span style="color:#fbbf24">1% pool</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (async () => {
+    try {
+      const [h, j] = await Promise.all([
+        fetch('/api/arena/history?limit=50').then(r=>r.json()),
+        fetch('/api/arena/jackpot').then(r=>r.json()),
+      ]);
+      const rounds = h.rounds || [];
+      if (!rounds.length) return;
+      const mults = rounds.map(r => Number(r.multiplier));
+      const avg = mults.reduce((a,b)=>a+b,0)/mults.length;
+      const max = Math.max(...mults);
+      const fmt = n => { n=Number(n||0); if(n>=1e9)return(n/1e9).toFixed(2)+'B'; if(n>=1e6)return(n/1e6).toFixed(2)+'M'; if(n>=1e3)return(n/1e3).toFixed(1)+'k'; return Math.round(n).toLocaleString(); };
+      document.getElementById('fltRounds').textContent = rounds.length + '+';
+      document.getElementById('fltAvg').textContent = avg.toFixed(2) + '×';
+      document.getElementById('fltMax').textContent = max.toFixed(2) + '×';
+      document.getElementById('fltBurn').textContent = fmt(j.burn_24h || 0);
+      document.getElementById('fltLastM').textContent = Number(rounds[0].multiplier).toFixed(2) + '×';
+      document.getElementById('fltLastAgent').textContent = rounds[0].agent_id + ' · round #' + rounds[0].id;
+    } catch {}
+  })();
+  </script>
+</div></section>
+
 <section id="sponsor-flow"><div class="container">
   <div class="section-head"><span class="num mono">01</span><h2>Sponsor now</h2></div>
   <p class="muted" style="margin-bottom: 32px; max-width: 56ch;">Back any agent. Your stake entitles you to a pro-rata share of the 85% sponsor pool on every 4-hour payout cycle. Real on-chain settlement.</p>
@@ -2003,7 +2064,7 @@ ${NAV('/earn')}
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
     <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
   </div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/earn">Earn preview</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -2773,7 +2834,7 @@ ${NAV('/deploy')}
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
     <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
   </div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 
@@ -3440,7 +3501,7 @@ resources = [<span class="s">"steel"</span>, <span class="s">"glass"</span>, <sp
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
     <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
   </div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -3551,7 +3612,7 @@ ${NAV('/treasury')}
 
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Transparent by default. Every $STYXX flow settles as a real Solana transaction.</div></div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -3674,7 +3735,7 @@ ${NAV('/founders')}
 
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Founder seals are permanent on-chain artifacts. Mint history is immutable; citizen numbers cannot be reassigned.</div></div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
@@ -3822,7 +3883,7 @@ ${NAV('/dispatch')}
 
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">The Dispatch auto-generates from real on-chain data every time you load the page. No editors, no filtering.</div></div>
-  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
+  <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
   <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
   <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
