@@ -616,23 +616,57 @@ async function getJackpotStatus(pool) {
   weekStart.setUTCHours(0, 0, 0, 0);
   weekStart.setUTCDate(weekStart.getUTCDate() - weekStart.getUTCDay());
   const weekStr = weekStart.toISOString().slice(0, 10);
-  const [pub, found, recent, burnT] = await Promise.all([
+  const [pub, found, recent, burnT, bigWin, activity] = await Promise.all([
     pool.query("SELECT COALESCE(pool_styxx, 0) AS p FROM arena_jackpot WHERE week_start = $1", [weekStr]),
     pool.query("SELECT COALESCE(pool_styxx, 0) AS p FROM founder_jackpot WHERE week_start = $1", [weekStr]),
     pool.query(`
       SELECT b.user_wallet, b.stake_styxx, b.payout_styxx, b.cashout_multiplier, b.status, b.placed_at, r.agent_id
         FROM arena_bets b JOIN arena_rounds r ON r.id = b.round_id
        WHERE b.status IN ('cashed_out', 'crashed') AND b.placed_at > NOW() - INTERVAL '1 hour'
-       ORDER BY b.placed_at DESC LIMIT 12
+       ORDER BY b.placed_at DESC LIMIT 20
     `),
-    pool.query("SELECT COALESCE(SUM(amount), 0)::float AS total FROM styxx_transfers WHERE reason = 'arena_burn_pending' AND confirmed_at > NOW() - INTERVAL '24 hours' OR (reason = 'arena_burn_pending' AND created_at > NOW() - INTERVAL '24 hours')"),
+    pool.query("SELECT COALESCE(SUM(amount), 0)::float AS total FROM styxx_transfers WHERE reason = 'arena_burn_pending' AND created_at > NOW() - INTERVAL '24 hours'"),
+    pool.query(`
+      SELECT b.user_wallet, b.payout_styxx, b.cashout_multiplier, r.agent_id, b.placed_at
+        FROM arena_bets b JOIN arena_rounds r ON r.id = b.round_id
+       WHERE b.status = 'cashed_out' AND b.placed_at > NOW() - INTERVAL '24 hours'
+       ORDER BY b.payout_styxx DESC LIMIT 1
+    `),
+    pool.query(`
+      SELECT COUNT(DISTINCT user_wallet)::int AS players,
+             COUNT(*)::int AS bets_24h,
+             COALESCE(SUM(stake_styxx), 0)::float AS volume_24h
+        FROM arena_bets WHERE placed_at > NOW() - INTERVAL '24 hours'
+    `),
   ]);
   return {
     public_jackpot_styxx: Number(pub.rows[0]?.p || 0),
     founder_jackpot_styxx: Number(found.rows[0]?.p || 0),
     recent_results: recent.rows,
     burn_24h: Number(burnT.rows[0]?.total || 0),
+    big_win_24h: bigWin.rows[0] || null,
+    players_24h: Number(activity.rows[0]?.players || 0),
+    bets_24h: Number(activity.rows[0]?.bets_24h || 0),
+    volume_24h: Number(activity.rows[0]?.volume_24h || 0),
   };
+}
+
+// ─── Past round crashes — for history strip on UI ─────────────────────
+async function getRoundHistory(pool, limit = 30) {
+  const { rows } = await pool.query(`
+    SELECT id, agent_id, crash_multiplier, resolved_at, pot_styxx, bets_count
+      FROM arena_rounds
+     WHERE status = 'resolved' AND crash_multiplier IS NOT NULL
+     ORDER BY id DESC LIMIT $1
+  `, [Math.min(Number(limit) || 30, 100)]);
+  return rows.map(r => ({
+    id: r.id,
+    agent_id: r.agent_id,
+    multiplier: Number(r.crash_multiplier),
+    resolved_at: r.resolved_at,
+    pot_styxx: Number(r.pot_styxx),
+    bets_count: r.bets_count,
+  }));
 }
 
 module.exports = {
@@ -641,5 +675,6 @@ module.exports = {
   cashOut,
   getCurrentRound,
   getJackpotStatus,
+  getRoundHistory,
   distributeFounderCut,
 };

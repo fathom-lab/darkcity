@@ -1,10 +1,13 @@
 // ============================================================================
-// arena-ui.js — DarkCity Arena UI
+// arena-ui.js — DarkCity Arena UI (v2 — the saloon comes alive)
 //
-// Aesthetic: ASCII dive bar. Terminal green on pure black. Box-drawing
-// borders. All monospace. Zero flourish. Looks like you SSH'd into a
-// back-room illegal AI casino. Agents are the house, the players, the
-// regulars. $STYXX is all that works.
+// Live SVG multiplier graph climbing in real time. History strip of last 30
+// crashes (colored by outcome). Scrolling bet ticker. Typewriter reasoning
+// with inline depth meters. Crash event = red flash + shake + RUG stamp.
+// CRT ambient effects. Live watchers + big win of 24h banner.
+//
+// Aesthetic: ASCII dive bar, terminal green on pure black. Zero flourish.
+// Looks like an SSH'd-into illegal back-room AI casino that's actually busy.
 // ============================================================================
 
 'use strict';
@@ -36,6 +39,7 @@ const PAGE = `<!DOCTYPE html>
   --red-glow: #fca5a5;
   --amber: #fbbf24;
   --cyan: #67e8f9;
+  --gold: #fde047;
   --line: #1f2429;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,18 +52,40 @@ html, body {
 }
 body {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(74,222,128,0.045), transparent 60%),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(74,222,128,0.05), transparent 60%),
     radial-gradient(ellipse 60% 40% at 50% 110%, rgba(239,68,68,0.05), transparent 60%),
     #000;
+  overflow-x: hidden;
+}
+/* CRT scan lines overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 999;
+  background: repeating-linear-gradient(0deg,
+    rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px,
+    rgba(0,0,0,.08) 3px, rgba(0,0,0,0) 4px);
+  mix-blend-mode: multiply;
+}
+/* CRT flicker */
+body::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 998;
+  background: rgba(74,222,128,.012);
+  animation: crt 8s infinite;
+}
+@keyframes crt {
+  0%,97%,100% { opacity: 0; }
+  98% { opacity: .6; }
+  99% { opacity: .2; }
 }
 ::selection { background: var(--green-deep); color: #000; }
 
-.wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 80px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 22px 20px 80px; }
 
-/* ─── TOP NAV — text-only, barely there ─── */
+/* ─── TOP NAV ─── */
 .nav {
   display: flex; justify-content: space-between; align-items: baseline;
-  padding-bottom: 14px; margin-bottom: 26px;
+  padding-bottom: 12px; margin-bottom: 18px;
   border-bottom: 1px solid var(--line);
 }
 .nav .name { color: var(--green); font-weight: 700; font-size: 16px; letter-spacing: .02em; }
@@ -74,50 +100,114 @@ body {
 .nav a.active { color: var(--fg); }
 .nav a.active::before { color: var(--green); }
 
-/* ─── HEADER ASCII BANNER ─── */
+/* ─── BANNER ─── */
 .banner {
-  font-size: 11px; line-height: 1.15;
+  font-size: 10px; line-height: 1.15;
   color: var(--green);
   white-space: pre;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   text-shadow: 0 0 8px rgba(74,222,128,.25);
+  overflow: hidden;
 }
 .tagline {
   color: var(--fg-dim); font-size: 12px;
-  margin-bottom: 28px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
 }
 .tagline span { color: var(--amber); }
 
-/* ─── STAT BAR — monospace columns, box-drawing border ─── */
+/* ─── TICKER ─── */
+.ticker {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0; overflow: hidden; position: relative;
+  margin-bottom: 18px;
+  background: linear-gradient(90deg, #000 0%, var(--bg-1) 50%, #000 100%);
+}
+.ticker .ticker-track {
+  display: flex; gap: 40px; white-space: nowrap;
+  animation: slide 80s linear infinite;
+  will-change: transform;
+  font-size: 11px; letter-spacing: .06em;
+  color: var(--fg-dim);
+}
+@keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.ticker .item::before { content: '·  '; color: var(--fg-mute); margin-right: 6px; }
+.ticker .win { color: var(--green-glow); }
+.ticker .lose { color: var(--red-glow); }
+.ticker .bet { color: var(--fg); }
+.ticker .big { color: var(--gold); font-weight: 700; }
+
+/* ─── STAT BAR ─── */
 .statbar {
   border: 1px solid var(--line);
-  padding: 14px 18px;
-  margin-bottom: 24px;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  padding: 13px 16px;
+  margin-bottom: 18px;
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px;
   background: var(--bg-1);
 }
+@media (max-width: 860px) { .statbar { grid-template-columns: repeat(3, 1fr); } }
 .statbar .s { border-left: 1px dashed var(--grid); padding-left: 14px; }
 .statbar .s:first-child { border-left: none; padding-left: 0; }
 .statbar .s .l {
-  color: var(--fg-mute); font-size: 10px; letter-spacing: .15em;
+  color: var(--fg-mute); font-size: 9px; letter-spacing: .15em;
   text-transform: uppercase; margin-bottom: 4px;
 }
 .statbar .s .v {
-  color: var(--fg); font-size: 20px; font-weight: 700;
+  color: var(--fg); font-size: 18px; font-weight: 700;
   letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
 }
 .statbar .s.green .v { color: var(--green-glow); }
 .statbar .s.red .v { color: var(--red-glow); }
 .statbar .s.amber .v { color: var(--amber); }
+.statbar .s.cyan .v { color: var(--cyan); }
+.statbar .s.gold .v { color: var(--gold); }
+.statbar .s .sub { font-size: 9px; color: var(--fg-mute); margin-top: 2px; letter-spacing: .08em; }
+
+/* ─── HISTORY STRIP ─── */
+.history {
+  border: 1px solid var(--line);
+  padding: 10px 14px; margin-bottom: 18px;
+  background: var(--bg-1);
+  position: relative;
+}
+.history::before {
+  content: '[ PREVIOUS CALLS ]';
+  position: absolute; top: -8px; left: 16px;
+  background: var(--bg); color: var(--fg-dim);
+  padding: 0 10px; font-size: 10px; letter-spacing: .18em; font-weight: 700;
+}
+.hist-grid {
+  display: flex; gap: 4px; overflow-x: auto; padding: 6px 0 4px;
+  scrollbar-width: none;
+  align-items: flex-end;
+  height: 60px;
+}
+.hist-grid::-webkit-scrollbar { display: none; }
+.hist-bar {
+  min-width: 26px;
+  height: 100%; /* overridden inline */
+  display: flex; align-items: flex-end; justify-content: center;
+  font-size: 9px; font-weight: 700;
+  color: #000; padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+  border-radius: 1px;
+  transition: opacity .2s;
+  cursor: help;
+}
+.hist-bar:hover { opacity: .85; }
+.hist-bar.lv1 { background: var(--red); color: #fff; }
+.hist-bar.lv2 { background: var(--amber); }
+.hist-bar.lv3 { background: var(--green); }
+.hist-bar.lv4 { background: var(--cyan); }
+.hist-bar.lv5 { background: var(--gold); box-shadow: 0 0 10px rgba(253,224,71,.5); }
 
 /* ─── MAIN GAME PANEL ─── */
 .game {
   border: 1px solid var(--line);
   background: var(--bg-1);
-  padding: 24px;
-  margin-bottom: 26px;
+  padding: 22px;
+  margin-bottom: 22px;
   position: relative;
 }
 .game::before {
@@ -126,13 +216,21 @@ body {
   background: var(--bg); color: var(--green);
   padding: 0 10px; font-size: 11px; letter-spacing: .18em; font-weight: 700;
 }
+.game.crashed {
+  animation: crash-flash .45s;
+  border-color: var(--red);
+}
+@keyframes crash-flash {
+  0% { background: rgba(239,68,68,0.35); }
+  100% { background: var(--bg-1); }
+}
 
-.row1 { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; }
+.row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .row1 .round-id { color: var(--fg-dim); font-size: 12px; letter-spacing: .08em; }
 .row1 .round-id b { color: var(--fg); }
 .row1 .chip {
   padding: 2px 10px; border: 1px solid var(--line);
-  font-size: 11px; letter-spacing: .15em; text-transform: uppercase;
+  font-size: 10px; letter-spacing: .15em; text-transform: uppercase;
   color: var(--fg-dim);
 }
 .row1 .chip.betting { color: var(--amber); border-color: var(--amber); }
@@ -140,80 +238,152 @@ body {
 .row1 .chip.resolving, .row1 .chip.resolved { color: var(--red); border-color: var(--red); }
 @keyframes blink { 50% { opacity: .4; } }
 
-.who {
-  font-size: 28px; font-weight: 800;
+.agent-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; gap: 14px; flex-wrap: wrap; }
+.agent-head .who {
+  font-size: 26px; font-weight: 800;
   color: var(--fg); letter-spacing: -.02em;
-  margin-bottom: 2px;
 }
-.who-meta { color: var(--fg-dim); font-size: 12px; margin-bottom: 18px; }
-.who-meta span { color: var(--cyan); }
+.agent-head .who-meta { color: var(--fg-dim); font-size: 11px; margin-top: 2px; }
+.agent-head .who-meta span { color: var(--cyan); }
+.agent-head .pot {
+  text-align: right; color: var(--fg-dim); font-size: 11px;
+}
+.agent-head .pot .n { color: var(--amber); font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
-/* the big multiplier */
-.mult-frame {
-  border: 1px solid var(--grid);
-  padding: 26px 18px 20px;
-  margin-bottom: 18px;
-  background: #020303;
+/* ─── GRAPH ─── */
+.graph-wrap {
   position: relative;
+  border: 1px solid var(--grid);
+  background: #020303;
+  padding: 0;
+  margin-bottom: 16px;
+  height: 280px;
+  overflow: hidden;
+}
+.graph-wrap.crashed { border-color: var(--red); background: #140303; }
+.graph-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.graph-grid-line { stroke: var(--grid); stroke-width: 1; stroke-dasharray: 2 4; }
+.graph-grid-text {
+  fill: var(--fg-mute); font-family: inherit; font-size: 9px;
+  font-weight: 500; letter-spacing: .1em;
+}
+.graph-path { fill: none; stroke: var(--green); stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(74,222,128,.6)); }
+.graph-fill { fill: url(#graph-gradient); opacity: .5; }
+.graph-path.crashed { stroke: var(--red); filter: drop-shadow(0 0 6px rgba(239,68,68,.6)); }
+.graph-fill.crashed { opacity: .3; }
+
+.mult-overlay {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
   text-align: center;
-}
-.mult-frame::before {
-  content: '╔'; position: absolute; top: -1px; left: -1px; color: var(--green); font-size: 16px; line-height: 1;
-}
-.mult-frame::after {
-  content: '╗'; position: absolute; top: -1px; right: -1px; color: var(--green); font-size: 16px; line-height: 1;
+  z-index: 2;
 }
 .mult {
-  font-size: clamp(56px, 10vw, 96px);
+  font-size: clamp(64px, 12vw, 120px);
   font-weight: 800;
   color: var(--green-glow);
   letter-spacing: -.04em; line-height: .95;
-  text-shadow: 0 0 24px rgba(134,239,172,.5), 0 0 48px rgba(74,222,128,.2);
+  text-shadow: 0 0 32px rgba(134,239,172,.65), 0 0 64px rgba(74,222,128,.3);
   font-variant-numeric: tabular-nums;
+  transition: color .1s;
 }
 .mult.crashed {
   color: var(--red);
-  text-shadow: 0 0 24px rgba(239,68,68,.6);
-  animation: shake .35s;
+  text-shadow: 0 0 32px rgba(239,68,68,.8);
+  animation: shake .4s;
 }
 @keyframes shake {
-  0%,100% { transform: translateX(0); }
-  20% { transform: translateX(-6px); }
-  50% { transform: translateX(6px); }
-  80% { transform: translateX(-3px); }
+  0%,100% { transform: translateX(0) translateY(0); }
+  10% { transform: translateX(-8px) translateY(2px); }
+  20% { transform: translateX(8px) translateY(-2px); }
+  30% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  50% { transform: translateX(-3px); }
+  60% { transform: translateX(3px); }
 }
-.mult-hint { color: var(--fg-mute); font-size: 11px; letter-spacing: .2em; margin-top: 4px; }
+.mult-hint { color: var(--fg-mute); font-size: 11px; letter-spacing: .25em; margin-top: 6px; text-transform: uppercase; }
+.mult-hint.crashed { color: var(--red-glow); }
 
-/* reasoning */
+.rug-stamp {
+  position: absolute; top: 20px; right: 22px;
+  font-size: 42px; font-weight: 800;
+  color: var(--red);
+  letter-spacing: .1em;
+  border: 3px solid var(--red);
+  padding: 4px 18px;
+  transform: rotate(-12deg);
+  opacity: 0;
+  text-shadow: 2px 2px 0 #000;
+  pointer-events: none;
+}
+.rug-stamp.on {
+  animation: stamp .4s forwards;
+}
+@keyframes stamp {
+  0% { opacity: 0; transform: rotate(-12deg) scale(1.8); }
+  100% { opacity: .95; transform: rotate(-12deg) scale(1); }
+}
+
+/* Countdown ring for betting window */
+.count-bar {
+  position: absolute; bottom: 0; left: 0;
+  height: 3px; background: var(--amber);
+  transition: width .2s linear;
+  box-shadow: 0 0 8px rgba(251,191,36,.6);
+}
+
+/* ─── REASONING ─── */
 .reason {
   background: #020303;
   border: 1px solid var(--grid);
   padding: 14px 16px;
   font-size: 13px; line-height: 1.7;
-  color: var(--fg-dim);
-  min-height: 84px;
-  margin-bottom: 18px;
+  min-height: 120px;
+  margin-bottom: 16px;
 }
 .reason .q {
   display: block; color: var(--cyan); font-size: 11px;
-  margin-bottom: 8px; letter-spacing: .05em;
+  margin-bottom: 10px; letter-spacing: .05em;
+  padding-bottom: 8px; border-bottom: 1px dashed var(--grid);
 }
 .reason .q::before { content: '?> '; color: var(--fg-mute); }
-.reason .txt { color: var(--fg); }
-.reason .txt::before { content: '$ '; color: var(--green); }
-.reason .cursor { color: var(--green); animation: blink2 1s infinite; }
+.sent {
+  display: grid; grid-template-columns: 1fr 110px;
+  gap: 14px; align-items: start;
+  padding: 3px 0;
+  color: var(--fg-dim);
+  opacity: 0; transform: translateY(4px);
+  animation: sentIn .3s forwards;
+}
+@keyframes sentIn { to { opacity: 1; transform: translateY(0); } }
+.sent .txt { color: var(--fg); }
+.sent .txt::before { content: '$ '; color: var(--green); }
+.sent .txt.typing::after { content: '█'; color: var(--green); animation: blink2 1s infinite; }
 @keyframes blink2 { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+.sent .depth {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 9px; color: var(--fg-mute); letter-spacing: .1em;
+  padding-top: 4px;
+}
+.sent .depth .bar { height: 4px; background: var(--grid); position: relative; overflow: hidden; }
+.sent .depth .bar .fill { height: 100%; background: var(--green); transition: width .4s; }
+.sent .depth .bar .fill.hi { background: var(--gold); }
+.sent .depth .bar .fill.lo { background: var(--red); }
+.sent.crashed .txt { color: var(--red); }
+.sent.crashed .txt::before { content: '! '; color: var(--red); }
 
-/* wallet strip */
+/* ─── WALLET + BETTING ─── */
 .wallet {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; border: 1px dashed var(--grid);
-  margin-bottom: 14px; font-size: 12px; color: var(--fg-dim);
+  margin-bottom: 12px; font-size: 12px; color: var(--fg-dim);
 }
 .wallet .addr { color: var(--fg); }
 .wallet .addr.ok { color: var(--green); }
+.wallet .bal { margin-left: auto; color: var(--fg-dim); font-size: 11px; }
+.wallet .bal b { color: var(--amber); }
 .wallet button {
-  margin-left: auto;
   background: transparent;
   border: 1px solid var(--green);
   color: var(--green);
@@ -223,10 +393,9 @@ body {
 }
 .wallet button:hover { background: var(--green); color: #000; }
 
-/* betting form */
 .betrow {
-  display: grid; grid-template-columns: 1fr auto; gap: 10px;
-  margin-bottom: 10px;
+  display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 8px;
+  margin-bottom: 8px; align-items: stretch;
 }
 .betrow input {
   background: #020303;
@@ -239,6 +408,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .betrow input:focus { outline: none; border-color: var(--green); }
+.betrow .quick {
+  background: transparent;
+  border: 1px solid var(--grid);
+  color: var(--fg-dim);
+  padding: 0 10px;
+  font-family: inherit; font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  cursor: pointer;
+}
+.betrow .quick:hover { border-color: var(--green); color: var(--green); }
 .betrow .buyin {
   padding: 14px 22px;
   background: var(--green);
@@ -254,7 +432,7 @@ body {
 
 .cashout {
   width: 100%;
-  padding: 20px;
+  padding: 22px;
   background: #120000;
   color: var(--red);
   border: 2px solid var(--red);
@@ -262,17 +440,20 @@ body {
   letter-spacing: .08em; text-transform: uppercase;
   cursor: pointer;
   transition: all .08s;
+  position: relative;
 }
 .cashout:hover:not(:disabled) {
   background: var(--red);
   color: #000;
+  box-shadow: 0 0 20px rgba(239,68,68,.5);
 }
 .cashout:disabled {
   background: var(--bg-2); color: var(--fg-mute); border-color: var(--grid);
   cursor: not-allowed;
 }
+.cashout .big { display: block; font-size: 24px; margin-bottom: 2px; }
+.cashout .sub { display: block; font-size: 10px; font-weight: 400; letter-spacing: .15em; color: currentColor; opacity: .7; }
 
-/* inline messages */
 .msg {
   font-size: 12px; padding: 8px 0;
   color: var(--fg-dim);
@@ -288,16 +469,17 @@ body {
   display: flex; justify-content: space-between;
   font-size: 11px; color: var(--fg-mute); margin-top: 10px;
   padding-top: 10px; border-top: 1px solid var(--grid);
+  flex-wrap: wrap; gap: 10px;
 }
 
 /* ─── LOWER GRID ─── */
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 22px; }
 @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
 
 .pane {
   border: 1px solid var(--line);
   background: var(--bg-1);
-  padding: 20px;
+  padding: 18px;
   position: relative;
 }
 .pane h3 {
@@ -310,33 +492,43 @@ body {
 .pane h3::before { content: '[ '; color: var(--fg-mute); }
 .pane h3::after { content: ' ]'; color: var(--fg-mute); }
 
-/* jackpot big number */
 .jp-big {
-  font-size: 36px; font-weight: 800; color: var(--green-glow);
+  font-size: 32px; font-weight: 800; color: var(--green-glow);
   text-shadow: 0 0 20px rgba(134,239,172,.4);
   letter-spacing: -.02em; line-height: 1;
   font-variant-numeric: tabular-nums;
   margin: 10px 0 4px;
 }
-.jp-sub { color: var(--fg-dim); font-size: 12px; }
+.jp-sub { color: var(--fg-dim); font-size: 11px; }
 .jp-foot {
-  margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--grid);
-  color: var(--fg-mute); font-size: 11px; line-height: 1.7;
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--grid);
+  color: var(--fg-mute); font-size: 10px; line-height: 1.7;
 }
 
-/* recent rows */
-.row {
+.feed-row {
   display: grid; grid-template-columns: 1fr auto auto;
   gap: 10px; padding: 5px 0;
-  font-size: 12px; color: var(--fg-dim);
+  font-size: 11px; color: var(--fg-dim);
   border-bottom: 1px dotted var(--grid);
   font-variant-numeric: tabular-nums;
 }
-.row:last-child { border-bottom: none; }
-.row .a { color: var(--fg); font-weight: 500; }
-.row .m { color: var(--amber); font-weight: 700; }
-.row.w .amt { color: var(--green-glow); }
-.row.l .amt { color: var(--red-glow); }
+.feed-row:last-child { border-bottom: none; }
+.feed-row .a { color: var(--fg); font-weight: 500; }
+.feed-row .m { color: var(--amber); font-weight: 700; }
+.feed-row.w .amt { color: var(--green-glow); }
+.feed-row.l .amt { color: var(--red-glow); }
+
+/* BIG WIN banner */
+.bigwin {
+  border: 1px solid var(--gold);
+  padding: 10px 16px; margin-bottom: 18px;
+  background: linear-gradient(90deg, rgba(253,224,71,.08), transparent, rgba(253,224,71,.08));
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  font-size: 12px;
+}
+.bigwin .lbl { color: var(--gold); letter-spacing: .25em; font-size: 10px; font-weight: 700; }
+.bigwin .body { color: var(--fg); }
+.bigwin .mx { color: var(--gold); font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
 
 /* BURN STRIP */
 .burn {
@@ -364,10 +556,20 @@ body {
 .foot a:hover { text-decoration: underline; }
 .foot .pump { color: var(--fg); font-family: inherit; word-break: break-all; }
 
+/* ─── FLASH (full-screen crash overlay) ─── */
+.flash {
+  position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+  background: rgba(239,68,68,0);
+  transition: background .1s;
+}
+.flash.on { background: rgba(239,68,68,.18); animation: flashOut .6s forwards; }
+@keyframes flashOut { to { background: rgba(239,68,68,0); } }
+
 </style>
 </head>
 <body>
 
+<div class="flash" id="flash"></div>
 <div class="wrap">
 
 <nav class="nav">
@@ -391,81 +593,130 @@ body {
 </pre>
 
 <div class="tagline">
-  ai agents reason live. you <span>cash out before they crash</span>. $STYXX is the chip. nothing else plays.
+  ai agents reason live · you <span>cash out before they crash</span> · $STYXX is the chip, nothing else plays
+</div>
+
+<div class="ticker">
+  <div class="ticker-track" id="tickerTrack"><span class="item">loading feed...</span></div>
 </div>
 
 <div class="statbar">
-  <div class="s green"><div class="l">jackpot</div><div class="v" id="sPubJp">—</div></div>
-  <div class="s red"><div class="l">burned 24h</div><div class="v" id="sBurn">—</div></div>
-  <div class="s amber"><div class="l">founder pool</div><div class="v" id="sFoundJp">—</div></div>
-  <div class="s"><div class="l">round</div><div class="v" id="sRound">—</div></div>
+  <div class="s green"><div class="l">kitty</div><div class="v" id="sPubJp">—</div><div class="sub">weekly draw</div></div>
+  <div class="s gold"><div class="l">founder pool</div><div class="v" id="sFoundJp">—</div><div class="sub">9 genesis</div></div>
+  <div class="s red"><div class="l">burned 24h</div><div class="v" id="sBurn">—</div><div class="sub">permanent</div></div>
+  <div class="s cyan"><div class="l">volume 24h</div><div class="v" id="sVol">—</div><div class="sub">on the felt</div></div>
+  <div class="s amber"><div class="l">degens 24h</div><div class="v" id="sPlayers">—</div><div class="sub">unique wallets</div></div>
+  <div class="s"><div class="l">round</div><div class="v" id="sRound">—</div><div class="sub">this session</div></div>
 </div>
 
-<div class="game">
+<div class="bigwin" id="bigWinBox" style="display:none">
+  <span class="lbl">BIGGEST WIN · 24H</span>
+  <span class="body" id="bigWinBody">—</span>
+</div>
+
+<div class="history">
+  <div class="hist-grid" id="histGrid">
+    <div style="color:var(--fg-mute);font-size:11px;padding:20px">no rounds resolved yet.</div>
+  </div>
+</div>
+
+<div class="game" id="gameBox">
   <div class="row1">
-    <div class="round-id">round · <b id="roundNo">—</b></div>
+    <div class="round-id">round · <b id="roundNo">—</b> <span style="color:var(--fg-mute)">·</span> <span id="roundMeta" style="color:var(--fg-dim);font-size:11px">waiting</span></div>
     <div class="chip" id="statusChip">idle</div>
   </div>
 
-  <div class="who" id="agentName">—</div>
-  <div class="who-meta">
-    <span id="agentDistrict">—</span> · <span id="agentRank">—</span>
+  <div class="agent-head">
+    <div>
+      <div class="who" id="agentName">—</div>
+      <div class="who-meta"><span id="agentDistrict">—</span> · <span id="agentRank">—</span></div>
+    </div>
+    <div class="pot">
+      <div class="n" id="potAmt">0</div>
+      <div>on the felt · <span id="potBets">0</span> bets</div>
+    </div>
   </div>
 
-  <div class="mult-frame">
-    <div class="mult" id="multiplier">1.00×</div>
-    <div class="mult-hint" id="multLabel">waiting</div>
+  <div class="graph-wrap" id="graphWrap">
+    <svg class="graph-svg" id="graphSvg" viewBox="0 0 1000 280" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="graph-gradient" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#4ade80" stop-opacity=".4"/>
+          <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="graph-gradient-red" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#ef4444" stop-opacity=".3"/>
+          <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <g id="graphGrid"></g>
+      <path id="graphFill" class="graph-fill" d="" />
+      <path id="graphPath" class="graph-path" d="" />
+    </svg>
+    <div class="mult-overlay">
+      <div class="mult" id="multiplier">1.00×</div>
+      <div class="mult-hint" id="multLabel">waiting for next round</div>
+    </div>
+    <div class="rug-stamp" id="rugStamp">RUG</div>
+    <div class="count-bar" id="countBar" style="width:0%"></div>
   </div>
 
   <div class="reason">
     <span class="q" id="prompt">—</span>
-    <span class="txt" id="reasoningBody">agent idle</span><span class="cursor" id="cursor" style="display:none">█</span>
+    <div id="sentList"></div>
   </div>
 
   <div class="wallet">
     <span>wallet:</span>
     <span class="addr" id="wChip">not connected</span>
-    <button id="wConnect">connect</button>
+    <span class="bal" id="wBal" style="display:none">bal: <b>—</b> $STYXX</span>
+    <button id="wConnect">connect phantom</button>
   </div>
 
   <div class="betrow" id="betForm">
     <input type="number" id="stakeInput" placeholder="100000" min="100000" max="10000000">
+    <button class="quick" data-amt="100000">100k</button>
+    <button class="quick" data-amt="500000">500k</button>
+    <button class="quick" data-amt="1000000">1M</button>
     <button class="buyin" id="buyinBtn">BUY IN</button>
   </div>
 
-  <button class="cashout" id="cashoutBtn" disabled>CASH OUT</button>
+  <button class="cashout" id="cashoutBtn" disabled>
+    <span class="big">CASH OUT</span>
+    <span class="sub">place bet first</span>
+  </button>
 
   <div class="msg" id="statusMsg"></div>
 
   <div class="hint">
-    <span>min 100,000 · max 10,000,000 $STYXX</span>
-    <span>94% of losses burn · house never blinks</span>
+    <span>min 100k · max 10M $STYXX · house never blinks</span>
+    <span>94% loss burn · 4% kitty · 1% founders · 1% founder jackpot</span>
   </div>
 </div>
 
 <div class="grid2">
   <div class="pane">
-    <h3>kitty</h3>
+    <h3>the kitty · winner takes all</h3>
     <div class="jp-big" id="jpBig">—</div>
     <div class="jp-sub">one wallet wins it all · weekly draw · hold ≥500k $STYXX to enter</div>
     <div class="jp-foot">
-      9 real-human genesis wallets share a separate founder pool — 1% of every loss, forever, weighted by their stacked multiplier (2.00×–3.75×). the snapshot is closed. you had to be early.
+      9 real-human genesis wallets share a separate <b style="color:var(--gold)">founder pool</b> — 1% of every loss, forever, weighted by their stacked multiplier (2.00×–3.75×). snapshot closed. you had to be early.
     </div>
   </div>
 
   <div class="pane">
-    <h3>last calls</h3>
-    <div id="recentList"><div style="color:var(--fg-mute);font-size:12px;padding:20px 0;text-align:center">nothing on the felt yet.</div></div>
+    <h3>last calls · live feed</h3>
+    <div id="feedList"><div style="color:var(--fg-mute);font-size:11px;padding:18px 0;text-align:center">no calls yet. be first on the felt.</div></div>
   </div>
 </div>
 
 <div class="burn">
-  <div class="l">incinerated · last 24 hours</div>
+  <div class="l">incinerated · last 24 hours · forever off-chain</div>
   <div class="v" id="burnNum">—</div>
 </div>
 
 <div class="foot">
-  the house never lies · every bet on-chain · every burn verifiable on solscan · <br>
+  the house never lies · every bet on-chain · every burn verifiable on solscan<br>
   mint: <span class="pump">Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump</span> · <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">buy $STYXX on pump.fun ↗</a>
 </div>
 
@@ -478,7 +729,9 @@ body {
   const TOKEN_PROG = new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
   const ASSOC_PROG = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
   let wallet = null, conn = null, treasuryPk = null;
-  let currentRound = null, myBetId = null, myBetLocked = false;
+  let currentRound = null, myBetId = null, myBetStake = 0, myBetLocked = false;
+  let lastSeenRoundId = null, lastCrashFlash = null;
+  let animLastMult = 1.0;
 
   function fmt(n) {
     n = Number(n||0);
@@ -487,6 +740,7 @@ body {
     if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
     return Math.round(n).toLocaleString();
   }
+  function short(a) { return a.slice(0,4) + '..' + a.slice(-3); }
   function setMsg(msg, cls) {
     const el = document.getElementById('statusMsg');
     if (!msg) { el.className = 'msg'; el.textContent = ''; return; }
@@ -494,14 +748,14 @@ body {
     el.textContent = msg;
   }
 
+  // ─── WALLET ─────────────────────────────────────────────────────────
   async function connect() {
     if (!window.solana?.isPhantom) { setMsg('phantom required. no phantom, no play.', 'err'); window.open('https://phantom.com', '_blank'); return; }
     try {
       const r = await window.solana.connect();
       wallet = r.publicKey.toString();
-      const c = document.getElementById('wChip');
-      c.textContent = wallet.slice(0,4) + '..' + wallet.slice(-4);
-      c.classList.add('ok');
+      document.getElementById('wChip').textContent = short(wallet);
+      document.getElementById('wChip').classList.add('ok');
       document.getElementById('wConnect').style.display = 'none';
     } catch { setMsg('user declined.', 'err'); }
   }
@@ -510,12 +764,16 @@ body {
     if (!window.solana?.isPhantom) return;
     try { const r = await window.solana.connect({ onlyIfTrusted: true });
       wallet = r.publicKey.toString();
-      const c = document.getElementById('wChip');
-      c.textContent = wallet.slice(0,4) + '..' + wallet.slice(-4);
-      c.classList.add('ok');
+      document.getElementById('wChip').textContent = short(wallet);
+      document.getElementById('wChip').classList.add('ok');
       document.getElementById('wConnect').style.display = 'none';
     } catch {}
   })();
+
+  // Quick bet shortcuts
+  document.querySelectorAll('.quick').forEach(b => {
+    b.addEventListener('click', () => { document.getElementById('stakeInput').value = b.dataset.amt; });
+  });
 
   async function payStake(amount) {
     if (!wallet) throw new Error('connect first');
@@ -568,8 +826,8 @@ body {
     });
     const d = await r.json();
     if (!d.ok) { setMsg('house rejected: ' + d.error, 'err'); return; }
-    myBetId = d.bet_id; myBetLocked = false;
-    setMsg('in. ride the multiplier.', 'ok');
+    myBetId = d.bet_id; myBetStake = amt; myBetLocked = false;
+    setMsg('in for ' + fmt(amt) + '. ride it or rug.', 'ok');
   });
 
   document.getElementById('cashoutBtn').addEventListener('click', async () => {
@@ -583,47 +841,277 @@ body {
     myBetLocked = true;
     const b = document.getElementById('cashoutBtn');
     b.disabled = true;
-    b.textContent = 'LOCKED @ ' + Number(d.multiplier).toFixed(2) + '×';
-    setMsg('locked ' + Number(d.multiplier).toFixed(2) + '× · payout pending', 'ok');
+    b.innerHTML = '<span class="big">LOCKED @ ' + Number(d.multiplier).toFixed(2) + '×</span><span class="sub">+ ' + fmt(myBetStake * d.multiplier) + ' $STYXX pending</span>';
+    setMsg('locked ' + Number(d.multiplier).toFixed(2) + '× · payout ' + fmt(myBetStake * d.multiplier) + ' $STYXX', 'ok');
   });
 
+  // ─── GRAPH ──────────────────────────────────────────────────────────
+  const W = 1000, H = 280, PAD_L = 30, PAD_R = 20, PAD_T = 20, PAD_B = 28;
+  function mapY(mult, peak) {
+    // log scale from 1 to peak
+    const lo = Math.log(1), hi = Math.log(Math.max(peak, 2.1));
+    const logM = Math.log(Math.max(1, mult));
+    const frac = (logM - lo) / (hi - lo);
+    return PAD_T + (1 - frac) * (H - PAD_T - PAD_B);
+  }
+  function mapX(t, tMax) {
+    return PAD_L + (t / Math.max(tMax, 1)) * (W - PAD_L - PAD_R);
+  }
+
+  function drawGridLines(peak) {
+    const g = document.getElementById('graphGrid');
+    const marks = [];
+    const peakVal = Math.max(peak, 2.1);
+    // pick sensible grid values
+    if (peakVal < 3) marks.push(1.25, 1.5, 2, 2.5);
+    else if (peakVal < 10) marks.push(1.5, 2, 3, 5, 7);
+    else if (peakVal < 50) marks.push(2, 5, 10, 20, 30);
+    else if (peakVal < 200) marks.push(2, 5, 10, 25, 50, 100);
+    else marks.push(2, 10, 25, 50, 100, 250, 500);
+    let html = '';
+    for (const m of marks) {
+      if (m > peakVal) continue;
+      const y = mapY(m, peakVal);
+      html += '<line class="graph-grid-line" x1="' + PAD_L + '" y1="' + y + '" x2="' + (W-PAD_R) + '" y2="' + y + '"/>';
+      html += '<text class="graph-grid-text" x="4" y="' + (y+3) + '">' + m + 'x</text>';
+    }
+    // baseline
+    html += '<line class="graph-grid-line" x1="' + PAD_L + '" y1="' + (H-PAD_B) + '" x2="' + (W-PAD_R) + '" y2="' + (H-PAD_B) + '" stroke="#1f2429" stroke-dasharray="0"/>';
+    g.innerHTML = html;
+  }
+
+  function redrawGraph(curve, elapsedMs, peak, crashed) {
+    if (!curve || curve.length === 0) {
+      document.getElementById('graphPath').setAttribute('d', '');
+      document.getElementById('graphFill').setAttribute('d', '');
+      drawGridLines(2);
+      return;
+    }
+    const tMax = curve[curve.length-1][0];
+    const peakMult = peak || curve[curve.length-1][1];
+    drawGridLines(peakMult);
+
+    // Interpolate curve up to elapsedMs
+    let pts = [];
+    const capMs = Math.min(elapsedMs, tMax);
+    pts.push([0, 1.0]);
+    for (let i = 0; i < curve.length; i++) {
+      const [t, m] = curve[i];
+      if (t <= capMs) {
+        pts.push([t, m]);
+      } else {
+        // Interpolate between previous and this point
+        const prev = i > 0 ? curve[i-1] : [0, 1.0];
+        const frac = (capMs - prev[0]) / (t - prev[0]);
+        const interpM = prev[1] + frac * (m - prev[1]);
+        pts.push([capMs, interpM]);
+        break;
+      }
+    }
+    if (pts.length === 1) pts.push([capMs, 1.0]);
+
+    let d = '';
+    pts.forEach((p, i) => {
+      const x = mapX(p[0], tMax);
+      const y = mapY(p[1], peakMult);
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+    });
+    const path = document.getElementById('graphPath');
+    path.setAttribute('d', d);
+    path.classList.toggle('crashed', !!crashed);
+
+    // Fill area
+    const lastPt = pts[pts.length-1];
+    const lastX = mapX(lastPt[0], tMax);
+    const fillD = d + 'L' + lastX.toFixed(1) + ',' + (H-PAD_B) + ' L' + PAD_L + ',' + (H-PAD_B) + ' Z';
+    const fill = document.getElementById('graphFill');
+    fill.setAttribute('d', fillD);
+    fill.classList.toggle('crashed', !!crashed);
+    fill.setAttribute('fill', crashed ? 'url(#graph-gradient-red)' : 'url(#graph-gradient)');
+
+    return lastPt[1];
+  }
+
+  // ─── ANIMATION LOOP (60fps) ─────────────────────────────────────────
+  let animTimer = null;
+  function startAnimation() {
+    if (animTimer) return;
+    animTimer = requestAnimationFrame(tickAnim);
+  }
+  function tickAnim() {
+    animTimer = null;
+    if (currentRound && currentRound.status === 'running' && currentRound.multiplier_curve) {
+      const elapsed = (currentRound.elapsed_ms || 0) + (Date.now() - currentRound._seenAt);
+      const peak = currentRound.multiplier_curve[currentRound.multiplier_curve.length-1][1];
+      const currMult = redrawGraph(currentRound.multiplier_curve, elapsed, peak, false);
+      if (currMult != null) {
+        animLastMult = currMult;
+        document.getElementById('multiplier').textContent = currMult.toFixed(2) + '×';
+        // update cashout projected payout
+        if (myBetId && !myBetLocked && myBetStake > 0) {
+          const b = document.getElementById('cashoutBtn');
+          b.disabled = false;
+          b.innerHTML = '<span class="big">CASH OUT @ ' + currMult.toFixed(2) + '×</span><span class="sub">+' + fmt(myBetStake * currMult) + ' $STYXX if you lock now</span>';
+        }
+      }
+    } else if (currentRound && currentRound.status === 'betting' && currentRound.betting_window_ends_at) {
+      const total = 15000;
+      const remain = new Date(currentRound.betting_window_ends_at).getTime() - Date.now();
+      const pct = Math.max(0, Math.min(100, 100 * remain / total));
+      document.getElementById('countBar').style.width = pct + '%';
+      const secs = Math.max(0, Math.ceil(remain / 1000));
+      document.getElementById('multLabel').textContent = 'BETTING · ' + secs + 's to place';
+    }
+    animTimer = requestAnimationFrame(tickAnim);
+  }
+
+  // ─── TYPEWRITER for sentences ───────────────────────────────────────
+  function typeSentence(el, text, durMs) {
+    el.classList.add('typing');
+    const chars = text.split('');
+    const step = Math.max(8, durMs / chars.length);
+    let i = 0;
+    const t = setInterval(() => {
+      i++;
+      el.textContent = text.slice(0, i);
+      if (i >= chars.length) { clearInterval(t); el.classList.remove('typing'); }
+    }, step);
+    return t;
+  }
+
+  let renderedSentences = -1;
+  function renderSentences(sentences, elapsedMs, crashIdx, forceAll) {
+    if (!sentences) return;
+    const list = document.getElementById('sentList');
+    // determine how many should be visible
+    let visibleCount = 0;
+    for (let i = 0; i < sentences.length; i++) {
+      if ((sentences[i].elapsed_ms || 0) <= elapsedMs + 400 || forceAll) visibleCount++;
+    }
+    if (visibleCount <= renderedSentences && !forceAll) return;
+    // add missing
+    for (let i = renderedSentences + 1; i < visibleCount; i++) {
+      const s = sentences[i];
+      const row = document.createElement('div');
+      const isCrash = (crashIdx === i && forceAll);
+      row.className = 'sent' + (isCrash ? ' crashed' : '');
+      const pct = Math.round((s.depth_score || 0) * 100);
+      const dCls = pct >= 70 ? 'hi' : (pct < 30 ? 'lo' : '');
+      row.innerHTML = '<div class="txt" data-i="' + i + '"></div>' +
+        '<div class="depth">depth ' + pct + '<div class="bar"><div class="fill ' + dCls + '" style="width:' + pct + '%"></div></div></div>';
+      list.appendChild(row);
+      const txtEl = row.querySelector('.txt');
+      typeSentence(txtEl, s.text, 1200);
+    }
+    renderedSentences = visibleCount - 1;
+  }
+
+  // ─── POLLING ─────────────────────────────────────────────────────────
   async function poll() {
     try {
-      const [roundR, jpR] = await Promise.all([
+      const [roundR, jpR, histR] = await Promise.all([
         fetch('/api/arena/round').then(r=>r.json()),
         fetch('/api/arena/jackpot').then(r=>r.json()),
+        fetch('/api/arena/history?limit=30').then(r=>r.json()),
       ]);
-      if (roundR && roundR.id) currentRound = roundR;
+      if (roundR && roundR.id) {
+        roundR._seenAt = Date.now();
+        // detect new round
+        if (!currentRound || currentRound.id !== roundR.id) {
+          renderedSentences = -1;
+          document.getElementById('sentList').innerHTML = '';
+          document.getElementById('rugStamp').classList.remove('on');
+          document.getElementById('graphWrap').classList.remove('crashed');
+          document.getElementById('gameBox').classList.remove('crashed');
+          document.getElementById('multiplier').classList.remove('crashed');
+        }
+        currentRound = roundR;
+      }
       renderRound(currentRound);
       renderStats(jpR);
-      renderRecent(jpR.recent_results || []);
-    } catch {}
+      renderFeed(jpR.recent_results || []);
+      renderTicker(jpR.recent_results || [], jpR.big_win_24h);
+      renderBigWin(jpR.big_win_24h);
+      renderHistory(histR.rounds || []);
+    } catch (e) { console.warn('poll err', e); }
   }
+
   function renderStats(jp) {
     document.getElementById('sPubJp').textContent = fmt(jp.public_jackpot_styxx);
     document.getElementById('sFoundJp').textContent = fmt(jp.founder_jackpot_styxx);
     document.getElementById('sBurn').textContent = fmt(jp.burn_24h);
+    document.getElementById('sVol').textContent = fmt(jp.volume_24h);
+    document.getElementById('sPlayers').textContent = jp.players_24h || 0;
     document.getElementById('jpBig').textContent = fmt(jp.public_jackpot_styxx) + ' $STYXX';
     document.getElementById('burnNum').textContent = fmt(jp.burn_24h);
   }
-  function renderRecent(list) {
-    const el = document.getElementById('recentList');
+
+  function renderBigWin(big) {
+    const box = document.getElementById('bigWinBox');
+    if (!big || !big.user_wallet) { box.style.display = 'none'; return; }
+    box.style.display = 'flex';
+    document.getElementById('bigWinBody').innerHTML = short(big.user_wallet) + ' cashed <span class="mx">' + Number(big.cashout_multiplier||0).toFixed(2) + '×</span> on <b>' + big.agent_id + '</b> for <span class="mx">+' + fmt(big.payout_styxx) + ' $STYXX</span>';
+  }
+
+  function renderTicker(recent, big) {
+    if (!recent || !recent.length) return;
+    const items = [];
+    if (big && big.user_wallet) {
+      items.push('<span class="item big">★ BIGGEST ' + Number(big.cashout_multiplier||0).toFixed(2) + '× · +' + fmt(big.payout_styxx) + ' $STYXX</span>');
+    }
+    for (const r of recent) {
+      const won = r.status === 'cashed_out';
+      if (won) {
+        items.push('<span class="item"><span class="win">✓ ' + short(r.user_wallet) + ' cashed ' + Number(r.cashout_multiplier||0).toFixed(2) + '×</span> on <b>' + r.agent_id + '</b> +' + fmt(r.payout_styxx) + '</span>');
+      } else {
+        items.push('<span class="item"><span class="lose">✗ ' + short(r.user_wallet) + ' rugged</span> on <b>' + r.agent_id + '</b> −' + fmt(r.stake_styxx) + '</span>');
+      }
+    }
+    // duplicate track for infinite scroll
+    document.getElementById('tickerTrack').innerHTML = items.join('') + items.join('');
+  }
+
+  function renderFeed(list) {
+    const el = document.getElementById('feedList');
     if (!list.length) return;
     el.innerHTML = list.slice(0, 10).map(r => {
       const won = r.status === 'cashed_out';
       const amt = won ? ('+' + fmt(r.payout_styxx)) : ('−' + fmt(r.stake_styxx));
-      const m = r.cashout_multiplier ? Number(r.cashout_multiplier).toFixed(2) + '×' : 'CRASH';
-      return '<div class="row ' + (won?'w':'l') + '"><span><span class="a">' + r.agent_id + '</span> · ' + r.user_wallet.slice(0,4) + '..' + r.user_wallet.slice(-3) + '</span><span class="m">' + m + '</span><span class="amt">' + amt + '</span></div>';
+      const m = r.cashout_multiplier ? Number(r.cashout_multiplier).toFixed(2) + '×' : 'RUG';
+      return '<div class="feed-row ' + (won?'w':'l') + '"><span><span class="a">' + r.agent_id + '</span> · ' + short(r.user_wallet) + '</span><span class="m">' + m + '</span><span class="amt">' + amt + '</span></div>';
     }).join('');
   }
+
+  function renderHistory(rounds) {
+    if (!rounds || !rounds.length) return;
+    const el = document.getElementById('histGrid');
+    const ordered = rounds.slice().reverse(); // oldest → newest L→R
+    const maxM = Math.max(...ordered.map(r => r.multiplier), 2);
+    const html = ordered.map(r => {
+      const m = Number(r.multiplier || 1);
+      let cls = 'lv1';
+      if (m >= 50) cls = 'lv5';
+      else if (m >= 10) cls = 'lv4';
+      else if (m >= 3) cls = 'lv3';
+      else if (m >= 1.5) cls = 'lv2';
+      const h = Math.max(16, Math.min(52, 16 + (Math.log(m) / Math.log(Math.max(maxM, 3))) * 36));
+      return '<div class="hist-bar ' + cls + '" style="height:' + h + 'px" title="round #' + r.id + ' · ' + r.agent_id + ' · ' + m.toFixed(2) + '×">' + (m >= 10 ? m.toFixed(0) + 'x' : m.toFixed(1)) + '</div>';
+    }).join('');
+    el.innerHTML = html;
+    el.scrollLeft = el.scrollWidth;
+  }
+
   function renderRound(r) {
     if (!r || !r.id) return;
     document.getElementById('roundNo').textContent = '#' + r.id.toString().padStart(4, '0');
     document.getElementById('sRound').textContent = '#' + r.id.toString().padStart(4, '0');
-    document.getElementById('agentName').textContent = r.agent_id;
+    document.getElementById('agentName').textContent = r.agent_id || '—';
     document.getElementById('agentDistrict').textContent = r.district || 'unassigned';
     document.getElementById('agentRank').textContent = r.rank || 'citizen';
-    document.getElementById('prompt').textContent = r.prompt;
+    document.getElementById('prompt').textContent = r.prompt || '—';
+    document.getElementById('potAmt').textContent = fmt(r.pot_styxx || 0);
+    document.getElementById('potBets').textContent = r.bets_count || 0;
+    document.getElementById('roundMeta').textContent = r.status;
 
     const chip = document.getElementById('statusChip');
     chip.textContent = r.status;
@@ -631,53 +1119,63 @@ body {
 
     const betForm = document.getElementById('betForm');
     const cashBtn = document.getElementById('cashoutBtn');
-    const cursor = document.getElementById('cursor');
 
     if (r.status === 'betting') {
       betForm.style.display = 'grid';
-      cashBtn.disabled = true; cashBtn.textContent = 'CASH OUT (place bet first)';
-      const secs = Math.max(0, Math.floor((new Date(r.betting_window_ends_at).getTime() - Date.now())/1000));
-      document.getElementById('multLabel').textContent = 'betting window · ' + secs + 's';
-      document.getElementById('reasoningBody').textContent = 'agent warming up...';
-      cursor.style.display = 'none';
+      cashBtn.disabled = true;
+      cashBtn.innerHTML = '<span class="big">CASH OUT</span><span class="sub">place a bet first</span>';
       document.getElementById('multiplier').textContent = '1.00×';
       document.getElementById('multiplier').classList.remove('crashed');
+      document.getElementById('multLabel').classList.remove('crashed');
+      // clear sentence list
+      if (renderedSentences !== -1) { document.getElementById('sentList').innerHTML = ''; renderedSentences = -1; }
+      redrawGraph([[0, 1.0]], 0, 2, false);
+      startAnimation();
     } else if (r.status === 'running') {
       betForm.style.display = 'none';
-      if (r.multiplier_curve && r.elapsed_ms != null) {
-        const elapsed = r.elapsed_ms;
-        let mult = 1.0;
-        let sentenceIdx = 0;
-        for (let i = 0; i < r.multiplier_curve.length; i++) {
-          if (r.multiplier_curve[i][0] > elapsed) break;
-          mult = r.multiplier_curve[i][1];
-          sentenceIdx = i;
-        }
-        document.getElementById('multiplier').textContent = Number(mult).toFixed(2) + '×';
-        document.getElementById('multLabel').textContent = 'live · agent reasoning';
-        if (r.sentences && sentenceIdx > 0) {
-          const shown = r.sentences.slice(0, sentenceIdx).map(s => s.text).join(' ');
-          document.getElementById('reasoningBody').textContent = shown;
-          cursor.style.display = 'inline';
-        }
-        if (myBetId && !myBetLocked) { cashBtn.disabled = false; cashBtn.textContent = 'CASH OUT @ ' + Number(mult).toFixed(2) + '×'; }
+      document.getElementById('countBar').style.width = '0%';
+      document.getElementById('multLabel').textContent = 'live · agent reasoning';
+      if (r.sentences && r.elapsed_ms != null) {
+        renderSentences(r.sentences, r.elapsed_ms, r.crash_at_sentence, false);
       }
+      startAnimation();
     } else if (r.status === 'resolving' || r.status === 'resolved') {
       betForm.style.display = 'none';
       const m = r.crash_multiplier || 1;
       document.getElementById('multiplier').textContent = Number(m).toFixed(2) + '×';
-      document.getElementById('multiplier').classList.add('crashed');
-      document.getElementById('multLabel').textContent = 'CRASHED';
-      cursor.style.display = 'none';
-      if (r.sentences) document.getElementById('reasoningBody').textContent = r.sentences.map(s => s.text).join(' ');
+
+      // Crash effects (only fire once per round)
+      if (lastCrashFlash !== r.id) {
+        lastCrashFlash = r.id;
+        document.getElementById('multiplier').classList.add('crashed');
+        document.getElementById('multLabel').classList.add('crashed');
+        document.getElementById('multLabel').textContent = 'RUGGED @ ' + Number(m).toFixed(2) + '×';
+        document.getElementById('rugStamp').classList.add('on');
+        document.getElementById('graphWrap').classList.add('crashed');
+        document.getElementById('gameBox').classList.add('crashed');
+        const flash = document.getElementById('flash');
+        flash.classList.remove('on'); void flash.offsetWidth; flash.classList.add('on');
+        if (r.sentences) renderSentences(r.sentences, 1e9, r.crash_at_sentence, true);
+        if (r.multiplier_curve) redrawGraph(r.multiplier_curve, 1e9, m, true);
+        cashBtn.disabled = true;
+        if (myBetId && !myBetLocked) {
+          cashBtn.innerHTML = '<span class="big">RUGGED</span><span class="sub">lost ' + fmt(myBetStake) + ' $STYXX · 94% burns</span>';
+        } else if (!myBetLocked) {
+          cashBtn.innerHTML = '<span class="big">CRASHED</span><span class="sub">next round loading...</span>';
+        }
+      }
+
       setTimeout(() => {
-        document.getElementById('multiplier').classList.remove('crashed');
-        myBetId = null; myBetLocked = false;
-        cashBtn.disabled = true; cashBtn.textContent = 'CASH OUT';
+        if (currentRound && currentRound.id === r.id) {
+          myBetId = null; myBetStake = 0; myBetLocked = false;
+        }
       }, 3000);
     }
   }
-  poll(); setInterval(poll, 1500);
+
+  poll();
+  setInterval(poll, 900);
+  startAnimation();
 })();
 </script>
 </body>
@@ -693,6 +1191,13 @@ function installArenaUI(app, pool) {
     try { res.json(await arena.getJackpotStatus(pool)); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });
+  app.get('/api/arena/history', async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 30, 100);
+      const rounds = await arena.getRoundHistory(pool, limit);
+      res.json({ rounds });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.post('/api/arena/bet', async (req, res) => {
     try {
       const r = await arena.placeBet(pool, req.body || {});
@@ -705,7 +1210,7 @@ function installArenaUI(app, pool) {
       res.status(r.ok ? 200 : 400).json(r);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
-  console.log('[arena-ui] registered: /arena, /api/arena/{round,jackpot,bet,cashout}');
+  console.log('[arena-ui] registered: /arena, /api/arena/{round,jackpot,history,bet,cashout}');
 }
 
 module.exports = { installArenaUI };
