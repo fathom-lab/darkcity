@@ -1241,7 +1241,10 @@ const POLL_MS = 4500;
 const PARTICLE_SPEED = 0.012;
 const PARTICLE_TAIL = 0.12;
 const BUBBLE_LIFE_MS = 11000;
-const MAX_VISIBLE_BUBBLES = 5;
+// Only 2 featured thoughts on screen at once — restraint reads as luxury.
+// Every other agent still ticks + breathes; we just pick the most recent
+// two reasoning traces to highlight instead of plastering the map.
+const MAX_VISIBLE_BUBBLES = 2;
 const PULSE_LIFE = 55;
 
 // ═══ Palette (harmonized, luxury) ═════════════════════════════════════
@@ -1708,7 +1711,19 @@ function addParticle(from, to, amount, reason, tx) {
     fx: from.x, fy: from.y, tx: to.x, ty: to.y,
     t: 0, amount, reason, color: reasonC(reason), life: 60, tx_sig: tx,
   });
+  // When a packet lands, float a cinematic "+AMOUNT $STYXX" from the recipient
+  // so the viewer SEES the money land, not just a dot touching a dot. Lives for
+  // ~2.6s, rises 70px, fades out gently. This is the heartbeat of the economy.
+  earningFloats.push({
+    x: to.x, y: to.y,
+    bornAt: Date.now(),
+    amount, reason,
+    color: reasonC(reason),
+    life: 2600,
+  });
 }
+
+let earningFloats = [];
 function addPulse(x, y, color) { pulses.push({ x, y, life: PULSE_LIFE, color }); }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -1848,22 +1863,26 @@ function drawNet(t) {
       netCtx.lineWidth = 0.8;
       netCtx.stroke();
 
-      // District banner — ALL CAPS monospace, subtle, at wedge edge.
-      // Rotated to follow the wedge so it reads like signage along the street.
+      // District banner — italic serif along the wedge arc. Reads like
+      // a gallery plaque, not a subway sign.
       netCtx.save();
       netCtx.translate(d.bannerX, d.bannerY);
       let rot = d.wedgeCenter + Math.PI / 2;
-      // Flip upside-down banners so text is always right-way-up
       if (d.wedgeCenter > 0 && d.wedgeCenter < Math.PI) rot -= Math.PI;
       netCtx.rotate(rot);
-      netCtx.font = '600 10px "JetBrains Mono", "Geist Mono", monospace';
+      // Primary name: italic serif, tracked-out, generous
+      netCtx.font = '400 italic 14px "Fraunces", "EB Garamond", Georgia, serif';
       netCtx.textAlign = 'center';
       netCtx.textBaseline = 'middle';
-      netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.62)';
-      netCtx.fillText(name.toUpperCase(), 0, 0);
-      netCtx.font = '400 9px "JetBrains Mono", "Geist Mono", monospace';
+      // Subtle shadow for depth on the cell-dense backdrop
+      netCtx.fillStyle = 'rgba(0,0,0,0.55)';
+      netCtx.fillText(name, 0.5, 0.5);
+      netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.78)';
+      netCtx.fillText(name, 0, 0);
+      // Sub-label: agent count in tight monospace, desaturated
+      netCtx.font = '500 9px "JetBrains Mono", "Geist Mono", monospace';
       netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.42)';
-      netCtx.fillText('· ' + d.count + ' agents ·', 0, 13);
+      netCtx.fillText(String(d.count).padStart(2, '0') + '  AGENTS', 0, 15);
       netCtx.restore();
     }
   }
@@ -2380,16 +2399,56 @@ function drawNet(t) {
     netCtx.arc(x, y, tt < 1 ? headR : Math.max(.5, (headR + 1) - (60 - p.life) * 0.07), 0, 6.28);
     netCtx.fillStyle = \`rgba(\${r},\${g},\${b},\${tt < 1 ? 1 : Math.max(0, p.life/60)})\`;
     netCtx.fill();
-    if (tt >= 0.88) {
-      const a = Math.max(0, p.life / 60);
-      netCtx.fillStyle = \`rgba(\${r},\${g},\${b},\${a})\`;
-      netCtx.font = '500 13px "JetBrains Mono", monospace';
-      netCtx.textAlign = 'center';
-      netCtx.fillText('+' + (p.amount >= 1 ? p.amount.toFixed(0) : p.amount.toFixed(2)), p.tx, p.ty - 14 - (60 - p.life) * 0.3);
-    }
     alive.push(p);
   }
   particles = alive;
+
+  // ─── Earning floats — premium typography on every on-chain tx ─────────
+  // Fraunces italic gold drifts up from the recipient cell when money lands.
+  // This is the visceral "you got paid" moment — understated, restrained,
+  // reads as an Apple keynote chart annotation, not a game score pop.
+  const nowF = Date.now();
+  earningFloats = earningFloats.filter(f => {
+    const age = nowF - f.bornAt;
+    if (age > f.life) return false;
+    const prog = age / f.life;
+    // Ease-out cubic for the rise — fast early, slow late
+    const riseEase = 1 - Math.pow(1 - prog, 3);
+    const rise = 64 * riseEase;
+    // Fade curve: fade in 0→10%, hold 10→75%, fade out 75→100%
+    let alpha;
+    if (prog < 0.1)        alpha = prog / 0.1;
+    else if (prog < 0.75)  alpha = 1;
+    else                   alpha = 1 - (prog - 0.75) / 0.25;
+    alpha = Math.max(0, Math.min(1, alpha)) * 0.95;
+
+    const amt = f.amount >= 1000 ? (f.amount / 1000).toFixed(1) + 'k'
+              : f.amount >= 1   ? f.amount.toFixed(0)
+                                : f.amount.toFixed(2);
+    const txt = '+' + amt + ' \$STYXX';
+    const fx = f.x;
+    const fy = f.y - 22 - rise;
+
+    // Soft bloom behind the text so it reads against the busy map
+    const bloom = netCtx.createRadialGradient(fx, fy, 0, fx, fy, 64);
+    bloom.addColorStop(0, \`rgba(127,229,176,\${alpha * 0.18})\`);
+    bloom.addColorStop(1, 'rgba(127,229,176,0)');
+    netCtx.fillStyle = bloom;
+    netCtx.fillRect(fx - 64, fy - 40, 128, 80);
+
+    // Text — italic serif, generous letter-spacing, golden-mint
+    netCtx.font = '500 italic 17px "Fraunces", "EB Garamond", Georgia, serif';
+    netCtx.textAlign = 'center';
+    netCtx.textBaseline = 'middle';
+    // Subtle shadow for depth
+    netCtx.fillStyle = \`rgba(0,0,0,\${alpha * 0.55})\`;
+    netCtx.fillText(txt, fx + 0.6, fy + 0.6);
+    // Main fill — mint-gold (127,229,176 + warm)
+    netCtx.fillStyle = \`rgba(168,235,180,\${alpha})\`;
+    netCtx.fillText(txt, fx, fy);
+
+    return true;
+  });
 
   // Thought bubbles — cap visible to MAX_VISIBLE_BUBBLES (newest wins), collision-avoid
   const nowTs = Date.now();

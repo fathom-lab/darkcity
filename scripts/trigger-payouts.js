@@ -81,6 +81,22 @@ async function main() {
     } catch (e) {
       console.error('[pulse] FAILED:', e.message);
     }
+
+    // After snapshot — who got paid what this pulse
+    const topOwners = await pool.query(
+      `SELECT to_agent_id, to_pubkey, SUM(amount)::float AS total
+         FROM styxx_transfers
+        WHERE reason IN ('weekly_sponsor','hyphal_flow','fruiting_dividend','referral_bonus')
+          AND created_at > NOW() - INTERVAL '10 minutes'
+        GROUP BY to_agent_id, to_pubkey
+        ORDER BY total DESC LIMIT 12`
+    );
+    console.log('\ntop recipients this pulse:');
+    console.table(topOwners.rows.map(r => ({
+      agent: r.to_agent_id,
+      wallet: r.to_pubkey ? r.to_pubkey.slice(0, 14) + '…' : '—',
+      amount: Math.round(Number(r.total)),
+    })));
   }
 
   // ─── After snapshot ─────────────────────────────────────────────────────
