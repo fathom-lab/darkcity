@@ -1375,7 +1375,10 @@ function layoutAgents() {
   if (treasury) { treasury.x = cx; treasury.y = cy; treasury.homeX = cx; treasury.homeY = cy; }
 
   const sorted = [...agents.values()].sort((a, b) => a.id.localeCompare(b.id));
-  const primary = Math.min(8, sorted.length);
+  // Primary ring scales with roster size so 35+ agents don't cluster into a
+  // single quadrant: each primary owns ~3–4 children comfortably, so aim for
+  // ceil(N/3.5). Capped at 14 (past that the primary ring gets visually noisy).
+  const primary = Math.min(14, Math.max(8, Math.ceil(sorted.length / 3.5)));
   // baseLen widened to .85R — primaries plant deeper into the canvas so
   // their children fan outward instead of overlapping other primaries'
   // children near the center.
@@ -1409,13 +1412,13 @@ function layoutAgents() {
     const sameDist = placed.filter(n => n.district === a.district);
     const pool = sameDist.length > 0 ? sameDist : placed;
     const parent = pool[Math.floor(hashStr(a.id + 'parent') * pool.length)];
-    // Widen branch spread (1.2 → 1.6 rad max) so siblings don't stack on
-    // the same radial line from treasury. Bump segment length range so
-    // children sprout farther from parent — reduces PRISM/MR_REX-style
-    // overlap where sibling nodes are nearly co-located.
-    const branch = (hashStr(a.id + 'br') - 0.5) * 1.8;
+    // Branch spread widened so siblings don't stack on the same radial line,
+    // and segLen bumped so children sprout farther from parent — otherwise
+    // dense primaries (3+ children) still overlap. Values tuned for 40-agent
+    // rosters on 1700×900 viewports.
+    const branch = (hashStr(a.id + 'br') - 0.5) * 2.2;
     const branchAng = parent.angle + branch;
-    const segLen = R * (0.35 + hashStr(a.id + 'len') * 0.35);
+    const segLen = R * (0.50 + hashStr(a.id + 'len') * 0.40);
     a.homeX = parent.homeX + Math.cos(branchAng) * segLen;
     a.homeY = parent.homeY + Math.sin(branchAng) * segLen;
     a.tx = a.homeX; a.ty = a.homeY;
@@ -1447,23 +1450,34 @@ function layoutAgents() {
   // MIN_DIST widened 62 → 96 so agent labels (typical 80–100px wide at Fraunces
    // 20px) don't overlap. More passes (4 → 6) to let the field actually settle
   // at the new spacing without oscillation.
-  const MIN_DIST = 96;
-  for (let pass = 0; pass < 6; pass++) {
+  // MIN_DIST sized past widest Fraunces-20 label; primaries get a lighter
+  // push so the tree stays rigid and the outer ring absorbs crowding.
+  const MIN_DIST = 128;
+  for (let pass = 0; pass < 8; pass++) {
     for (let i = 0; i < placed.length; i++) {
       for (let j = i + 1; j < placed.length; j++) {
         const a = placed[i], b = placed[j];
         const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
         const d = Math.sqrt(dx * dx + dy * dy);
         if (d > MIN_DIST || d === 0) continue;
-        const push = (MIN_DIST - d) * 0.35;
+        const push = (MIN_DIST - d) * 0.4;
         const nx = dx / d;
         const ny = dy / d;
-        a.homeX -= nx * push; a.homeY -= ny * push;
-        b.homeX += nx * push; b.homeY += ny * push;
+        const wA = i < primary ? 0.35 : 1.0;
+        const wB = j < primary ? 0.35 : 1.0;
+        a.homeX -= nx * push * wA; a.homeY -= ny * push * wA;
+        b.homeX += nx * push * wB; b.homeY += ny * push * wB;
       }
     }
   }
-  for (const a of placed) { a.tx = a.homeX; a.ty = a.homeY; }
+  // Clamp to margin bounds so stronger repulsion never flings nodes
+  // off-screen on dense rosters.
+  const padX = 40, padY = 36;
+  for (const a of placed) {
+    a.homeX = Math.max(leftMargin + padX, Math.min(W - rightMargin - padX, a.homeX));
+    a.homeY = Math.max(topMargin + padY,  Math.min(H - bottomMargin - padY, a.homeY));
+    a.tx = a.homeX; a.ty = a.homeY;
+  }
 }
 
 function nodeRadius(styxx, online) {

@@ -1367,7 +1367,9 @@ function loadScarcityAndPulse() {
     if (remaining > 0 && total < 100) {
       r.textContent = String(remaining).padStart(2, '0');
       n.textContent = String(total + 1).padStart(2, '0');
-      el.style.display = 'inline-flex';
+      // inline-flex collapses the whitespace between "92" and "FOUNDER" into
+      // nothing — use plain inline so the text node space renders normally.
+      el.style.display = 'inline';
     } else {
       el.style.display = 'none';
     }
