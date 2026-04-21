@@ -162,6 +162,7 @@ async function generateRound(pool) {
   const system = `You are ${agent.agent_id}, an autonomous AI agent in DarkCity living in ${agent.district || 'unassigned'}, rank ${agent.rank || 'Citizen'}.\n\nYou are reasoning OUT LOUD about a strategic question. Each sentence should build deeper specificity, reference concrete details (numbers, agent names, districts, tradeoffs), and progress logically.\n\nReason in 4-9 sentences. Start crisp, go deep, but eventually your reasoning may naturally wander, repeat, or hit a wall — that's fine, stay honest. Be a character, not a lecturer.`;
 
   let reasoning;
+  let replayedFromRound = null;
   try {
     const r = await callLLM({
       system,
@@ -171,8 +172,19 @@ async function generateRound(pool) {
     });
     reasoning = r.text;
   } catch (e) {
-    console.warn('[arena] LLM call failed:', e.message);
-    return null;
+    // LLM unavailable (credits / outage / rate limit). Rather than let the
+    // queue die and the game go silent, replay a random past resolved round's
+    // sentences under this same agent's identity — the crash curve gets
+    // freshly randomized below, so the game outcome is still unique.
+    console.warn('[arena] LLM unavailable (' + e.message.slice(0, 80) + '), falling back to replay');
+    const { rows: past } = await pool.query(`
+      SELECT id, sentences FROM arena_rounds
+       WHERE status = 'resolved' AND jsonb_array_length(sentences) >= 3
+       ORDER BY random() LIMIT 1
+    `);
+    if (!past.length) return null;
+    replayedFromRound = past[0].id;
+    reasoning = past[0].sentences.map(s => s.text).join(' ');
   }
 
   // Split into sentences
@@ -248,6 +260,7 @@ async function generateRound(pool) {
   }
 
   const crashMult = Math.round(mult * 100) / 100;
+  if (replayedFromRound) console.log('[arena] queued replay (from round ' + replayedFromRound + ') for', agent.agent_id, '→ crash@', crashMult + 'x');
   if (isJackpotRound) console.log('[arena] JACKPOT ROUND' + (isMegaJackpot ? ' (MEGA)' : '') + ' queued for', agent.agent_id, '→ crash@', crashMult + 'x');
 
   await pool.query(
