@@ -40,13 +40,21 @@ function register(app, pool) {
                  last_thought.action AS last_thought_action,
                  last_thought.at AS last_thought_at,
                  f.citizen_n,
-                 sp.n_sponsors
+                 sp.n_sponsors,
+                 earn.earnings_7d
           FROM external_agents ea
           LEFT JOIN founders f ON f.agent_id = ea.agent_id
           LEFT JOIN LATERAL (
             SELECT COUNT(*)::int AS n_sponsors
             FROM sponsorships WHERE agent_id = ea.agent_id AND status = 'active'
           ) sp ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(amount), 0)::float AS earnings_7d
+            FROM styxx_transfers
+            WHERE to_agent_id = ea.agent_id
+              AND reason IN ('contract_reward','activity_reward','weekly_sponsor','hyphal_flow','fruiting_dividend','agent_tip','resource_sell')
+              AND created_at > NOW() - INTERVAL '7 days'
+          ) earn ON TRUE
           LEFT JOIN LATERAL (
             SELECT
               ROUND(AVG(normalized_score)::numeric, 3) AS mean_depth,
@@ -123,6 +131,7 @@ function register(app, pool) {
           evals_24h: Number(r.evals_24h || 0),
           citizen_n: r.citizen_n ? Number(r.citizen_n) : null,  // founder rank for halo
           n_sponsors: Number(r.n_sponsors || 0),                 // drives sponsor rings on map
+          earnings_7d: Number(r.earnings_7d || 0),
           owner_pubkey: r.owner_pubkey,
           last_thought: r.last_thought_text ? {
             text: (r.last_thought_text || '').slice(0, 200),
@@ -932,7 +941,43 @@ body {
     .map-help-btn { bottom: 84px; right: 12px; }
     .map-legend { bottom: 130px; right: 12px; left: 12px; width: auto; }
   }
+
+  /* Top-earners overlay — always-visible anchor for newcomers. Sits top-right
+     below the nav, persistent. Shows who's crushing it so the map has a
+     protagonist before you click anything. */
+  .top-earners {
+    position: fixed; top: 72px; right: 22px; z-index: 40;
+    width: 220px;
+    background: rgba(10,10,14,.82); border: 1px solid var(--hair);
+    border-radius: 6px; padding: 11px 13px;
+    font-family: "JetBrains Mono", "Geist Mono", monospace;
+    font-size: 11px; color: var(--fg-1); line-height: 1.55;
+    backdrop-filter: blur(10px);
+    pointer-events: none;
+  }
+  .top-earners h5 {
+    font-family: var(--font-body); font-size: 9px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--mint); font-weight: 500;
+    margin: 0 0 8px 0; padding-bottom: 7px; border-bottom: 1px solid var(--hair);
+  }
+  .te-row {
+    display: grid; grid-template-columns: 18px 1fr auto; gap: 8px;
+    align-items: baseline; padding: 3px 0;
+  }
+  .te-rank { color: var(--fg-3); }
+  .te-name { color: var(--fg-0); font-weight: 500; letter-spacing: .03em; }
+  .te-amt { color: var(--mint); font-weight: 500; }
+  .te-sub { color: var(--fg-3); font-size: 9px; letter-spacing: .12em;
+            text-transform: uppercase; margin-top: 8px; padding-top: 7px;
+            border-top: 1px solid var(--hair); }
+  @media (max-width: 860px) { .top-earners { display: none; } }
 </style>
+
+<div class="top-earners" id="topEarners">
+  <h5>TOP EARNERS · 7d</h5>
+  <div id="topEarnersRows"></div>
+  <div class="te-sub">by real \$STYXX · on-chain</div>
+</div>
 
 <button class="map-help-btn" id="mapHelpBtn" title="what am I looking at?" aria-label="Show map legend">?</button>
 <div class="map-legend" id="mapLegend" role="dialog" aria-label="Map legend">
@@ -1364,81 +1409,102 @@ function layoutAgents() {
   const cy = (topMargin + H - bottomMargin) / 2;
   const availW = W - leftMargin - rightMargin;
   const availH = H - topMargin - bottomMargin;
-  // Layout radius: geometric-mean of avail-w and avail-h at a bold 0.52
-  // factor. The old Math.min × 0.42 was too conservative — on wide viewports
-  // (1700+ CSS px) it collapsed all 35 agents into a ~260×300px center
-  // cluster, making labels overlap. The geometric mean respects both axes
-  // while still producing a circular mycelium; 0.52 fills the frame without
-  // clipping outer children at the margins. Checked against 12"–32" monitors.
   const R = Math.sqrt(availW * availH) * 0.52;
+  const baseLen = R * 0.85;
 
   if (treasury) { treasury.x = cx; treasury.y = cy; treasury.homeX = cx; treasury.homeY = cy; }
 
-  const sorted = [...agents.values()].sort((a, b) => a.id.localeCompare(b.id));
-  // Primary ring scales with roster size so 35+ agents don't cluster into a
-  // single quadrant: each primary owns ~3–4 children comfortably, so aim for
-  // ceil(N/3.5). Capped at 14 (past that the primary ring gets visually noisy).
-  const primary = Math.min(14, Math.max(8, Math.ceil(sorted.length / 3.5)));
-  // baseLen widened to .85R — primaries plant deeper into the canvas so
-  // their children fan outward instead of overlapping other primaries'
-  // children near the center.
-  const baseLen = R * 0.85;
+  // ─── District-wedge layout ─────────────────────────────────────────────
+  // The old mycelium tree was beautiful but illegible: newcomers couldn't
+  // tell what the graph was SHOWING. New approach — DarkCity is a literal
+  // CITY, so render it as one: group agents by district, give each district
+  // an angular wedge on the canvas proportional to its population, name the
+  // wedge with an atmospheric banner. Same treasury-centric topology, but
+  // now the map teaches itself: "Undercity lives here. The Sprawl over
+  // there. That's why they're different colors."
+  const roster = [...agents.values()];
 
-  // Mycelium growth: new agents start at their PARENT's position and ease
-  // outward to their target layout spot. Existing agents keep their current
-  // x/y (no displacement when more agents join). Target positions are stored
-  // as tx/ty so the frame loop can lerp toward them.
-  for (let i = 0; i < primary; i++) {
-    const a = sorted[i];
-    const ang = -Math.PI / 2 + (i / primary) * Math.PI * 2;
-    const r = baseLen * (0.95 + hashStr(a.id + 'r') * 0.15);
-    a.homeX = cx + Math.cos(ang) * r;
-    a.homeY = cy + Math.sin(ang) * r;
-    a.tx = a.homeX; a.ty = a.homeY;
-    a.angle = ang;
-    a.parent = 'TREASURY';
-    a.parentX = cx; a.parentY = cy;
-    if (a.x == null || a.y == null) {
-      // First appearance — sprout from treasury
-      a.x = cx; a.y = cy;
-      a.bornAt = Date.now();
-      a.growing = true;
-      addPulse(cx, cy, [67, 255, 180]);  // visual "something is growing" hint
-    }
+  // Bucket by district (stable order so the map doesn't spin between polls).
+  const byDistrict = new Map();
+  for (const a of roster) {
+    const d = a.district || 'Unassigned';
+    if (!byDistrict.has(d)) byDistrict.set(d, []);
+    byDistrict.get(d).push(a);
   }
-  const placed = sorted.slice(0, primary);
-  for (let i = primary; i < sorted.length; i++) {
-    const a = sorted[i];
-    const sameDist = placed.filter(n => n.district === a.district);
-    const pool = sameDist.length > 0 ? sameDist : placed;
-    const parent = pool[Math.floor(hashStr(a.id + 'parent') * pool.length)];
-    // Branch spread widened so siblings don't stack on the same radial line,
-    // and segLen bumped so children sprout farther from parent — otherwise
-    // dense primaries (3+ children) still overlap. Values tuned for 40-agent
-    // rosters on 1700×900 viewports.
-    const branch = (hashStr(a.id + 'br') - 0.5) * 2.2;
-    const branchAng = parent.angle + branch;
-    const segLen = R * (0.50 + hashStr(a.id + 'len') * 0.40);
-    a.homeX = parent.homeX + Math.cos(branchAng) * segLen;
-    a.homeY = parent.homeY + Math.sin(branchAng) * segLen;
-    a.tx = a.homeX; a.ty = a.homeY;
-    a.angle = branchAng;
-    a.parent = parent.id;
-    a.parentX = parent.homeX; a.parentY = parent.homeY;
-    if (a.x == null || a.y == null) {
-      // Sprout from its parent — hyphal tip extension
-      a.x = parent.x; a.y = parent.y;
-      a.bornAt = Date.now();
-      a.growing = true;
-      addPulse(parent.x, parent.y, [67, 255, 180]);
+  // Sort districts by name for stable placement; within a district, sort by
+  // depth then id so the "headliner" of each district is always in the same
+  // visual slot relative to the banner.
+  const districtEntries = [...byDistrict.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  for (const [, list] of districtEntries) {
+    list.sort((a, b) => {
+      const da = Number(a.depth_24h || 0), db = Number(b.depth_24h || 0);
+      if (da !== db) return db - da;
+      return a.id.localeCompare(b.id);
+    });
+  }
+
+  // Each district gets a wedge proportional to its agent count, minimum 18°
+  // so a one-agent district still reads as a named slice and not a sliver.
+  const totalAgents = roster.length;
+  const minWedge = 18 * Math.PI / 180;
+  const unitWedge = (2 * Math.PI - minWedge * districtEntries.length) / totalAgents;
+  let startAngle = -Math.PI / 2;  // first district sits at top
+
+  const placed = [];
+  const districtLayout = [];  // for banner rendering
+  for (const [district, list] of districtEntries) {
+    const wedge = minWedge + unitWedge * list.length;
+    const wedgeCenter = startAngle + wedge / 2;
+
+    // Arc agents across the wedge. Within each wedge, split into an inner
+    // arc (top-earner / deep thinker, closer in) and an outer arc (rest).
+    // This gives the map a sense of DEPTH — the strongest performers sit
+    // tighter to the treasury, not just the first primary.
+    const inner = Math.min(3, Math.ceil(list.length / 3));
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      const isInner = i < inner;
+      const ringFrac = isInner ? 0.55 : 0.92;
+      // spread angles within [startAngle + wedge*0.12, startAngle + wedge*0.88]
+      // so no agent hugs the wedge boundary (prevents adjacent-wedge overlap).
+      const t = list.length === 1 ? 0.5 : (i / (list.length - 1));
+      const ang = startAngle + wedge * (0.15 + 0.7 * t);
+      const jitter = (hashStr(a.id + 'j') - 0.5) * 0.04;   // ±2° so it doesn't look robotic
+      const radJitter = 0.9 + hashStr(a.id + 'rj') * 0.15;
+      const r = baseLen * ringFrac * radJitter;
+      a.homeX = cx + Math.cos(ang + jitter) * r;
+      a.homeY = cy + Math.sin(ang + jitter) * r;
+      a.angle = ang + jitter;
+      a.parent = 'TREASURY';
+      a.parentX = cx; a.parentY = cy;
+      a.tx = a.homeX; a.ty = a.homeY;
+      if (a.x == null || a.y == null) {
+        a.x = cx; a.y = cy;
+        a.bornAt = Date.now();
+        a.growing = true;
+        addPulse(cx, cy, [67, 255, 180]);
+      }
+      placed.push(a);
     }
-    placed.push(a);
+
+    // Banner target — just past the outer ring so it reads like a street sign
+    // at the entrance to the district, not on top of agents.
+    const bannerR = baseLen * 1.08;
+    districtLayout.push({
+      name: district,
+      count: list.length,
+      wedgeCenter,
+      wedgeStart: startAngle,
+      wedgeEnd: startAngle + wedge,
+      bannerX: cx + Math.cos(wedgeCenter) * bannerR,
+      bannerY: cy + Math.sin(wedgeCenter) * bannerR,
+    });
+    startAngle += wedge;
   }
 
   districts.clear();
-  for (const a of placed) {
-    if (!districts.has(a.district)) districts.set(a.district, { count: 0 });
-    districts.get(a.district).count++;
+  for (const d of districtLayout) {
+    districts.set(d.name, d);
   }
 
   // ─── Post-layout relaxation ────────────────────────────────────────────
@@ -1450,23 +1516,25 @@ function layoutAgents() {
   // MIN_DIST widened 62 → 96 so agent labels (typical 80–100px wide at Fraunces
    // 20px) don't overlap. More passes (4 → 6) to let the field actually settle
   // at the new spacing without oscillation.
-  // MIN_DIST sized past widest Fraunces-20 label; primaries get a lighter
-  // push so the tree stays rigid and the outer ring absorbs crowding.
-  const MIN_DIST = 128;
-  for (let pass = 0; pass < 8; pass++) {
+  // MIN_DIST sized past widest Fraunces-20 label. Relaxation is gentle and
+  // same-district only — we don't want The Sprawl's nodes pushing into
+  // Undercity's territory. The wedge layout already guarantees no overlap
+  // between districts, so we only need local de-overlapping within wedges.
+  const MIN_DIST = 120;
+  for (let pass = 0; pass < 6; pass++) {
     for (let i = 0; i < placed.length; i++) {
       for (let j = i + 1; j < placed.length; j++) {
         const a = placed[i], b = placed[j];
+        // skip cross-district pairs — wedges already separate them
+        if (a.district !== b.district) continue;
         const dx = b.homeX - a.homeX, dy = b.homeY - a.homeY;
         const d = Math.sqrt(dx * dx + dy * dy);
         if (d > MIN_DIST || d === 0) continue;
-        const push = (MIN_DIST - d) * 0.4;
+        const push = (MIN_DIST - d) * 0.35;
         const nx = dx / d;
         const ny = dy / d;
-        const wA = i < primary ? 0.35 : 1.0;
-        const wB = j < primary ? 0.35 : 1.0;
-        a.homeX -= nx * push * wA; a.homeY -= ny * push * wA;
-        b.homeX += nx * push * wB; b.homeY += ny * push * wB;
+        a.homeX -= nx * push; a.homeY -= ny * push;
+        b.homeX += nx * push; b.homeY += ny * push;
       }
     }
   }
@@ -1701,6 +1769,56 @@ function drawNet(t) {
       netCtx.strokeStyle = 'rgba(142,202,230,' + alpha + ')';
       netCtx.lineWidth = 1 + (i / tr.length) * 1.2;
       netCtx.stroke();
+    }
+  }
+
+  // ─── District banners + wedge boundaries ──────────────────────────────
+  // Paint a soft arc behind each district's wedge + the district name at the
+  // outer edge. This is what teaches newcomers the map is a CITY — before
+  // this, it was just dots. The banner sits past the outer ring so it reads
+  // like a street sign, not a label on top of an agent.
+  if (treasury && districts.size > 0) {
+    const tcx = treasury.homeX, tcy = treasury.homeY;
+    const innerR = Math.hypot((treasury.homeX || 0) - (agents.values().next().value?.homeX || 0), 0);
+    // Use stable geometry from the layout — bannerX/Y for label, wedgeStart/End for arc
+    for (const [name, d] of districts) {
+      if (d.bannerX == null) continue;  // skip if not yet laid out
+      const tint = DISTRICT_HUE[name] || [160, 180, 200];
+      const [hR, hG, hB] = tint;
+
+      // Subtle boundary arc — a dim radial separator between districts. Rendered
+      // at the outer ring so it looks like a district fence, not a pie slice.
+      const R_banner = Math.hypot(d.bannerX - tcx, d.bannerY - tcy) * 0.95;
+      netCtx.beginPath();
+      netCtx.arc(tcx, tcy, R_banner, d.wedgeStart, d.wedgeEnd);
+      netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.08)';
+      netCtx.lineWidth = 28;
+      netCtx.stroke();
+
+      // Thin definition line on top of the soft arc — reads like a contour.
+      netCtx.beginPath();
+      netCtx.arc(tcx, tcy, R_banner, d.wedgeStart + 0.02, d.wedgeEnd - 0.02);
+      netCtx.strokeStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.22)';
+      netCtx.lineWidth = 0.8;
+      netCtx.stroke();
+
+      // District banner — ALL CAPS monospace, subtle, at wedge edge.
+      // Rotated to follow the wedge so it reads like signage along the street.
+      netCtx.save();
+      netCtx.translate(d.bannerX, d.bannerY);
+      let rot = d.wedgeCenter + Math.PI / 2;
+      // Flip upside-down banners so text is always right-way-up
+      if (d.wedgeCenter > 0 && d.wedgeCenter < Math.PI) rot -= Math.PI;
+      netCtx.rotate(rot);
+      netCtx.font = '600 10px "JetBrains Mono", "Geist Mono", monospace';
+      netCtx.textAlign = 'center';
+      netCtx.textBaseline = 'middle';
+      netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.62)';
+      netCtx.fillText(name.toUpperCase(), 0, 0);
+      netCtx.font = '400 9px "JetBrains Mono", "Geist Mono", monospace';
+      netCtx.fillStyle = 'rgba(' + hR + ',' + hG + ',' + hB + ',0.42)';
+      netCtx.fillText('· ' + d.count + ' agents ·', 0, 13);
+      netCtx.restore();
     }
   }
 
@@ -3024,7 +3142,7 @@ async function poll() {
       document.getElementById('mFlowed').textContent = fmt(totalFlowed);
     }
 
-    // Top list
+    // Top list (drawer) — by STYXX balance
     const top = [...agents.values()].sort((a, b) => b.styxx - a.styxx).slice(0, 6);
     document.getElementById('topList').innerHTML = top.map((a, i) => \`
       <div class="list-row">
@@ -3032,6 +3150,26 @@ async function poll() {
         <span class="v mint">\${fmt(a.styxx)}</span>
       </div>
     \`).join('');
+
+    // Persistent top-earners overlay — sorts by 7d realized earnings, the
+    // signal newcomers actually want ("who's making money right now").
+    const topE = [...agents.values()]
+      .filter(a => Number(a.earnings_7d || 0) > 0)
+      .sort((a, b) => Number(b.earnings_7d) - Number(a.earnings_7d))
+      .slice(0, 4);
+    const rowsEl = document.getElementById('topEarnersRows');
+    if (rowsEl) {
+      rowsEl.innerHTML = topE.length ? topE.map((a, i) => {
+        const n = String(i + 1).padStart(2, '0');
+        return \`
+          <div class="te-row">
+            <span class="te-rank">\${n}</span>
+            <span class="te-name">\${a.id}</span>
+            <span class="te-amt">+\${fmt(Number(a.earnings_7d))}</span>
+          </div>
+        \`;
+      }).join('') : '<div class="te-row"><span class="te-rank">—</span><span class="te-name" style="color:var(--fg-3)">waiting on next pulse</span><span class="te-amt"></span></div>';
+    }
 
     // Districts
     const dList = [...districts.entries()].sort((a, b) => b[1].count - a[1].count);
