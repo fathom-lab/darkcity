@@ -176,15 +176,57 @@ async function main() {
   const perMultiplier = grandMultiplier > 0 ? pulseBudget / grandMultiplier : 0;
   console.log(`[pulse] reasoning_budget=${reasoningBudget.toFixed(2)} + inflow_share(${(inflowShareBps/100).toFixed(0)}% of ${windowInflow.toFixed(2)})=${inflowShare.toFixed(2)} → raw=${rawBudget.toFixed(2)} → clamped=${pulseBudget.toFixed(2)}  per-mult=${perMultiplier.toFixed(4)}`);
 
-  let totals = { paid: 0, burned_fee: 0, city: 0, sponsors: 0, hyphal: 0, fruiting: 0, referral: 0, owner_phantom: 0, dust_skipped: 0 };
+  let totals = { paid: 0, burned_fee: 0, city: 0, sponsors: 0, hyphal: 0, fruiting: 0, referral: 0, owner_phantom: 0, dust_skipped: 0, rent_collected: 0, reserve_dormant: 0 };
+
+  // ─── $STYXX as currency of life — reserves + rent ─────────────────────
+  // Every pulse: (a) agent must hold rank-minimum to stay active,
+  // (b) agent's district charges rent paid from gross before split.
+  // Locks circulating supply in agent wallets + creates a real on-chain
+  // sink proportional to city headcount.
+  const reserveEnforce = String(params.reserve_enforce || 'true').toLowerCase() === 'true';
+  const rentEnforce = String(params.rent_enforce || 'true').toLowerCase() === 'true';
+  const { rows: metaRows } = await pool.query(
+    "SELECT agent_id, rank, district, COALESCE(styxx_cached, 0)::float AS balance FROM external_agents"
+  );
+  const agentMeta = new Map(metaRows.map(r => [r.agent_id, r]));
 
   for (const a of activity) {
+    const meta = agentMeta.get(a.agent_id);
+    const rank = meta?.rank || 'Citizen';
+    const district = meta?.district || 'default';
+    const balance = Number(meta?.balance || 0);
+    const reserveMin = Number(params['reserve_min_' + rank] || 0);
+    const rentAmt = Number(params['rent_' + district] || params.rent_default || 0);
+
+    // Reserve check — agent below rank-minimum is dormant this pulse.
+    if (reserveEnforce && balance < reserveMin && reserveMin > 0) {
+      console.log('[pulse] ' + a.agent_id + ' DORMANT — reserve (bal=' + balance.toFixed(0) + ' < ' + reserveMin + ' for ' + rank + ')');
+      await pool.query(
+        "INSERT INTO reserve_events (agent_id, event_type, balance_at, required, rank_at) VALUES ($1, 'dormant_triggered', $2, $3, $4)",
+        [a.agent_id, balance, reserveMin, rank]
+      ).catch(()=>{});
+      totals.reserve_dormant += 1;
+      continue;
+    }
+
     const gross = Number(a.total_multiplier) * perMultiplier;
     if (gross <= 0) continue;
 
     // Cognition fee (prorated). Deducted BEFORE split; stays in treasury.
     const feeSlice = Math.min(feePerPulse, gross);
-    const afterFee = gross - feeSlice;
+
+    // Rent — district property tax deducted from gross, stays in treasury.
+    // High Tower 500/pulse, Undercity 100. Creates flight-to-quality pressure.
+    const rentSlice = rentEnforce ? Math.min(rentAmt, Math.max(0, gross - feeSlice)) : 0;
+    if (rentSlice > 0) {
+      await pool.query(
+        "INSERT INTO rent_payments (agent_id, district, amount_styxx, window_end) VALUES ($1, $2, $3, NOW())",
+        [a.agent_id, district, rentSlice]
+      ).catch(()=>{});
+      totals.rent_collected += rentSlice;
+    }
+
+    const afterFee = gross - feeSlice - rentSlice;
 
     // Hyphal cross-flows
     const { rows: links } = await pool.query(`

@@ -111,7 +111,7 @@ REJECTED 2: [action_type] — [what you would do] — [why you're not doing it]
 <tip_amount>[if action is tip_agent: the $STYXX amount you're paying the target. Whole number. You can only tip 10-100 $STYXX, max 5% of your balance. Omit for other actions.]</tip_amount>
 
 TARGET RULES (strict — get this right or the action is a wasted tick):
-- action=social     → <target> MUST be another agent's NAME (e.g. MR_REX, ATLAS). If you're not addressing anyone specific, use "none". NEVER put a contract ID here for social — it will be silently dropped.
+- action=social     → <target> MUST be another agent's NAME (e.g. MR_REX, ATLAS). Pick a SPECIFIC agent to address — another citizen you want to talk to, trade with, question, challenge, or befriend. Look at your perception: who else is nearby, who mentioned you, who earned big last pulse, who's in your district. PICK ONE. Do NOT use "none" for social — a social action without a target is wasted. NEVER put a contract ID here for social.
 - action=claim_contract    → <target> is the numeric contract ID from "Available contracts"
 - action=complete_contract → <target> is the numeric contract ID from your "active contracts"
 - action=tip_agent   → <target> is the recipient agent's NAME

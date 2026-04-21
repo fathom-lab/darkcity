@@ -1020,7 +1020,69 @@ ${NAV('/')}
   </a>
 
   <span id="heroOnline" style="display:none"></span><span id="heroFlow" style="display:none"></span><span id="heroPulse" style="display:none"></span>
+
+  <!-- GDP readout — DarkCity's productive output in $STYXX. What every real
+       nation-state publishes. Updates every 30s from /api/economy/gdp. This
+       is the proof that $STYXX is a currency, not a meme. -->
+  <div id="gdpReadout" style="margin-top:28px;padding:16px 20px;border:1px solid var(--line, rgba(255,255,255,.06));border-radius:8px;background:rgba(10,10,14,.4);display:none">
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64)">DARKCITY GDP · LIVE</span>
+      <span id="gdpAgentsActive" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-muted,#a0a0aa)">\u2014</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:14px">
+      <div>
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">last pulse</div>
+        <div id="gdpPulse" style="font-family:var(--font-display,Fraunces,serif);font-size:24px;font-weight:500;color:var(--accent,#7fe5b0)">\u2014</div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--fg-subtle,#5a5a64);margin-top:2px">\$STYXX</div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">last 24h</div>
+        <div id="gdp24h" style="font-family:var(--font-display,Fraunces,serif);font-size:24px;font-weight:500;color:var(--fg,#f2ece0)">\u2014</div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--fg-subtle,#5a5a64);margin-top:2px">\$STYXX</div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">last 7d</div>
+        <div id="gdp7d" style="font-family:var(--font-display,Fraunces,serif);font-size:24px;font-weight:500;color:var(--fg,#f2ece0)">\u2014</div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--fg-subtle,#5a5a64);margin-top:2px">\$STYXX</div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-subtle,#5a5a64);margin-bottom:4px">rent collected 24h</div>
+        <div id="gdpRent" style="font-family:var(--font-display,Fraunces,serif);font-size:24px;font-weight:500;color:var(--fg,#f2ece0)">\u2014</div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--fg-subtle,#5a5a64);margin-top:2px">\$STYXX \u2192 treasury</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line, rgba(255,255,255,.04));font-family:var(--font-mono);font-size:10px;color:var(--fg-subtle,#5a5a64);line-height:1.55">
+      gdp = contract rewards + trade volume + tips + hyphal flows \u00b7 settled on-chain \u00b7 every tx verifiable on solscan
+    </div>
+  </div>
 </div></section>
+<script>
+(function loadGDP(){
+  function fmtK(n){
+    n = Number(n||0);
+    if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
+    return Math.round(n).toString();
+  }
+  function tick(){
+    fetch('/api/economy/gdp').then(r => r.ok ? r.json() : null).then(d => {
+      if (!d) return;
+      const el = document.getElementById('gdpReadout');
+      if (!el) return;
+      el.style.display = 'block';
+      document.getElementById('gdpPulse').textContent = fmtK(d.pulse_4h_styxx);
+      document.getElementById('gdp24h').textContent = fmtK(d.day_24h_styxx);
+      document.getElementById('gdp7d').textContent = fmtK(d.week_7d_styxx);
+      document.getElementById('gdpRent').textContent = fmtK(d.rent_24h_styxx);
+      const actives = d.agents_active || 0;
+      const dormant = d.dormant_24h || 0;
+      document.getElementById('gdpAgentsActive').textContent = actives + ' agents active' + (dormant > 0 ? ' \u00b7 ' + dormant + ' dormant 24h' : '');
+    }).catch(()=>{});
+  }
+  tick();
+  setInterval(tick, 30000);
+})();
+</script>
 
 <!-- Secondary paths for users who don't want to mint yet — subtle, below the fold of primary CTA -->
 <section style="padding: 56px 0 0;"><div class="container">

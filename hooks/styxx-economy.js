@@ -1681,6 +1681,7 @@ async function runMigration(pgPool) {
     'styxx-economy-v1.sql',
     'holder-pool-v1.sql',
     'known-wallets-v1.sql',
+    'currency-of-life-v1.sql',
   ];
   for (const name of files) {
     const sqlPath = path.join(__dirname, '..', 'migrations', name);
@@ -2055,6 +2056,41 @@ async function runDormancyCheck() {
 }
 
 function installRoutes(app) {
+  // ── GDP — what DarkCity actually produced. This is the "is $STYXX a
+  // currency" proof: we publish gross domestic product by pulse and by
+  // 7d/24h window. Labor earnings + trade volume + tip volume. Home page
+  // reads this to show the city's productive output in real time.
+  app.get('/api/economy/gdp', async (req, res) => {
+    try {
+      const [pulse4h, window24h, window7d, byDistrict, topActions, citySize, rentTotal, dormantCount] = await Promise.all([
+        pool.query("SELECT SUM(CASE WHEN reason IN ('contract_reward','activity_reward','resource_buy','resource_sell','agent_tip','social_tip') THEN amount ELSE 0 END)::float AS gdp, COUNT(*)::int AS n FROM styxx_transfers WHERE created_at > NOW() - INTERVAL '4 hours'"),
+        pool.query("SELECT SUM(CASE WHEN reason IN ('contract_reward','activity_reward','resource_buy','resource_sell','agent_tip','social_tip') THEN amount ELSE 0 END)::float AS gdp FROM styxx_transfers WHERE created_at > NOW() - INTERVAL '24 hours'"),
+        pool.query("SELECT SUM(CASE WHEN reason IN ('contract_reward','activity_reward','resource_buy','resource_sell','agent_tip','social_tip') THEN amount ELSE 0 END)::float AS gdp FROM styxx_transfers WHERE created_at > NOW() - INTERVAL '7 days'"),
+        pool.query(`SELECT ea.district, SUM(st.amount)::float AS gdp
+                      FROM styxx_transfers st
+                      JOIN external_agents ea ON ea.agent_id = st.to_agent_id
+                      WHERE st.reason IN ('contract_reward','activity_reward','agent_tip','resource_sell')
+                        AND st.created_at > NOW() - INTERVAL '24 hours'
+                      GROUP BY ea.district ORDER BY gdp DESC NULLS LAST LIMIT 12`),
+        pool.query(`SELECT action_type, COUNT(*)::int AS n FROM agent_actions WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY action_type ORDER BY n DESC`),
+        pool.query("SELECT COUNT(*)::int AS n FROM external_agents WHERE euthanized_at IS NULL AND dormant = FALSE"),
+        pool.query("SELECT COALESCE(SUM(amount_styxx), 0)::float AS total FROM rent_payments WHERE paid_at > NOW() - INTERVAL '24 hours'"),
+        pool.query("SELECT COUNT(*)::int AS n FROM reserve_events WHERE event_type = 'dormant_triggered' AND occurred_at > NOW() - INTERVAL '24 hours'"),
+      ]);
+      res.json({
+        pulse_4h_styxx:  Number(pulse4h.rows[0].gdp || 0),
+        pulse_4h_tx_count: Number(pulse4h.rows[0].n || 0),
+        day_24h_styxx:   Number(window24h.rows[0].gdp || 0),
+        week_7d_styxx:   Number(window7d.rows[0].gdp || 0),
+        by_district:     byDistrict.rows,
+        actions_1h:      topActions.rows,
+        agents_active:   Number(citySize.rows[0].n || 0),
+        rent_24h_styxx:  Number(rentTotal.rows[0].total || 0),
+        dormant_24h:     Number(dormantCount.rows[0].n || 0),
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post('/api/mint/quote',     mintQuote);
   app.post('/api/mint/finalize',  mintFinalize);
   app.post('/api/sponsor/quote',  sponsorQuote);
