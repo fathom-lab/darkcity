@@ -897,9 +897,17 @@ body::after {
     if (amt < 100000) { setMsg('min buy-in: 100,000 $STYXX.', 'err'); return; }
     if (amt > 500000) { setMsg('max bet: 500,000 $STYXX. (safety cap while treasury builds)', 'err'); return; }
     setMsg('signing... sending ' + fmt(amt) + ' $STYXX to the house', 'ok');
+    // 60s wall-clock timeout — if Phantom popup is missed or RPC hangs, the
+    // message used to stay at 'signing...' forever. Now the user gets a clear
+    // out.
     let result;
-    try { result = await payStake(amt); }
-    catch (e) { setMsg('wallet rejected: ' + (e.message||'cancelled'), 'err'); return; }
+    try {
+      result = await Promise.race([
+        payStake(amt),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timed out — check phantom popup, then try again')), 60000)),
+      ]);
+    }
+    catch (e) { setMsg('sign failed: ' + (e.message||'cancelled'), 'err'); return; }
     setMsg(result.confirmed ? 'paid. chip on the felt.' : 'tx broadcast · house verifying...', 'ok');
     const r = await fetch('/api/arena/bet', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -1392,7 +1400,62 @@ function installArenaUI(app, pool) {
     }
   });
 
-  console.log('[arena-ui] registered: /arena, /api/arena/{round,jackpot,history,bet,cashout,rpc}');
+  // Admin kill-switch — flip any economy_params flag from a single endpoint.
+  // ADMIN_TOKEN header required. Use to pause arena (arena_enabled=false),
+  // flip to shadow mode (arena_shadow_mode=true), or disable chat payment
+  // enforcement (chat_enforce_payment=false) without SSHing into the db.
+  app.post('/api/admin/flag', async (req, res) => {
+    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const { key, value } = req.body || {};
+    if (!key || typeof key !== 'string' || value == null) {
+      return res.status(400).json({ error: 'need {key, value}' });
+    }
+    // Whitelist keys — don't let this turn into a SQL injection vector or a
+    // way to rewrite critical params like treasury addresses.
+    const ALLOWED = new Set([
+      'arena_enabled', 'arena_shadow_mode', 'arena_min_bet_styxx', 'arena_max_bet_styxx',
+      'arena_betting_window_secs', 'arena_payout_cap_bps',
+      'chat_enforce_payment', 'chat_price_styxx', 'chat_free_messages_per_wallet_per_day',
+    ]);
+    if (!ALLOWED.has(key)) return res.status(403).json({ error: 'key not in admin whitelist', allowed: [...ALLOWED] });
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO economy_params (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+         RETURNING key, value`,
+        [key, String(value)]
+      );
+      console.log('[admin] flag set:', key, '=', value);
+      res.json({ ok: true, updated: rows[0] });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get('/api/admin/status', async (req, res) => {
+    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    try {
+      const [params, bets, chats, treasury] = await Promise.all([
+        pool.query("SELECT key, value FROM economy_params WHERE key LIKE 'arena_%' OR key LIKE 'chat_%' ORDER BY key"),
+        pool.query("SELECT status, COUNT(*)::int AS n FROM arena_bets WHERE placed_at > NOW() - INTERVAL '1 hour' GROUP BY status"),
+        pool.query("SELECT status, COUNT(*)::int AS n FROM chat_messages WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY status"),
+        (async () => { try { return await require('../lib/solana-styxx').getTreasuryBalances(); } catch { return null; } })(),
+      ]);
+      res.json({
+        params: Object.fromEntries(params.rows.map(r => [r.key, r.value])),
+        last_1h: {
+          arena_bets: Object.fromEntries(bets.rows.map(r => [r.status, r.n])),
+          chat_messages: Object.fromEntries(chats.rows.map(r => [r.status, r.n])),
+        },
+        treasury: treasury ? { styxx: Math.floor(treasury.styxx), sol: Number(treasury.sol.toFixed(4)) } : null,
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  console.log('[arena-ui] registered: /arena, /api/arena/{round,jackpot,history,bet,cashout,rpc}, /api/admin/{flag,status}');
 }
 
 module.exports = { installArenaUI };

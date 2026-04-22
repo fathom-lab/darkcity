@@ -462,6 +462,23 @@ class NPCBrain {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return null;
 
+    // Circuit breaker — if the API has failed hard (credit exhausted, bad key,
+    // persistent 4xx) in the last 2 minutes, short-circuit without a network
+    // call and without another 200-char error line spamming the log. One probe
+    // per cooldown window is enough to detect recovery.
+    const BREAKER_FAIL_THRESHOLD = 3;
+    const BREAKER_COOLDOWN_MS = 2 * 60 * 1000;
+    NPCBrain._llmBreaker ??= { consecutiveFails: 0, openedAt: 0, lastLoggedOpenAt: 0 };
+    const breaker = NPCBrain._llmBreaker;
+    const now = Date.now();
+    if (breaker.consecutiveFails >= BREAKER_FAIL_THRESHOLD && now - breaker.openedAt < BREAKER_COOLDOWN_MS) {
+      if (now - breaker.lastLoggedOpenAt > 30_000) {
+        console.warn('[NPC-BRAIN] LLM breaker OPEN · skipping call · will retry in', Math.ceil((BREAKER_COOLDOWN_MS - (now - breaker.openedAt)) / 1000), 's');
+        breaker.lastLoggedOpenAt = now;
+      }
+      return null;
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
 
@@ -491,15 +508,38 @@ class NPCBrain {
           return this._callLLM(systemPrompt, userMessage, retries + 1);
         }
         const body = await res.text();
-        console.error(`[NPC-BRAIN] LLM ${res.status}: ${body.substring(0, 200)}`);
+        // Trip the breaker on any other 4xx/5xx. Log once per open, then go
+        // quiet until cooldown elapses.
+        breaker.consecutiveFails++;
+        if (breaker.consecutiveFails === BREAKER_FAIL_THRESHOLD) {
+          breaker.openedAt = Date.now();
+          breaker.lastLoggedOpenAt = Date.now();
+          console.error(`[NPC-BRAIN] LLM ${res.status} — breaker tripped: ${body.substring(0, 160)}`);
+        } else if (breaker.consecutiveFails < BREAKER_FAIL_THRESHOLD) {
+          console.error(`[NPC-BRAIN] LLM ${res.status}: ${body.substring(0, 160)}`);
+        }
         return null;
       }
+
+      // Success: reset the breaker.
+      if (breaker.consecutiveFails >= BREAKER_FAIL_THRESHOLD) {
+        console.log('[NPC-BRAIN] LLM breaker CLOSED · API responding again');
+      }
+      breaker.consecutiveFails = 0;
+      breaker.openedAt = 0;
 
       const data = await res.json();
       return data.content?.[0]?.text || null;
     } catch (err) {
       clearTimeout(timeout);
-      console.error('[NPC-BRAIN] LLM call failed:', err.message);
+      breaker.consecutiveFails++;
+      if (breaker.consecutiveFails <= BREAKER_FAIL_THRESHOLD) {
+        console.error('[NPC-BRAIN] LLM call failed:', err.message);
+      }
+      if (breaker.consecutiveFails === BREAKER_FAIL_THRESHOLD) {
+        breaker.openedAt = Date.now();
+        breaker.lastLoggedOpenAt = Date.now();
+      }
       return null;
     }
   }

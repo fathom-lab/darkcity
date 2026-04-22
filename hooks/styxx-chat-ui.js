@@ -396,7 +396,12 @@ body { min-height: 100vh; overflow-x: hidden; }
     let paymentTx = null;
     try {
       setStatus('Paying ' + priceStyxx + ' $STYXX to treasury…');
-      paymentTx = await payStyxx(priceStyxx);
+      // 60s timeout on the whole sign+confirm flow — otherwise a missed
+      // Phantom popup or hung RPC leaves the UI stuck on "Paying…" forever.
+      paymentTx = await Promise.race([
+        payStyxx(priceStyxx),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timed out — check phantom popup')), 60000)),
+      ]);
       setStatus('Payment confirmed. Asking ' + currentAgent.id + '…');
     } catch (e) {
       typing.remove();
@@ -415,7 +420,20 @@ body { min-height: 100vh; overflow-x: hidden; }
       typing.remove();
       sendBtn.disabled = false;
       if (!r.ok) {
-        setStatus('Error: ' + (d.error || 'unknown'), true);
+        // LLM breaker / LLM failure responses: tell the user what happened
+        // and whether the 500 STYXX came back, so they don't think it was
+        // pocketed. server attaches refunded + refund_tx fields on 502s.
+        let msg;
+        if (d.error === 'llm_unavailable') {
+          msg = 'agents are offline right now — you were not charged. try again in a few minutes.';
+        } else if (d.error === 'llm_error' && d.refunded) {
+          msg = 'agent reply failed. ' + (d.paid_styxx || 500) + ' $STYXX refunded to your wallet · sig ' + (d.refund_tx || '').slice(0, 8) + '…';
+        } else if (d.error === 'llm_error') {
+          msg = 'agent reply failed. refund queued — will hit your wallet when the treasury catches up.';
+        } else {
+          msg = 'error: ' + (d.error || 'unknown');
+        }
+        setStatus(msg, true);
         return;
       }
       appendMsg('a', d.response, new Date());

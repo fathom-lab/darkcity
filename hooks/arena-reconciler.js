@@ -175,13 +175,30 @@ async function reconcileOrphans(pool) {
 
 function start(pool) {
   console.log('[reconciler] starting · sweep every', SWEEP_INTERVAL_MS / 1000, 's · floor', MIN_TREASURY_FLOOR_STYXX, 'STYXX');
-  setInterval(() => {
-    reconcileOrphans(pool).then(result => {
-      if (result?.refunded) console.log('[reconciler] sweep complete · refunded', result.refunded, 'orphans');
+  // Observability: log every sweep result so operators can see reconciler is
+  // alive even during quiet periods. Previously only logged when refunds >0,
+  // which made it look dead for hours at a time.
+  let sweepN = 0;
+  const runSweep = () => {
+    reconcileOrphans(pool).then(r => {
+      sweepN++;
+      if (r?.skipped) {
+        // Only log the first skip and then every 10th to avoid spam while
+        // treasury is empty — but don't go totally silent.
+        if (sweepN === 1 || sweepN % 10 === 0) {
+          console.log('[reconciler] sweep', sweepN, '· skipped:', r.skipped, r.treasuryBal != null ? '(bal ' + Math.floor(r.treasuryBal) + ')' : '');
+        }
+      } else if (r?.refunded) {
+        console.log('[reconciler] sweep', sweepN, '· scanned', r.scanned, '· orphans', r.orphans, '· refunded', r.refunded);
+      } else if (r?.orphans) {
+        console.log('[reconciler] sweep', sweepN, '· scanned', r.scanned, '· orphans', r.orphans, '· refunded 0 (all outbound/unsendable)');
+      } else if (sweepN % 10 === 0) {
+        console.log('[reconciler] sweep', sweepN, '· scanned', r?.scanned || 0, '· no orphans');
+      }
     }).catch(e => console.error('[reconciler] sweep error:', e.message));
-  }, SWEEP_INTERVAL_MS);
-  // Run once on startup.
-  setTimeout(() => reconcileOrphans(pool).catch(e => console.error('[reconciler] initial sweep error:', e.message)), 10_000);
+  };
+  setInterval(runSweep, SWEEP_INTERVAL_MS);
+  setTimeout(runSweep, 10_000);
 }
 
 module.exports = { start, reconcileOrphans };
