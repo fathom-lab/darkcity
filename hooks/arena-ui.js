@@ -677,6 +677,7 @@ body::after {
     <span class="addr" id="wChip">not connected</span>
     <span class="bal" id="wBal" style="display:none">bal: <b>—</b> $STYXX</span>
     <button id="wConnect">connect phantom</button>
+    <button id="faucetBtn" style="display:none;background:var(--green);color:#000;border:1px solid var(--green);padding:8px 14px;border-radius:4px;font-family:inherit;font-weight:700;letter-spacing:0.04em;cursor:pointer;font-size:12px;"></button>
   </div>
 
   <div class="betrow" id="betForm">
@@ -790,6 +791,7 @@ body::after {
       document.getElementById('wChip').classList.add('ok');
       document.getElementById('wConnect').style.display = 'none';
       loadWalletBalance();
+      checkFaucet();
     } catch {}
   })();
 
@@ -797,6 +799,61 @@ body::after {
   document.querySelectorAll('.quick').forEach(b => {
     b.addEventListener('click', () => { document.getElementById('stakeInput').value = b.dataset.amt; });
   });
+
+  // Faucet — first-time wallets can claim free $STYXX to try the felt without
+  // going to pump.fun. Button only renders when the server says the faucet is
+  // enabled AND this wallet hasn't claimed yet. Harmless no-op otherwise.
+  async function checkFaucet() {
+    if (!wallet) return;
+    try {
+      const r = await fetch('/api/faucet/status?wallet=' + encodeURIComponent(wallet));
+      const d = await r.json();
+      const btn = document.getElementById('faucetBtn');
+      if (!btn) return;
+      if (d.enabled && !d.already_claimed && d.message_to_sign) {
+        btn.style.display = 'inline-block';
+        btn.textContent = 'claim ' + Number(d.amount_styxx).toLocaleString() + ' free $STYXX';
+        btn.onclick = async () => {
+          btn.disabled = true;
+          try {
+            const msg = new TextEncoder().encode(d.message_to_sign);
+            const signed = await window.solana.signMessage(msg, 'utf8');
+            // Phantom returns { signature: Uint8Array, publicKey } — encode b58.
+            const sigBytes = signed.signature || signed;
+            const bs58 = window.solanaWeb3?.bs58 || null;
+            // Fallback bs58 (Phantom returns array): encode via a tiny inline b58.
+            const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+            function b58enc(bytes) {
+              let n = 0n;
+              for (const b of bytes) n = (n << 8n) | BigInt(b);
+              let out = '';
+              while (n > 0n) { out = B58[Number(n % 58n)] + out; n /= 58n; }
+              for (const b of bytes) { if (b === 0) out = '1' + out; else break; }
+              return out;
+            }
+            const sigB58 = b58enc(sigBytes instanceof Uint8Array ? sigBytes : new Uint8Array(sigBytes));
+            const claim = await fetch('/api/faucet/claim', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ wallet, signature_b58: sigB58, nonce: d.nonce }),
+            }).then(r => r.json());
+            if (claim.ok) {
+              btn.textContent = '+ ' + Number(claim.amount).toLocaleString() + ' $STYXX claimed';
+              btn.classList.add('ok');
+              setTimeout(() => { btn.style.display = 'none'; loadWalletBalance(); }, 2500);
+            } else {
+              btn.textContent = 'claim failed · ' + (claim.error || 'unknown');
+              btn.disabled = false;
+            }
+          } catch (e) {
+            btn.textContent = 'claim failed · ' + (e.message || 'cancelled');
+            btn.disabled = false;
+          }
+        };
+      } else {
+        btn.style.display = 'none';
+      }
+    } catch {}
+  }
 
   // Backend proxy first — uses the server's SOLANA_RPC_URL (Helius/paid) and
   // rotates public fallbacks server-side. Public endpoints stay as last-resort
