@@ -1327,6 +1327,40 @@ body::after {
 
 function installArenaUI(app, pool) {
   app.get('/arena', (req, res) => res.type('html').send(PAGE));
+
+  // Public status aggregator. Returns treasury + arena + chat state in one
+  // call so every page can honestly signal degraded states to clients
+  // without leaking admin-sensitive params. Safe to poll from the browser.
+  app.get('/api/status', async (req, res) => {
+    try {
+      const [params, treasury, recentChatFails] = await Promise.all([
+        pool.query("SELECT key, value FROM economy_params WHERE key IN ('arena_enabled','arena_shadow_mode','chat_enforce_payment')"),
+        (async () => { try { return await require('../lib/solana-styxx').getTreasuryBalances(); } catch { return null; } })(),
+        pool.query("SELECT COUNT(*)::int n FROM chat_messages WHERE status = 'failed' AND created_at > NOW() - INTERVAL '2 minutes'").catch(() => ({ rows: [{ n: 0 }] })),
+      ]);
+      const p = Object.fromEntries(params.rows.map(r => [r.key, r.value]));
+      const treasuryStyxx = treasury ? Math.floor(treasury.styxx) : null;
+      const arenaRunning = String(p.arena_enabled || 'false').toLowerCase() === 'true';
+      const chatFree = String(p.chat_enforce_payment || 'true').toLowerCase() !== 'true';
+      const llmDown = (recentChatFails.rows[0]?.n || 0) >= 3;
+      res.json({
+        ts: new Date().toISOString(),
+        treasury_styxx: treasuryStyxx,
+        treasury_solscan: 'https://solscan.io/account/' + (treasury?.pubkey || '99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp'),
+        arena: {
+          live: arenaRunning,
+          shadow: String(p.arena_shadow_mode || 'false').toLowerCase() === 'true',
+          status: !arenaRunning ? 'paused' : 'live',
+        },
+        chat: {
+          paid: !chatFree,
+          llm_healthy: !llmDown,
+          status: llmDown ? 'llm_offline' : (chatFree ? 'free' : 'paid'),
+        },
+        pump_fun_url: 'https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump',
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
   app.get('/api/arena/round', async (req, res) => {
     try {
       const round = await arena.getCurrentRound(pool);

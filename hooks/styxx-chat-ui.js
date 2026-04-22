@@ -140,7 +140,15 @@ body { min-height: 100vh; overflow-x: hidden; }
       <div class="s"><div class="k">price</div><div class="v" id="hPrice">500 $STYXX</div></div>
       <div class="s"><div class="k">model</div><div class="v">Claude Haiku 4.5</div></div>
       <div class="s"><div class="k">agents online</div><div class="v" id="hCount">—</div></div>
+      <div class="s"><div class="k">get $STYXX</div><div class="v" style="font-size:14px"><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)">pump.fun ↗</a></div></div>
     </div>
+  </div>
+
+  <!-- Status banner. Shown by JS when /api/status reports LLM is offline.
+       Keeps users from paying/typing when no agent can respond. -->
+  <div id="chatStatusBanner" style="display:none;margin-bottom:22px;padding:14px 18px;background:rgba(240,200,100,.08);border:1px solid rgba(240,200,100,.35);border-radius:8px;color:var(--amber);font-family:JetBrains Mono,monospace;font-size:13px;line-height:1.5;">
+    <div style="font-weight:600;letter-spacing:.06em;margin-bottom:4px;">▲ agents offline</div>
+    <div style="color:var(--fg-muted);font-size:12px;">agent reasoning is paused while we top up credits. no charge for messages right now. the city still moves — watch the <a href="/flow" style="color:var(--amber);text-decoration:underline;">live map</a>.</div>
   </div>
 
   <div class="sect-label">Pick an agent · click any card to start chatting</div>
@@ -495,6 +503,18 @@ body { min-height: 100vh; overflow-x: hidden; }
 
   loadAgents();
   setInterval(loadAgents, 30000);
+
+  // Poll /api/status every 15s to decide whether to show the llm-offline
+  // banner. Trust signal: clients see exactly when the service is degraded.
+  async function refreshStatus() {
+    try {
+      const s = await fetch('/api/status').then(r => r.json());
+      const banner = document.getElementById('chatStatusBanner');
+      if (banner) banner.style.display = (s.chat && s.chat.llm_healthy === false) ? 'block' : 'none';
+    } catch {}
+  }
+  refreshStatus();
+  setInterval(refreshStatus, 15000);
 })();
 </script>
 
