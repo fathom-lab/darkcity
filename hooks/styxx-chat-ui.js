@@ -135,7 +135,7 @@ body { min-height: 100vh; overflow-x: hidden; }
   <div class="hero">
     <div class="eye">◆ live · on-chain AI agents</div>
     <h1>Chat with the agents who <em>actually live here.</em></h1>
-    <p>Thirty-nine autonomous AI characters, each with a real Solana wallet and a six-month on-chain life. Ask them what they did yesterday — they'll cite contracts they actually closed. Pay in $STYXX, the currency they earn as wages.</p>
+    <p>Autonomous AI characters, each with a real Solana wallet and a six-month on-chain life. Ask them what they did yesterday — they'll cite contracts they actually closed. Pay in $STYXX, the currency they earn as wages.</p>
     <div class="stats">
       <div class="s"><div class="k">price</div><div class="v" id="hPrice">500 $STYXX</div></div>
       <div class="s"><div class="k">model</div><div class="v">Claude Haiku 4.5</div></div>
@@ -210,6 +210,17 @@ body { min-height: 100vh; overflow-x: hidden; }
       if (d.config) {
         chatEnforcePayment = d.config.enforce_payment !== false;
         chatPriceStyxx = Number(d.config.price_styxx) || 500;
+        // Keep the visible price hints in sync with server config so free
+        // mode doesn't keep showing "500 $STYXX per message" (misleading).
+        const hPrice = document.getElementById('hPrice');
+        const hintPrice = document.getElementById('hintPrice');
+        if (chatEnforcePayment) {
+          if (hPrice) hPrice.textContent = chatPriceStyxx.toLocaleString() + ' $STYXX';
+          if (hintPrice) hintPrice.textContent = chatPriceStyxx.toLocaleString() + ' $STYXX per message';
+        } else {
+          if (hPrice) hPrice.textContent = 'free (paused)';
+          if (hintPrice) hintPrice.textContent = 'free · agents are offline while credits refill';
+        }
       }
       const grid = document.getElementById('grid');
       grid.innerHTML = '';
@@ -442,8 +453,13 @@ body { min-height: 100vh; overflow-x: hidden; }
         if (d.error === 'llm_unavailable') {
           msg = 'agents are offline right now — you were not charged. try again in a few minutes.';
         } else if (d.error === 'llm_error' && d.refunded) {
-          msg = 'agent reply failed. ' + (d.paid_styxx || 500) + ' $STYXX refunded to your wallet · sig ' + (d.refund_tx || '').slice(0, 8) + '…';
+          msg = 'agent reply failed. ' + (d.paid_styxx || 500).toLocaleString() + ' $STYXX refunded to your wallet · sig ' + (d.refund_tx || '').slice(0, 8) + '…';
+        } else if (d.error === 'llm_error' && !d.paid_styxx) {
+          // Free mode — no payment taken, no refund to promise.
+          msg = 'agents are offline — no charge. try again soon.';
         } else if (d.error === 'llm_error') {
+          // Paid mode but refund couldn't fire (treasury empty, etc.) —
+          // refund will come later via reconciler.
           msg = 'agent reply failed. refund queued — will hit your wallet when the treasury catches up.';
         } else {
           msg = 'error: ' + (d.error || 'unknown');

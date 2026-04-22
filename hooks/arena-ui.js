@@ -622,6 +622,11 @@ body::after {
 </div>
 
 <div class="game" id="gameBox">
+  <!-- Paused banner. Shown by JS when /api/arena/round reports status:'paused' -->
+  <div id="pausedBanner" style="display:none;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.35);border-radius:4px;padding:14px 18px;margin-bottom:14px;color:var(--amber);font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.5;">
+    <div style="font-weight:700;letter-spacing:0.08em;margin-bottom:4px;">▲ arena paused</div>
+    <div style="color:var(--fg-dim);font-size:12px;">no new rounds are starting right now. your wallet is safe — you can't place a bet. history below shows past rounds.</div>
+  </div>
   <div class="row1">
     <div class="round-id">round · <b id="roundNo">—</b> <span style="color:var(--fg-mute)">·</span> <span id="roundMeta" style="color:var(--fg-dim);font-size:11px">waiting</span></div>
     <div class="chip" id="statusChip">idle</div>
@@ -1133,6 +1138,18 @@ body::after {
         }
         currentRound = roundR;
       }
+      // Pause banner — tell users when the arena isn't running so they don't
+      // stare at "waiting for next round" wondering if the site is broken.
+      const pausedBanner = document.getElementById('pausedBanner');
+      if (pausedBanner) {
+        if (roundR && roundR.status === 'paused') {
+          pausedBanner.style.display = 'block';
+          document.getElementById('betForm').style.display = 'none';
+          document.getElementById('multLabel').textContent = 'arena paused';
+        } else {
+          pausedBanner.style.display = 'none';
+        }
+      }
       renderRound(currentRound);
       renderStats(jpR);
       renderFeed(jpR.recent_results || []);
@@ -1311,8 +1328,18 @@ body::after {
 function installArenaUI(app, pool) {
   app.get('/arena', (req, res) => res.type('html').send(PAGE));
   app.get('/api/arena/round', async (req, res) => {
-    try { res.json(await arena.getCurrentRound(pool) || {}); }
-    catch (e) { res.status(500).json({ error: e.message }); }
+    try {
+      const round = await arena.getCurrentRound(pool);
+      if (round) return res.json(round);
+      // No live round — include pause state so the client can differentiate
+      // "between rounds" (arena_enabled=true but nothing active) vs
+      // "arena paused" (arena_enabled=false) and render the right UI.
+      const { rows } = await pool.query(
+        "SELECT value FROM economy_params WHERE key = 'arena_enabled'"
+      );
+      const enabled = String(rows[0]?.value || 'false').toLowerCase() === 'true';
+      res.json({ status: enabled ? 'idle' : 'paused' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.get('/api/arena/jackpot', async (req, res) => {
     try { res.json(await arena.getJackpotStatus(pool)); }
