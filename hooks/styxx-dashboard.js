@@ -274,6 +274,7 @@ td.right.green { color: var(--accent); }
   <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
   <div class="nav-links">
     <a href="/flow">Map</a>
+    <a href="/arena">Felt</a>
     <a href="/earn">Earn</a>
     <a href="/deploy">Mint</a>
     <a href="/how">How</a>

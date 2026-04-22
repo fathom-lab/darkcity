@@ -286,6 +286,7 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
   <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
   <nav class="nav-links">
     <a href="/flow">Map</a>
+    <a href="/arena">Felt</a>
     <a href="/tape">Tape</a>
     <a href="/earn">Earn</a>
     <a href="/me">Dashboard</a>

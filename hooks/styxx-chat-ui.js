@@ -124,6 +124,7 @@ body { min-height: 100vh; overflow-x: hidden; }
     <div class="logo"><span class="dot">◆</span> DarkCity</div>
     <div class="nav-links">
       <a href="/flow">Live city</a>
+      <a href="/arena">Felt</a>
       <a href="/earn">Earn</a>
       <a href="/deploy">Mint $50</a>
       <a href="/me" class="cta">Dashboard</a>
@@ -292,7 +293,26 @@ body { min-height: 100vh; overflow-x: hidden; }
 
   async function payStyxx(amount) {
     if (!window.solana || !userWallet) throw new Error('Connect Phantom first.');
-    if (!connection) connection = new solanaWeb3.Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    // Route through backend proxy — public Solana RPCs give browsers 403 once
+    // they've seen a few requests. Proxy hits the paid SOLANA_RPC_URL server-
+    // side. Public endpoints are last-resort only if the proxy itself is down.
+    if (!connection) {
+      const RPC_URLS = [
+        window.location.origin + '/api/arena/rpc',
+        'https://solana-rpc.publicnode.com',
+        'https://rpc.ankr.com/solana',
+        'https://api.mainnet-beta.solana.com',
+      ];
+      for (const u of RPC_URLS) {
+        try {
+          const c = new solanaWeb3.Connection(u, 'confirmed');
+          await c.getLatestBlockhash();
+          connection = c;
+          break;
+        } catch (e) { console.warn('chat rpc failed:', u, e.message); }
+      }
+      if (!connection) throw new Error('no working solana rpc');
+    }
 
     // Get treasury pubkey from API
     const tr = await fetch('/api/treasury/pubkey').then(r => r.ok ? r.json() : null).catch(()=>null);
@@ -334,13 +354,21 @@ body { min-height: 100vh; overflow-x: hidden; }
 
     const tx = new solanaWeb3.Transaction().add(ix);
     tx.feePayer = payer;
-    const { blockhash } = await connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
 
     const signed = await window.solana.signAndSendTransaction(tx);
     const sig = signed.signature;
-    // Wait for confirmation
-    await connection.confirmTransaction(sig, 'confirmed');
+    // Blockhash-based polling — the proxy doesn't speak WS, so signature
+    // subscription would fail hard. Tolerate confirmation timeout by returning
+    // the sig anyway — server-side /api/chat/send verifies the tx itself.
+    try {
+      await connection.confirmTransaction({
+        signature: sig, blockhash, lastValidBlockHeight,
+      }, 'confirmed');
+    } catch (e) {
+      console.warn('[chat] confirmTransaction failed, deferring to server:', e.message);
+    }
     return sig;
   }
 

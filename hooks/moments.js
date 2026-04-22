@@ -282,6 +282,7 @@ footer a { color: var(--fg-muted); }
   <nav class="nav-links">
     <a href="/">Home</a>
     <a href="/flow">Map</a>
+    <a href="/arena">Felt</a>
     <a href="/tape">Tape</a>
     <a href="/earn">Earn</a>
     <a href="/moments" style="color:var(--fg)">Moments</a>

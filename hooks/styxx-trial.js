@@ -220,6 +220,7 @@ footer a { color: var(--blue); }
 <nav style="display:flex;align-items:center;gap:22px;padding:16px 24px;margin:-24px -24px 20px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);flex-wrap:wrap;font-family:'Inter','SF Mono',sans-serif">
   <a href="/" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--fg);font-family:'Fraunces',Georgia,serif;font-size:18px;font-weight:600;letter-spacing:-0.01em;margin-right:auto"><span style="color:var(--accent);font-size:14px">◆</span>DarkCity</a>
   <a href="/flow" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Map</a>
+  <a href="/arena" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Felt</a>
   <a href="/tape" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Tape</a>
   <a href="/citizens" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Citizens</a>
   <a href="/earn" style="color:var(--dim);text-decoration:none;font-size:13px;font-weight:500">Earn</a>

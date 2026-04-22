@@ -123,6 +123,7 @@ ${COMMON_STYLES}
   <nav class="nav-links">
     <a href="/">Home</a>
     <a href="/flow">Map</a>
+    <a href="/arena">Felt</a>
     <a href="/earn">Earn</a>
     <a href="/data" style="color:var(--fg)">Data</a>
     <a href="/how">How</a>
