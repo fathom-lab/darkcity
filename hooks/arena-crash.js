@@ -373,7 +373,7 @@ async function settleRound(pool, round) {
   if (!shadowMode) {
     try {
       const treasuryPk = solanaStyxx.getTreasury().publicKey.toBase58();
-      const treasuryBal = Number(await solanaStyxx.getBalance(treasuryPk));
+      const treasuryBal = Number(await solanaStyxx.getStyxxBalance(treasuryPk));
       const capBps = Number(params.arena_payout_cap_bps || 2500);
       payoutCap = treasuryBal * (capBps / 10000);
     } catch (e) { console.warn('[arena] treasury balance check failed, using default cap', e.message); payoutCap = 2_500_000; }
