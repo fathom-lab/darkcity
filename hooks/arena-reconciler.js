@@ -53,10 +53,10 @@ async function reconcileOrphans(pool) {
     const conn = solanaStyxx.getConnection();
     const treasuryATA = new PublicKey(await ensureTreasuryATA());
 
-    // Floor check — never drain the house.
+    // Floor check — never drain the house. The caller (start) logs this at
+    // INFO level with rate limiting; silent here to avoid duplicate lines.
     const floorBal = await solanaStyxx.getStyxxBalance(treasuryStr);
     if (floorBal < MIN_TREASURY_FLOOR_STYXX) {
-      console.warn('[reconciler] treasury below floor, skipping sweep. bal:', floorBal);
       return { skipped: 'treasury_floor', treasuryBal: floorBal };
     }
 

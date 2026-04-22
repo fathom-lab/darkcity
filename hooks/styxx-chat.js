@@ -166,10 +166,14 @@ async function loadAgentContext(pool, agentId, userWallet) {
       [agentId]
     ),
     pool.query(
-      `SELECT CASE WHEN agent_a = $1 THEN agent_b ELSE agent_a END AS other_agent,
+      // Schema note: agent_interactions uses (agent_id, subject_id) — this
+      // code previously referenced agent_a/agent_b which were never columns
+      // on this table, so every chat request 500'd as soon as it got past
+      // payment verification.
+      `SELECT CASE WHEN agent_id = $1 THEN subject_id ELSE agent_id END AS other_agent,
               sentiment, summary, recorded_at
          FROM agent_interactions
-        WHERE agent_a = $1 OR agent_b = $1
+        WHERE agent_id = $1 OR subject_id = $1
         ORDER BY recorded_at DESC LIMIT 4`,
       [agentId]
     ),

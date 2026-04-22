@@ -107,7 +107,7 @@ function register(app, pool) {
         // Recent agent-to-agent conversations — the "live talking" layer.
         // Each row is a real LLM→LLM exchange with sentiment tagged.
         pool.query(`
-          SELECT agent_a, agent_b, sentiment, district, summary, recorded_at
+          SELECT agent_id, subject_id, sentiment, district, summary, recorded_at
           FROM agent_interactions
           WHERE recorded_at > NOW() - INTERVAL '5 minutes'
           ORDER BY recorded_at DESC LIMIT 60
@@ -169,7 +169,7 @@ function register(app, pool) {
         // renders an animated curved thread between the pair with a
         // dialogue snippet, fading over ~8s. This is the "talking" layer.
         recent_interactions: (recentInteractions?.rows || []).map(r => ({
-          a: r.agent_a, b: r.agent_b,
+          a: r.agent_id, b: r.subject_id,
           sentiment: r.sentiment,
           district: r.district,
           summary: (r.summary || '').slice(0, 220),
