@@ -1303,11 +1303,16 @@ function installArenaUI(app, pool) {
   async function proxyRpcOne(body) {
     let lastErr = null;
     for (const url of RPC_PROXY_UPSTREAMS) {
+      // 8s timeout per upstream — node's global fetch has no default, a hung
+      // RPC would otherwise stall the client's confirmTransaction poll loop.
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 8000);
       try {
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: ctl.signal,
         });
         if (!r.ok) { lastErr = `${url}: HTTP ${r.status}`; continue; }
         const json = await r.json();
@@ -1318,9 +1323,12 @@ function installArenaUI(app, pool) {
         }
         return json;
       } catch (e) {
-        lastErr = `${url}: ${e.message}`;
+        lastErr = `${url}: ${e.name === 'AbortError' ? 'timeout' : e.message}`;
+      } finally {
+        clearTimeout(to);
       }
     }
+    console.warn('[arena-rpc] all upstreams failed for method=' + (Array.isArray(body) ? body.map(p=>p.method).join(',') : body.method) + ' · ' + lastErr);
     throw new Error(lastErr || 'all upstream rpcs failed');
   }
   app.post('/api/arena/rpc', async (req, res) => {
