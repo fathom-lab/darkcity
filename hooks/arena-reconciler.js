@@ -28,9 +28,9 @@ const { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } = require('@solana/sp
 const solanaStyxx = require('../lib/solana-styxx');
 
 const SWEEP_INTERVAL_MS = 60_000;
-const SIG_LIMIT = 30;
-const MIN_TREASURY_FLOOR_STYXX = 500_000; // don't refund if this would bring treasury below this
-const MAX_REFUND_PER_SWEEP = 5;            // cap so a buggy scan can't fire 100 refunds
+const SIG_LIMIT = 100;                     // wider lookback to catch orphans from busy periods
+const MIN_TREASURY_FLOOR_STYXX = 200_000;  // tighter floor while we're bootstrapping — still protects the house
+const MAX_REFUND_PER_SWEEP = 10;           // cap so a buggy scan can't fire 100 refunds
 
 let sweepRunning = false;
 let treasuryATAStr = null;
