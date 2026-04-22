@@ -3241,6 +3241,18 @@ initDB().then(async () => {
         // sender. Guards: treasury floor, max refunds per sweep.
         arenaReconciler.start(pool);
       } catch (e) { console.warn('[STYXX] arena failed to install:', e.message); }
+
+      // Onboarding faucet — one-shot airdrop of $STYXX to new wallets so
+      // zero-to-first-bet doesn't require buying SOL on pump.fun first.
+      // Disabled by default (faucet_enabled=false) until treasury is funded.
+      try {
+        const faucet = require('./hooks/styxx-faucet');
+        faucet.installFaucetRoutes(app, pool);
+      } catch (e) { console.warn('[STYXX] faucet failed to install:', e.message); }
+
+      // /research alias — clean URL for AI-lab outreach (points at the
+      // existing Cognitive Atlas data product page).
+      app.get('/research', (req, res) => res.redirect(301, '/data'));
       // Shared one-click Phantom signer — served as /js/dc-auto-sign.js so
       // every page (public, flow, agent dossier, dashboard) can load it
       // uniformly. Without this, pages outside styxx-public.js's COMMON_HEAD
