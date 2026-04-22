@@ -821,8 +821,32 @@ body::after {
   async function payStake(amount) {
     if (!wallet) throw new Error('connect first');
     const c = await getConn();
-    if (!treasuryPk) { treasuryPk = (await fetch('/api/treasury/pubkey').then(r=>r.json())).pubkey; }
+    // Guard treasury pubkey fetch — if /api/treasury/pubkey 500s, a raw fetch
+    // would leave treasuryPk undefined and crash the next PublicKey(...) call
+    // with a cryptic TypeError. Fail loud instead.
+    if (!treasuryPk) {
+      try {
+        const r = await fetch('/api/treasury/pubkey');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        treasuryPk = (await r.json()).pubkey;
+        if (!treasuryPk) throw new Error('no pubkey field');
+      } catch (e) {
+        throw new Error('treasury unavailable · ' + e.message);
+      }
+    }
     const payer = new solanaWeb3.PublicKey(wallet);
+    // SOL pre-check — a pure Token-2022 transferChecked costs ~5000 lamports.
+    // Users with zero SOL would otherwise sign + broadcast a guaranteed failure
+    // and get a cryptic on-chain error. 10000 lamports = comfortable margin.
+    try {
+      const solBal = await c.getBalance(payer);
+      if (solBal < 10000) {
+        throw new Error('need ~0.00001 SOL for tx fee · you have ' + (solBal / 1e9).toFixed(6) + ' SOL');
+      }
+    } catch (e) {
+      // Only throw if it was our own balance-check error; swallow RPC read failures
+      if (e.message && e.message.startsWith('need ~0.00001 SOL')) throw e;
+    }
     const treasury = new solanaWeb3.PublicKey(treasuryPk);
     const mint = new solanaWeb3.PublicKey(STYXX_MINT);
     const [payerATA] = solanaWeb3.PublicKey.findProgramAddressSync([payer.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
@@ -848,14 +872,22 @@ body::after {
     const { blockhash, lastValidBlockHeight } = await c.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     const signed = await window.solana.signAndSendTransaction(tx);
-    // Blockhash strategy = HTTP polling. The proxy doesn't speak WS, so the
-    // signature-subscription form of confirmTransaction would fail hard.
-    await c.confirmTransaction({
-      signature: signed.signature,
-      blockhash,
-      lastValidBlockHeight,
-    }, 'confirmed');
-    return signed.signature;
+    // Blockhash strategy = HTTP polling. Proxy doesn't speak WS. If polling
+    // times out we STILL have the signature from Phantom — server-side
+    // /api/arena/bet verifies the tx on-chain itself (with retry for indexer
+    // lag), and placeBet is idempotent on duplicate payment_tx. So we return
+    // confirmed:false and let the bet flow try anyway.
+    try {
+      await c.confirmTransaction({
+        signature: signed.signature,
+        blockhash,
+        lastValidBlockHeight,
+      }, 'confirmed');
+      return { signature: signed.signature, confirmed: true };
+    } catch (e) {
+      console.warn('[arena] confirmTransaction failed, deferring to server verify:', e.message);
+      return { signature: signed.signature, confirmed: false };
+    }
   }
 
   document.getElementById('buyinBtn').addEventListener('click', async () => {
@@ -865,18 +897,28 @@ body::after {
     if (amt < 100000) { setMsg('min buy-in: 100,000 $STYXX.', 'err'); return; }
     if (amt > 500000) { setMsg('max bet: 500,000 $STYXX. (safety cap while treasury builds)', 'err'); return; }
     setMsg('signing... sending ' + fmt(amt) + ' $STYXX to the house', 'ok');
-    let tx;
-    try { tx = await payStake(amt); }
+    let result;
+    try { result = await payStake(amt); }
     catch (e) { setMsg('wallet rejected: ' + (e.message||'cancelled'), 'err'); return; }
-    setMsg('paid. chip on the felt.', 'ok');
+    setMsg(result.confirmed ? 'paid. chip on the felt.' : 'tx broadcast · house verifying...', 'ok');
     const r = await fetch('/api/arena/bet', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ round_id: currentRound.id, user_wallet: wallet, stake_styxx: amt, payment_tx: tx }),
+      body: JSON.stringify({ round_id: currentRound.id, user_wallet: wallet, stake_styxx: amt, payment_tx: result.signature }),
     });
     const d = await r.json();
-    if (!d.ok) { setMsg('house rejected: ' + d.error, 'err'); return; }
+    if (!d.ok) {
+      // tx_invalid often means the server hit the indexer before it caught up.
+      // Tell the user their tx is real + give them the signature so they can
+      // verify on Solscan instead of thinking their STYXX vanished.
+      if (d.error === 'tx_invalid' || d.error === 'insufficient_payment') {
+        setMsg('house couldn\u2019t verify tx yet · sig ' + result.signature.slice(0,8) + '\u2026 · try again in a few seconds', 'err');
+      } else {
+        setMsg('house rejected: ' + d.error, 'err');
+      }
+      return;
+    }
     myBetId = d.bet_id; myBetStake = amt; myBetLocked = false;
-    setMsg('in for ' + fmt(amt) + '. ride it or rug.', 'ok');
+    setMsg((d.idempotent ? 'recovered · ' : '') + 'in for ' + fmt(amt) + '. ride it or rug.', 'ok');
   });
 
   document.getElementById('cashoutBtn').addEventListener('click', async () => {
