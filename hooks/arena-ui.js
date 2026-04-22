@@ -1543,6 +1543,7 @@ function installArenaUI(app, pool) {
       'arena_enabled', 'arena_shadow_mode', 'arena_min_bet_styxx', 'arena_max_bet_styxx',
       'arena_betting_window_secs', 'arena_payout_cap_bps',
       'chat_enforce_payment', 'chat_price_styxx', 'chat_free_messages_per_wallet_per_day',
+      'faucet_enabled', 'faucet_amount_styxx', 'faucet_daily_cap_styxx', 'faucet_treasury_floor',
     ]);
     if (!ALLOWED.has(key)) return res.status(403).json({ error: 'key not in admin whitelist', allowed: [...ALLOWED] });
     try {
