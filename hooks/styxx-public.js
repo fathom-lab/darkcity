@@ -859,8 +859,8 @@ const NAV = (active) => {
     <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
     <nav class="nav-links">
       ${item('/flow', 'Map')}
+      ${item('/arena', 'Felt')}
       ${item('/earn', 'Earn')}
-      <a href="/arena"${active==='/arena' ? ' class="active"' : ''} style="position:relative">Felt<span style="position:absolute;top:-6px;right:-18px;font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;color:var(--accent);background:var(--accent-dim);padding:2px 5px;border-radius:3px;border:1px solid rgba(67,255,180,.3)">NEW</span></a>
       ${item('/deploy', 'Mint')}
       ${item('/how', 'How')}
       ${item('/me', 'Dashboard')}

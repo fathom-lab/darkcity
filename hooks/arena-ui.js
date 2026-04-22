@@ -575,11 +575,12 @@ body::after {
 <nav class="nav">
   <div class="name">darkcity<span class="dot">::</span>felt</div>
   <ul>
-    <li><a href="/flow">map</a></li>
-    <li><a href="/chat">talk</a></li>
-    <li><a href="/earn">stake</a></li>
-    <li><a href="/me">wallet</a></li>
-    <li><a href="/arena" class="active">felt</a></li>
+    <li><a href="/flow">Map</a></li>
+    <li><a href="/arena" class="active">Felt</a></li>
+    <li><a href="/earn">Earn</a></li>
+    <li><a href="/deploy">Mint</a></li>
+    <li><a href="/how">How</a></li>
+    <li><a href="/me">Dashboard</a></li>
   </ul>
 </nav>
 

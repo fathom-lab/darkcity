@@ -280,13 +280,12 @@ footer a { color: var(--fg-muted); }
 <header class="nav"><div class="container nav-inner">
   <a href="/" class="brand"><span class="mark">\u25C6</span>DarkCity</a>
   <nav class="nav-links">
-    <a href="/">Home</a>
     <a href="/flow">Map</a>
     <a href="/arena">Felt</a>
-    <a href="/tape">Tape</a>
     <a href="/earn">Earn</a>
-    <a href="/moments" style="color:var(--fg)">Moments</a>
-    <a href="/data">Data</a>
+    <a href="/deploy">Mint</a>
+    <a href="/how">How</a>
+    <a href="/me">Dashboard</a>
   </nav>
 </div></header>
 

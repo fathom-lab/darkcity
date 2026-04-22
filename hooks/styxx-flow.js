@@ -4250,8 +4250,12 @@ footer .tag { font-size: 13px; color: var(--fg-muted); max-width: 40ch; }
 <header class="nav"><div class="nav-inner">
   <a href="/" class="nav-brand"><span class="mark">\u25c6</span>DarkCity</a>
   <nav class="nav-links">
-    <a href="/flow">Map</a><a href="/arena">Felt</a><a href="/tape">Tape</a><a href="/earn">Earn</a>
-    <a href="/me">Dashboard</a><a href="/founders">Founders</a><a href="/how">How</a>
+    <a href="/flow">Map</a>
+    <a href="/arena">Felt</a>
+    <a href="/earn">Earn</a>
+    <a href="/deploy">Mint</a>
+    <a href="/how">How</a>
+    <a href="/me">Dashboard</a>
   </nav>
 </div></header>
 

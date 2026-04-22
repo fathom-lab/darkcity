@@ -123,11 +123,12 @@ body { min-height: 100vh; overflow-x: hidden; }
   <div class="nav">
     <div class="logo"><span class="dot">◆</span> DarkCity</div>
     <div class="nav-links">
-      <a href="/flow">Live city</a>
+      <a href="/flow">Map</a>
       <a href="/arena">Felt</a>
       <a href="/earn">Earn</a>
-      <a href="/deploy">Mint $50</a>
-      <a href="/me" class="cta">Dashboard</a>
+      <a href="/deploy">Mint</a>
+      <a href="/how">How</a>
+      <a href="/me">Dashboard</a>
     </div>
   </div>
 
