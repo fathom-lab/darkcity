@@ -63,25 +63,33 @@ async function reconcileOrphans(pool) {
     const sigs = await conn.getSignaturesForAddress(treasuryATA, { limit: SIG_LIMIT });
     if (!sigs.length) return { scanned: 0 };
 
-    // Load all known payment_tx AND payout_tx for this sig batch in one query.
+    // Load every table that tracks a treasury-adjacent tx sig. Anything in
+    // these tables is legitimate (bet, payout, chat payment, founder cut,
+    // operator sweep, airdrop audit, etc.) and must NOT be treated as an
+    // orphan — otherwise we'd refund real payments.
     const allSigs = sigs.map(s => s.signature);
-    const { rows: known } = await pool.query(
-      `SELECT payment_tx, payout_tx FROM arena_bets
-        WHERE payment_tx = ANY($1::text[]) OR payout_tx = ANY($1::text[])`,
-      [allSigs]
-    );
     const knownSet = new Set();
-    for (const r of known) {
+    const [bets, chats, transfers] = await Promise.all([
+      pool.query(
+        `SELECT payment_tx, payout_tx FROM arena_bets
+          WHERE payment_tx = ANY($1::text[]) OR payout_tx = ANY($1::text[])`,
+        [allSigs]
+      ),
+      pool.query(
+        `SELECT payment_tx FROM chat_messages WHERE payment_tx = ANY($1::text[])`,
+        [allSigs]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT tx_signature FROM styxx_transfers WHERE tx_signature = ANY($1::text[])`,
+        [allSigs]
+      ),
+    ]);
+    for (const r of bets.rows) {
       if (r.payment_tx) knownSet.add(r.payment_tx);
       if (r.payout_tx) knownSet.add(r.payout_tx);
     }
-
-    // Also exclude styxx_transfers records (founder cuts, operator sweeps, etc.)
-    const { rows: transferRows } = await pool.query(
-      `SELECT tx_signature FROM styxx_transfers WHERE tx_signature = ANY($1::text[])`,
-      [allSigs]
-    );
-    for (const r of transferRows) if (r.tx_signature) knownSet.add(r.tx_signature);
+    for (const r of chats.rows) if (r.payment_tx) knownSet.add(r.payment_tx);
+    for (const r of transfers.rows) if (r.tx_signature) knownSet.add(r.tx_signature);
 
     const unknownSigs = sigs.filter(s => !knownSet.has(s.signature) && !s.err);
     if (!unknownSigs.length) return { scanned: sigs.length, orphans: 0 };

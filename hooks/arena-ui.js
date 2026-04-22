@@ -1054,9 +1054,15 @@ body::after {
         }
       }
     } else if (currentRound && currentRound.status === 'betting' && currentRound.betting_window_ends_at) {
-      const total = 15000;
-      const remain = new Date(currentRound.betting_window_ends_at).getTime() - Date.now();
-      const pct = Math.max(0, Math.min(100, 100 * remain / total));
+      // Cache the window length at round start so the progress bar fills
+      // correctly regardless of the server's configured window (was hardcoded
+      // 15s, which ticked 2× too fast after the window was bumped to 30s).
+      const endMs = new Date(currentRound.betting_window_ends_at).getTime();
+      if (!currentRound._windowTotal) {
+        currentRound._windowTotal = Math.max(1000, endMs - Date.now());
+      }
+      const remain = endMs - Date.now();
+      const pct = Math.max(0, Math.min(100, 100 * remain / currentRound._windowTotal));
       document.getElementById('countBar').style.width = pct + '%';
       const secs = Math.max(0, Math.ceil(remain / 1000));
       document.getElementById('multLabel').textContent = 'BETTING · ' + secs + 's to place';

@@ -197,10 +197,19 @@ body { min-height: 100vh; overflow-x: hidden; }
     el.style.display = 'block';
   }
 
+  // Set from /api/chat/agents config block. Determines whether send() prompts
+  // for a Phantom sign or skips straight to the API call. Default true (safe
+  // fallback) in case config fails to load.
+  let chatEnforcePayment = true;
+  let chatPriceStyxx = 500;
   async function loadAgents() {
     try {
       const r = await fetch('/api/chat/agents');
       const d = await r.json();
+      if (d.config) {
+        chatEnforcePayment = d.config.enforce_payment !== false;
+        chatPriceStyxx = Number(d.config.price_styxx) || 500;
+      }
       const grid = document.getElementById('grid');
       grid.innerHTML = '';
       const agents = (d.agents || []).filter(a => a.last_action);
@@ -394,20 +403,25 @@ body { min-height: 100vh; overflow-x: hidden; }
     msgs.scrollTop = msgs.scrollHeight;
 
     let paymentTx = null;
-    try {
-      setStatus('Paying ' + priceStyxx + ' $STYXX to treasury…');
-      // 60s timeout on the whole sign+confirm flow — otherwise a missed
-      // Phantom popup or hung RPC leaves the UI stuck on "Paying…" forever.
-      paymentTx = await Promise.race([
-        payStyxx(priceStyxx),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timed out — check phantom popup')), 60000)),
-      ]);
-      setStatus('Payment confirmed. Asking ' + currentAgent.id + '…');
-    } catch (e) {
-      typing.remove();
-      sendBtn.disabled = false;
-      setStatus('Payment failed: ' + (e.message || 'cancelled'), true);
-      return;
+    if (chatEnforcePayment) {
+      try {
+        setStatus('Paying ' + chatPriceStyxx + ' $STYXX to treasury…');
+        // 60s timeout on the whole sign+confirm flow — otherwise a missed
+        // Phantom popup or hung RPC leaves the UI stuck on "Paying…" forever.
+        paymentTx = await Promise.race([
+          payStyxx(chatPriceStyxx),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timed out — check phantom popup')), 60000)),
+        ]);
+        setStatus('Payment confirmed. Asking ' + currentAgent.id + '…');
+      } catch (e) {
+        typing.remove();
+        sendBtn.disabled = false;
+        setStatus('Payment failed: ' + (e.message || 'cancelled'), true);
+        return;
+      }
+    } else {
+      // Free mode — no sign, no Phantom prompt. Server enforces this too.
+      setStatus('Free chat · asking ' + currentAgent.id + '…');
     }
 
     try {

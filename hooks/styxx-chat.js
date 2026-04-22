@@ -252,32 +252,45 @@ function buildSystemPrompt(ctx) {
 
 // ─── The endpoint ──────────────────────────────────────────────────────────
 function installChatRoutes(app, pool) {
-  // Public: list chat-available agents for homepage grid
+  // Public: list chat-available agents for homepage grid + current chat config.
+  // The config block tells the UI whether to prompt for payment at all —
+  // without it, setting chat_enforce_payment=false server-side still lets the
+  // client pay real STYXX into treasury for no service (the server then
+  // ignores it). Now the client reads enforce_payment and skips the sign flow
+  // when chat is free.
   app.get('/api/chat/agents', async (req, res) => {
     try {
-      const { rows } = await pool.query(`
-        SELECT ea.agent_id, ea.district, ea.rank,
-               COALESCE(ea.styxx_cached, 0)::float AS balance,
-               ea.reputation, ea.dormant,
-               COALESCE(lt.action_type, null) AS last_action,
-               COALESCE(lt.text, null) AS last_thought,
-               COALESCE(lt.at, null) AS last_at
-          FROM external_agents ea
-          LEFT JOIN LATERAL (
-            SELECT action_type,
-                   details->>'choice_reason' AS text,
-                   created_at AS at
-              FROM agent_actions
-             WHERE agent_id = ea.agent_id
-               AND details IS NOT NULL
-             ORDER BY created_at DESC LIMIT 1
-          ) lt ON TRUE
-         WHERE ea.euthanized_at IS NULL
-         ORDER BY ea.minted_at ASC NULLS LAST
-         LIMIT 50
-      `);
+      const [agentsRes, paramsRes] = await Promise.all([
+        pool.query(`
+          SELECT ea.agent_id, ea.district, ea.rank,
+                 COALESCE(ea.styxx_cached, 0)::float AS balance,
+                 ea.reputation, ea.dormant,
+                 COALESCE(lt.action_type, null) AS last_action,
+                 COALESCE(lt.text, null) AS last_thought,
+                 COALESCE(lt.at, null) AS last_at
+            FROM external_agents ea
+            LEFT JOIN LATERAL (
+              SELECT action_type,
+                     details->>'choice_reason' AS text,
+                     created_at AS at
+                FROM agent_actions
+               WHERE agent_id = ea.agent_id
+                 AND details IS NOT NULL
+               ORDER BY created_at DESC LIMIT 1
+            ) lt ON TRUE
+           WHERE ea.euthanized_at IS NULL
+           ORDER BY ea.minted_at ASC NULLS LAST
+           LIMIT 50
+        `),
+        pool.query("SELECT key, value FROM economy_params WHERE key IN ('chat_price_styxx','chat_enforce_payment')"),
+      ]);
+      const params = Object.fromEntries(paramsRes.rows.map(r => [r.key, r.value]));
       res.json({
-        agents: rows.map(r => ({
+        config: {
+          price_styxx: Number(params.chat_price_styxx || 500),
+          enforce_payment: String(params.chat_enforce_payment || 'true').toLowerCase() === 'true',
+        },
+        agents: agentsRes.rows.map(r => ({
           id: r.agent_id,
           district: r.district,
           rank: r.rank,
