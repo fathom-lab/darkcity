@@ -314,6 +314,23 @@ function installChatRoutes(app, pool) {
       }
       if (message.length > 2000) return res.status(400).json({ error: 'message_too_long' });
 
+      // Circuit breaker — if LLM has been failing hard for the last 2 minutes
+      // (≥3 fails), don't charge users. Common cause: Anthropic credits dead,
+      // or the API key got rotated. Better to refuse service than eat tokens.
+      try {
+        const { rows: [cb] } = await pool.query(
+          `SELECT COUNT(*)::int AS fails FROM chat_messages
+            WHERE status = 'failed' AND created_at > NOW() - INTERVAL '2 minutes'`
+        );
+        if (cb.fails >= 3) {
+          return res.status(503).json({
+            error: 'llm_unavailable',
+            message: 'agent reasoning is offline right now. no charge. try again in a few minutes.',
+            recent_fails: cb.fails,
+          });
+        }
+      } catch {} // non-fatal, skip breaker on query failure
+
       // Load chat config
       const { rows: paramRows } = await pool.query(
         "SELECT key, value FROM economy_params WHERE key LIKE 'chat_%'"
@@ -383,11 +400,40 @@ function installChatRoutes(app, pool) {
         tokIn = r.input_tokens;
         tokOut = r.output_tokens;
       } catch (e) {
+        // LLM failed after user paid — refund the tokens. Otherwise the user
+        // loses their 500 STYXX for an answer they never got. Common failure
+        // modes: Anthropic credits depleted, rate limit, network hiccup.
+        let refundSig = null;
+        let refundErr = null;
+        if (paidAmount > 0 && user_wallet) {
+          try {
+            const out = await solanaStyxx.airdropFromTreasury(user_wallet, paidAmount);
+            refundSig = out.signature;
+          } catch (re) {
+            refundErr = re.message;
+            console.error('[chat] LLM refund failed:', re.message);
+          }
+        }
         await pool.query(
-          "UPDATE chat_messages SET status='failed', error=$2 WHERE id=$1",
-          [msgRow.id, e.message.slice(0, 500)]
+          `UPDATE chat_messages
+              SET status = $2, error = $3,
+                  agent_response = $4
+            WHERE id = $1`,
+          [
+            msgRow.id,
+            refundSig ? 'refunded' : 'failed',
+            (e.message || 'llm_error').slice(0, 500),
+            refundSig ? ('refund_tx=' + refundSig) : null,
+          ]
         );
-        return res.status(502).json({ error: 'llm_error', detail: e.message.slice(0, 300) });
+        return res.status(502).json({
+          error: 'llm_error',
+          detail: (e.message || '').slice(0, 300),
+          refunded: !!refundSig,
+          refund_tx: refundSig,
+          refund_error: refundErr,
+          paid_styxx: paidAmount,
+        });
       }
 
       await pool.query(
