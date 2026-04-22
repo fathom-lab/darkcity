@@ -584,13 +584,15 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
   if (stake_styxx > maxBet) return { ok: false, error: 'above_max_stake', max: maxBet };
   try { new PublicKey(user_wallet); } catch { return { ok: false, error: 'invalid_wallet' }; }
 
-  // Verify round is in 'betting' state
+  // Verify round exists. Status check happens AFTER we verify the payment
+  // on-chain, so we can distinguish "user paid in time but POST arrived late"
+  // (accept, grace period) from "user paid after the window closed" (refund).
   const { rows: roundRows } = await pool.query(
     "SELECT id, status, betting_window_ends_at FROM arena_rounds WHERE id = $1",
     [round_id]
   );
   if (!roundRows.length) return { ok: false, error: 'round_not_found' };
-  if (roundRows[0].status !== 'betting') return { ok: false, error: 'betting_closed' };
+  const round = roundRows[0];
 
   // Verify payment (unless shadow)
   if (!shadowMode) {
@@ -635,6 +637,35 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
     const treasuryPost = post.find(b => b.owner === TREASURY && b.mint === STYXX_MINT);
     const delta = (Number(treasuryPost?.uiTokenAmount?.uiAmount) || 0) - (Number(treasuryPre?.uiTokenAmount?.uiAmount) || 0);
     if (delta < stake_styxx * 0.99) return { ok: false, error: 'insufficient_payment', paid: delta, required: stake_styxx };
+  }
+
+  // Now that payment is verified, decide whether to accept the bet or refund.
+  // Grace: if round has moved past 'betting' but the user paid in time, the
+  // only fair resolution is to refund the stake. Never silently eat tokens.
+  if (round.status !== 'betting') {
+    if (shadowMode) return { ok: false, error: 'betting_closed' };
+    try {
+      const refund = await solanaStyxx.airdropFromTreasury(user_wallet, Number(stake_styxx));
+      // Log the refund as a 'refunded' bet row so payment_tx can never be
+      // reused and the audit trail is explicit. payout_tx holds the refund
+      // signature; payout_styxx equals the stake (full refund, no fee taken).
+      await pool.query(
+        `INSERT INTO arena_bets (round_id, user_wallet, stake_styxx, payment_tx, status, payout_styxx, payout_tx)
+         VALUES ($1, $2, $3, $4, 'refunded', $3, $5)`,
+        [round_id, user_wallet, stake_styxx, payment_tx || null, refund.signature]
+      );
+      console.log('[arena] auto-refund', stake_styxx, 'STYXX to', user_wallet.slice(0,8), 'sig:', refund.signature);
+      return {
+        ok: false,
+        error: 'betting_closed_refunded',
+        message: 'Window closed while your tx was confirming. Tokens refunded automatically.',
+        refund_tx: refund.signature,
+        refunded_amount: Number(stake_styxx),
+      };
+    } catch (e) {
+      console.error('[arena] auto-refund failed for', payment_tx, ':', e.message);
+      return { ok: false, error: 'betting_closed_refund_failed', detail: e.message, payment_tx };
+    }
   }
 
   const { rows: [bet] } = await pool.query(
