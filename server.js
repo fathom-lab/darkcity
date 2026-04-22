@@ -3233,8 +3233,13 @@ initDB().then(async () => {
       try {
         const arenaCrash = require('./hooks/arena-crash');
         const arenaUI = require('./hooks/arena-ui');
+        const arenaReconciler = require('./hooks/arena-reconciler');
         arenaUI.installArenaUI(app, pool);
         arenaCrash.start(pool);
+        // Sweep treasury every 60s for payments that arrived without a bet
+        // record (e.g. client never POSTed /api/arena/bet). Auto-refunds
+        // sender. Guards: treasury floor, max refunds per sweep.
+        arenaReconciler.start(pool);
       } catch (e) { console.warn('[STYXX] arena failed to install:', e.message); }
       // Shared one-click Phantom signer — served as /js/dc-auto-sign.js so
       // every page (public, flow, agent dossier, dashboard) can load it
