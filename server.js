@@ -3187,6 +3187,17 @@ initDB().then(async () => {
     console.log('[RANK] Progression trigger + backfill applied');
   } catch (e) { console.log('[RANK] Migration:', e.message); }
 
+  // Buyback-burn kind + arena_* kinds — extend distribution_events CHECK so
+  // monthly buyback-burn + arena settlement distributions can actually write
+  // their audit rows. Without this, burns happened on-chain but DB silently
+  // rejected the insert, losing the audit trail.
+  try {
+    const fs = require('fs'); const path = require('path');
+    const sql = fs.readFileSync(path.join(__dirname, 'migrations', 'buyback-burn-kind-v1.sql'), 'utf-8');
+    await pool.query(sql);
+    console.log('[BUYBACK-KIND] CHECK constraint extended');
+  } catch (e) { console.log('[BUYBACK-KIND] Migration:', e.message); }
+
   // ═══ NPC BRAIN v2 — LLM-powered agent tick loop ═══
   try {
     const npcBrain = new NPCBrain(pool, {

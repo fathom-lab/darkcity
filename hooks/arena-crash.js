@@ -595,14 +595,36 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
   // Verify payment (unless shadow)
   if (!shadowMode) {
     if (!payment_tx) return { ok: false, error: 'missing_payment_tx' };
-    const { rows: dupe } = await pool.query("SELECT id FROM arena_bets WHERE payment_tx = $1", [payment_tx]);
-    if (dupe.length) return { ok: false, error: 'payment_tx_used' };
+    // Idempotency: if this tx was already used for a bet by this wallet on this
+    // round with this stake, return the existing bet instead of erroring. This
+    // catches the UX trap where confirmTransaction polling times out client-side
+    // (tx already broadcast + confirmed) and the user retries, otherwise getting
+    // a scary 'payment_tx_used' error for a bet that already succeeded.
+    const { rows: dupe } = await pool.query(
+      "SELECT id, bet_uuid, round_id, user_wallet, stake_styxx FROM arena_bets WHERE payment_tx = $1",
+      [payment_tx]
+    );
+    if (dupe.length) {
+      const d = dupe[0];
+      if (d.round_id === round_id && d.user_wallet === user_wallet && Number(d.stake_styxx) === Number(stake_styxx)) {
+        return { ok: true, bet_id: d.id, bet_uuid: d.bet_uuid, idempotent: true };
+      }
+      return { ok: false, error: 'payment_tx_used' };
+    }
 
+    // Retry getParsedTransaction — RPC indexer can lag by a few hundred ms
+    // after Phantom confirms. One-shot lookup would reject valid bets whose
+    // tx is legit but not yet indexed. 4 tries · 500/1000/1500/2000 ms.
     const conn = solanaStyxx.getConnection();
-    const txInfo = await conn.getParsedTransaction(payment_tx, {
-      commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0,
-    }).catch(() => null);
+    let txInfo = null;
+    for (let i = 0; i < 4; i++) {
+      txInfo = await conn.getParsedTransaction(payment_tx, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      }).catch(() => null);
+      if (txInfo) break;
+      await new Promise(r => setTimeout(r, 500 * (i + 1)));
+    }
     if (!txInfo || txInfo.meta?.err) return { ok: false, error: 'tx_invalid' };
 
     const pre = txInfo.meta?.preTokenBalances || [];
@@ -651,10 +673,22 @@ async function cashOut(pool, { bet_id, user_wallet }) {
   const crashTime = curve[curve.length - 1][0];
   if (elapsed >= crashTime - 200) return { ok: false, error: 'too_late' };
 
-  await pool.query(
-    `UPDATE arena_bets SET cashed_out_at = NOW(), cashout_multiplier = $1 WHERE id = $2`,
+  // Atomic: only write cashed_out_at if the bet is still open AND the round
+  // is still running AND no cashout already recorded. Without this the tick
+  // loop flipping round→'resolving' between our SELECT and UPDATE above would
+  // let a cashout slip through after the crash was already sentenced.
+  const { rowCount } = await pool.query(
+    `UPDATE arena_bets b
+        SET cashed_out_at = NOW(), cashout_multiplier = $1
+       FROM arena_rounds r
+      WHERE b.id = $2
+        AND b.round_id = r.id
+        AND b.status = 'open'
+        AND b.cashed_out_at IS NULL
+        AND r.status = 'running'`,
     [current, b.id]
   );
+  if (rowCount === 0) return { ok: false, error: 'race_lost' };
   return { ok: true, multiplier: current, potential_payout: Number(b.stake_styxx) * current };
 }
 
