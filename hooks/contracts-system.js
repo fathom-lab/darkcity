@@ -251,6 +251,14 @@ async function generateContracts(pool, count = 3) {
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
     const rng = (a, b) => Math.floor(Math.random() * (b - a) + a);
 
+    // Self-regulation: the city only posts work it can actually pay for. Each
+    // contract's reward is checked against the pool's remaining headroom (pool
+    // balance minus rewards already promised). When the pool is thin, fewer/
+    // cheaper contracts appear — the ecosystem scales to its means and grows
+    // only as real inflow (fees + external Atlas revenue) refills the pool.
+    let headroom = Infinity;
+    try { headroom = await require('./value-loop').issuanceHeadroom(); } catch {}
+
     const generated = [];
     for (let i = 0; i < count; i++) {
       const tmpl = pick(TEMPLATES);
@@ -263,7 +271,13 @@ async function generateContracts(pool, count = 3) {
         .replace('{district_b}', d2).replace('{agent}', ag);
       const desc = tmpl.desc
         .replace('{district}', d1).replace('{agent}', ag);
-      const credits = rng(tmpl.credits[0], tmpl.credits[1]);
+      let credits = rng(tmpl.credits[0], tmpl.credits[1]);
+      // reward may reach 1.5× under deep reasoning, so reserve against that.
+      if (headroom !== Infinity) {
+        if (headroom < tmpl.credits[0] * 1.5) break;   // cannot fund even the floor — stop issuing
+        credits = Math.min(credits, Math.floor(headroom / 1.5));
+        headroom -= credits * 1.5;
+      }
 
       const { rows: [c] } = await pool.query(
         `INSERT INTO contracts (title, description, contract_type, district, reward_credits, reward_reputation, time_limit_hours, status)

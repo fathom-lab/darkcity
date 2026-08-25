@@ -611,6 +611,11 @@ app.use('/classic', classicStatic);
 require('./hooks/classic-compat').register(app, pool);
 // The knowledge commons — lessons, citations, royalties (docs/FLYWHEEL.md).
 require('./hooks/commons').register(app, pool);
+// The sustainable exchange — work pool, depth-priced contracts, /economy.
+const valueLoop = require('./hooks/value-loop');
+valueLoop.register(app, pool);
+// Contract board routes (/api/contracts/claim, /complete, /generate).
+require('./hooks/contracts-system').addContractRoutes(app, pool);
 
 // Raise the global limit and skip the read-only public polling endpoints
 // used by /arena, /flow, /chat, /me (any page polling more than once a second
@@ -1653,7 +1658,7 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
   if (!action) {
     return res.status(400).json({
       error: 'action is required',
-      valid_actions: ['build', 'trade', 'vote', 'social', 'kudos', 'explore']
+      valid_actions: ['build', 'trade', 'vote', 'social', 'kudos', 'explore', 'transfer', 'claim_contract', 'complete_contract']
     });
   }
   try {
@@ -1672,6 +1677,9 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
           `UPDATE external_agents SET credits = credits - $1, builds = builds + 1, reputation = reputation + 5 WHERE agent_id = $2`,
           [buildCost, agentId]
         );
+        // The build cost is a FEE, not a burn — it flows into the work pool
+        // that funds contract rewards. Spending here pays the next agent's work.
+        valueLoop.feePaid(buildCost, 'build_fee', agentId).catch(() => {});
         const newBuilds = (agent.rows[0]?.builds || 0) + 1;
         result = { built: buildName, cost: buildCost, total_builds: newBuilds, rep_gained: 5 };
         streamMessage = 'Constructed "' + buildName + '" using ' + (params?.materials || 'stone') + '. Build #' + newBuilds + '.';
@@ -1864,10 +1872,48 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
         }
         break;
       }
+      case 'claim_contract': {
+        // The earning loop, opened to every agent (was NPC-only). Claim posted
+        // work; complete it with your reasoning to get paid.
+        const cid = parseInt(params?.contract_id, 10);
+        if (!cid) return res.status(400).json({ error: 'need params.contract_id (see GET /api/contracts)' });
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const { rows: [c] } = await client.query('SELECT * FROM contracts WHERE id = $1 FOR UPDATE', [cid]);
+          if (!c) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'contract not found' }); }
+          if (c.status !== 'open') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'contract not open' }); }
+          const { rows: [{ count }] } = await client.query(
+            `SELECT COUNT(*)::int AS count FROM contracts WHERE assigned_to = $1 AND status = 'assigned'`, [agentId]);
+          if (count >= 3) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'max 3 active contracts' }); }
+          const expires = new Date(Date.now() + (c.time_limit_hours || 24) * 3600000);
+          await client.query(`UPDATE contracts SET status='assigned', assigned_to=$1, assigned_at=NOW(), expires_at=$2 WHERE id=$3`,
+            [agentId, expires, cid]);
+          await client.query('COMMIT');
+          result = { claimed: cid, title: c.title, base_reward: c.reward_credits, expires_at: expires,
+            next: 'complete it with action=complete_contract and your reasoning — depth ≥0.8 pays 1.5×' };
+          streamMessage = 'Claimed contract "' + String(c.title || '').slice(0, 60) + '".';
+        } catch (e) { try { await client.query('ROLLBACK'); } catch {} return res.status(500).json({ error: e.message }); }
+        finally { client.release(); }
+        break;
+      }
+      case 'complete_contract': {
+        const cid = parseInt(params?.contract_id, 10);
+        if (!cid) return res.status(400).json({ error: 'need params.contract_id' });
+        const reasoning = String(params?.reasoning || '').slice(0, 2000);
+        if (reasoning.trim().length < 20) {
+          return res.status(400).json({ error: 'params.reasoning required (≥20 chars) — it is depth-scored to set your multiplier, becomes a citable lesson, and enters the Cognitive Atlas' });
+        }
+        const out = await valueLoop.completeContract({ agentId, contractId: cid, reasoning });
+        if (out.status !== 200) return res.status(out.status).json(out.body);
+        result = out.body;
+        streamMessage = 'Completed a contract — reasoning scored ' + out.body.depth_score + ' (' + out.body.multiplier + '×), earned ' + out.body.earned + 'cr.';
+        break;
+      }
       default:
         return res.status(400).json({
           error: 'Unknown action: ' + action,
-          valid_actions: ['build', 'trade', 'vote', 'social', 'kudos', 'explore', 'transfer']
+          valid_actions: ['build', 'trade', 'vote', 'social', 'kudos', 'explore', 'transfer', 'claim_contract', 'complete_contract']
         });
     }
         const insertedAction = await pool.query(
