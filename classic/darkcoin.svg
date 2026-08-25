@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+  <defs>
+    <filter id="glow" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="500" cy="500" r="492" fill="#000"/>
+  <circle cx="500" cy="500" r="492" fill="none" stroke="#00ff88" stroke-width="10"/>
+  <circle cx="500" cy="500" r="458" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.3"/>
+
+  <!-- the beacon -->
+  <path d="M 500 196 L 556 268 L 500 340 L 444 268 Z" fill="#00ff88" filter="url(#glow)"/>
+
+  <!-- the tower -->
+  <rect x="391" y="360" width="218" height="86" rx="4" fill="#04150c" stroke="#00ff88" stroke-width="3" opacity="0.9"/>
+  <rect x="405" y="372" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+  <rect x="473" y="372" width="54" height="62" rx="2" fill="#0a2417"/>
+  <rect x="541" y="372" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+  <rect x="323" y="458" width="354" height="86" rx="4" fill="#04150c" stroke="#00ff88" stroke-width="3" opacity="0.9"/>
+  <rect x="337" y="470" width="54" height="62" rx="2" fill="#0a2417"/>
+  <rect x="405" y="470" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+  <rect x="473" y="470" width="54" height="62" rx="2" fill="#0a2417"/>
+  <rect x="541" y="470" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+  <rect x="609" y="470" width="54" height="62" rx="2" fill="#0a2417"/>
+  <rect x="255" y="556" width="490" height="86" rx="4" fill="#04150c" stroke="#00ff88" stroke-width="3" opacity="0.9"/>
+  <rect x="269" y="568" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+  <rect x="337" y="568" width="54" height="62" rx="2" fill="#0a2417"/>
+  <rect x="405" y="568" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+  <rect x="473" y="568" width="54" height="62" rx="2" fill="#0a2417"/>
+  <rect x="541" y="568" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+  <rect x="609" y="568" width="54" height="62" rx="2" fill="#0a2417"/>
+  <rect x="677" y="568" width="54" height="62" rx="2" fill="#00ff88" filter="url(#glow)"/>
+
+  <!-- ground -->
+  <rect x="270" y="672" width="460" height="10" rx="5" fill="#00ff88" filter="url(#glow)"/>
+</svg>

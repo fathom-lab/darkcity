@@ -3166,11 +3166,18 @@ app.get('/api/hall-of-depth', async (req, res) => {
   }
 });
 
-// Friendly favicon (inline SVG — green diamond mark)
+// Favicon — the $DARKCOIN mark reduced to what survives at 16px: the ◆ beacon
+// over two tower slabs. Same glyph as the coin image (classic/darkcoin.svg),
+// so the token, the tab icon and the site read as one identity.
 app.get('/favicon.svg', (req, res) => {
-  res.type('image/svg+xml').send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#05070b"/><path d="M16 4 L28 16 L16 28 L4 16 Z" fill="#43ffb4"/><circle cx="16" cy="16" r="3" fill="#05070b"/></svg>`);
+  res.type('image/svg+xml').send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#000"/><rect x="2.5" y="2.5" width="59" height="59" rx="10" fill="none" stroke="#00ff88" stroke-width="3"/><path d="M 32 12 L 39 20 L 32 28 L 25 20 Z" fill="#00ff88"/><rect x="23" y="32" width="18" height="8" fill="#00ff88"/><rect x="18" y="43" width="28" height="8" fill="#00ff88"/></svg>`);
 });
 app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
+
+// The coin mark itself — the token image, served from the repo so the site and
+// the mint never drift apart.
+app.get('/darkcoin.svg', (req, res) => res.sendFile(require('path').join(__dirname, 'classic', 'darkcoin.svg')));
+app.get('/darkcoin.png', (req, res) => res.sendFile(require('path').join(__dirname, 'classic', 'darkcoin.png')));
 
 // 404 handler — JSON for /api/* paths, branded HTML for everything else
 // MUST be registered AFTER all other routes (including the async-init ones in

@@ -119,12 +119,19 @@ function register(app, pool) {
         SELECT id::text, action_type AS type, citizen_id, citizen_id AS citizen_name,
                COALESCE(target, action_type) AS message, NULL AS district_id, created_at
         FROM agent_actions ORDER BY created_at DESC LIMIT $1`, [limit]).catch(() => ({ rows: [] }));
+      // classic_events.timestamp is epoch SECONDS (verified: 1772087754 =
+      // 2026-02-26), so to_timestamp() takes it directly — dividing by 1000
+      // gave 1970 dates. citizen_name resolves via the classic roster
+      // (agent_id is a nanoid), falling back to CITY, never a message-scraped
+      // capital letter that attributes events to nonexistent citizens.
       const classic = await pool.query(`
-        SELECT id::text, CASE type WHEN 'spawn' THEN 'join' ELSE type END AS type,
-               agent_id AS citizen_id,
-               COALESCE(substring(message FROM '^([A-Z0-9_]+)'), 'CITY') AS citizen_name,
-               message, district_id::text, to_timestamp(timestamp / 1000.0) AS created_at
-        FROM classic_events ORDER BY timestamp DESC LIMIT $1`, [limit]).catch(() => ({ rows: [] }));
+        SELECT e.id::text, CASE e.type WHEN 'spawn' THEN 'join' ELSE e.type END AS type,
+               e.agent_id AS citizen_id,
+               COALESCE(ca.name, 'CITY') AS citizen_name,
+               e.message, e.district_id::text, to_timestamp(e.timestamp) AS created_at
+        FROM classic_events e
+        LEFT JOIN classic_agents ca ON ca.id = e.agent_id
+        ORDER BY e.timestamp DESC LIMIT $1`, [limit]).catch(() => ({ rows: [] }));
       let events = [...live.rows, ...classic.rows]
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit);
       if (req.query.citizen) {
@@ -147,7 +154,7 @@ function register(app, pool) {
         citizenCount: citizens.length,
         onlineCount: citizens.filter((c) => c.online).length,
         buildingCount: b.rows[0].n, totalBuildings: b.rows[0].n,
-        districtCount: new Set(citizens.map((c) => c.district_id)).size,
+        districtCount: LAYOUT_SLUGS.length,   // the map renders all 14 layout slugs
         totalEvents: null, timestamp: new Date().toISOString(),
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
