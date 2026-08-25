@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARKCITY // SOVEREIGN-1 TACTICAL</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #060A14;
+  --bg-panel: #0A0F1C;
+  --bg-district: #0D1420;
+  --silver: #E8EDF5;
+  --silver-mid: rgba(232, 237, 245, 0.4);
+  --silver-dim: rgba(232, 237, 245, 0.18);
+  --silver-ghost: rgba(232, 237, 245, 0.08);
+  --gold: #C9A84C;
+  --gold-mid: rgba(201, 168, 76, 0.45);
+  --gold-dim: rgba(201, 168, 76, 0.18);
+  --crimson: #8B1A1A;
+  --crimson-bright: #A52828;
+  --crimson-dim: rgba(139, 26, 26, 0.35);
+  --steel: #7B9BB5;
+  --steel-dim: rgba(123, 155, 181, 0.4);
+  --sweep: #F0F4FF;
+  --border: rgba(232, 237, 245, 0.06);
+  --border-accent: rgba(201, 168, 76, 0.12);
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--silver);
+  font-family: 'IBM Plex Mono', monospace;
+  cursor: default;
+}
+
+/* === SCANLINE OVERLAY === */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(232, 237, 245, 0.008) 3px,
+    rgba(232, 237, 245, 0.008) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* === VIGNETTE === */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(3,4,8,0.7) 100%);
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* === LAYOUT === */
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+}
+
+/* === HEADER === */
+#header {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+#header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+#header-top .title { color: var(--silver); }
+#header-top .title .accent { color: var(--gold); }
+#header-top .status {
+  font-size: 11px;
+  color: rgba(232, 237, 245, 0.3);
+  letter-spacing: 1.5px;
+}
+
+#header-stats {
+  display: flex;
+  gap: 24px;
+  font-size: 11px;
+  color: rgba(232, 237, 245, 0.3);
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+#header-stats span { color: var(--gold); font-weight: 500; }
+
+#narrative-line {
+  font-size: 11px;
+  color: rgba(232, 237, 245, 0.45);
+  padding: 6px 16px;
+  background: rgba(201, 168, 76, 0.02);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.5px;
+  font-style: italic;
+  flex-shrink: 0;
+  min-height: 28px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* === MAIN CONTENT === */
+#main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* === RADAR PANEL === */
+#radar-panel {
+  width: 70%;
+  position: relative;
+  background: var(--bg);
+  cursor: crosshair;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+#radar-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#sound-toggle {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(232, 237, 245, 0.04);
+  border: 1px solid var(--border);
+  color: rgba(232, 237, 245, 0.3);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  padding: 4px 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  z-index: 10;
+  transition: all 0.2s;
+}
+#sound-toggle:hover {
+  background: rgba(201, 168, 76, 0.08);
+  color: var(--gold);
+  border-color: var(--border-accent);
+}
+
+/* === INTEL SIDEBAR === */
+#intel-sidebar {
+  width: 30%;
+  background: var(--bg-panel);
+  overflow-y: auto;
+  padding: 16px;
+  font-size: 11px;
+  line-height: 1.7;
+  cursor: default;
+}
+
+#intel-sidebar::-webkit-scrollbar { width: 3px; }
+#intel-sidebar::-webkit-scrollbar-track { background: var(--bg); }
+#intel-sidebar::-webkit-scrollbar-thumb { background: rgba(232, 237, 245, 0.08); }
+
+.intel-header {
+  text-align: center;
+  color: var(--gold);
+  font-weight: 600;
+  letter-spacing: 3px;
+  font-size: 11px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-accent);
+  border-bottom: 1px solid var(--border-accent);
+  margin-bottom: 14px;
+}
+
+.intel-section {
+  margin-bottom: 16px;
+}
+
+.intel-section-title {
+  color: rgba(232, 237, 245, 0.35);
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.intel-row {
+  color: rgba(232, 237, 245, 0.3);
+  font-size: 11px;
+}
+
+.intel-row span.val { color: var(--silver); font-weight: 500; }
+.intel-row span.danger { color: var(--crimson-bright); font-weight: 600; }
+.intel-row span.warn { color: var(--gold); font-weight: 500; }
+
+.faction-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: rgba(232, 237, 245, 0.25);
+}
+
+.faction-bar .fname {
+  width: 90px;
+  text-align: right;
+  font-weight: 500;
+}
+
+.faction-bar .fcount {
+  width: 35px;
+  text-align: right;
+  color: var(--silver);
+  font-weight: 500;
+}
+
+.faction-bar .fbar {
+  flex: 1;
+  height: 6px;
+  background: rgba(232, 237, 245, 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.faction-bar .fbar-fill {
+  height: 100%;
+  transition: width 0.5s;
+}
+
+.contract-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.contract-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--steel);
+  flex-shrink: 0;
+}
+
+.contract-dot.danger { background: var(--crimson-bright); }
+
+.contract-name { color: rgba(232, 237, 245, 0.4); }
+.contract-count { color: var(--steel); font-weight: 500; margin-left: auto; }
+.contract-alert { color: var(--crimson-bright); font-weight: 600; font-size: 9px; }
+
+.hot-contact {
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: rgba(232, 237, 245, 0.35);
+}
+.hot-contact.extreme { color: var(--crimson-bright); font-weight: 600; }
+.hot-contact.high { color: var(--gold); }
+
+.pulse-section {
+  border-top: 1px solid var(--border-accent);
+  border-bottom: 1px solid var(--border-accent);
+  padding: 10px 0;
+  margin-top: 14px;
+  text-align: center;
+}
+
+.pulse-label {
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  color: rgba(232, 237, 245, 0.25);
+  margin-bottom: 4px;
+}
+
+.pulse-bar-container {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--gold);
+  margin: 6px 0;
+}
+
+.pulse-timer {
+  font-size: 10px;
+  color: rgba(232, 237, 245, 0.2);
+}
+
+.pulse-timer span { color: var(--gold); }
+
+/* === ECG PANEL === */
+#ecg-panel {
+  height: 200px;
+  min-height: 160px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+}
+
+#ecg-panel::-webkit-scrollbar { width: 3px; }
+#ecg-panel::-webkit-scrollbar-track { background: var(--bg); }
+#ecg-panel::-webkit-scrollbar-thumb { background: rgba(232, 237, 245, 0.06); }
+
+.ecg-row {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  border-bottom: 1px solid rgba(232, 237, 245, 0.02);
+  padding: 0 12px;
+}
+
+.ecg-label {
+  width: 140px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: rgba(232, 237, 245, 0.25);
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.ecg-label.contested { color: var(--gold-mid); }
+.ecg-label.extreme { color: var(--crimson); }
+
+.ecg-canvas-wrap {
+  flex: 1;
+  height: 32px;
+  overflow: hidden;
+}
+
+.ecg-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* === WIRE FEED === */
+#wire-feed {
+  height: 28px;
+  background: rgba(201, 168, 76, 0.015);
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+
+#wire-ticker {
+  position: absolute;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  color: rgba(232, 237, 245, 0.25);
+  line-height: 28px;
+  animation: ticker-scroll 90s linear infinite;
+}
+
+#wire-ticker .tag-contact { color: rgba(232, 237, 245, 0.5); }
+#wire-ticker .tag-pattern { color: var(--gold-mid); }
+#wire-ticker .tag-anomaly { color: var(--crimson); }
+#wire-ticker .tag-complete { color: var(--steel); }
+#wire-ticker .separator { color: rgba(232, 237, 245, 0.08); margin: 0 24px; }
+
+@keyframes ticker-scroll {
+  0% { transform: translateX(100vw); }
+  100% { transform: translateX(-100%); }
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 900px) {
+  #main { flex-direction: column; }
+  #radar-panel { width: 100%; height: 50vh; border-right: none; border-bottom: 1px solid var(--border); }
+  #intel-sidebar { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- HEADER -->
+  <div id="header">
+    <div id="header-top">
+      <div class="title">DARKCITY // SOVEREIGN-1 TACTICAL // <span class="accent">ACTIVE SCAN</span></div>
+      <div class="status">SYS NOMINAL &bull; UPLINK STABLE</div>
+    </div>
+    <div id="header-stats">
+      CYCLE: <span id="cycle-num">2847</span> &nbsp;|&nbsp;
+      CONTACTS: <span id="contact-num">67</span> &nbsp;|&nbsp;
+      THREAT: <span id="threat-level">ELEVATED</span> &nbsp;|&nbsp;
+      SCAN RATE: <span>4.0s</span> &nbsp;|&nbsp;
+      DISTRICTS: <span>14</span>
+    </div>
+  </div>
+
+  <!-- NARRATIVE -->
+  <div id="narrative-line">"Iron Market presses south — three districts under siege. Void Collective retreats to Dead Channel. Contracts surge."</div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <!-- RADAR -->
+    <div id="radar-panel">
+      <canvas id="radar-canvas"></canvas>
+      <button id="sound-toggle" onclick="toggleSound()">&#x1F508; SOUND: OFF</button>
+    </div>
+    <!-- INTEL -->
+    <div id="intel-sidebar">
+      <div class="intel-header">SOVEREIGN-1 BRIEF</div>
+
+      <div class="intel-section">
+        <div class="intel-row">&#x25B8; SCAN: <span class="val">ACTIVE</span></div>
+        <div class="intel-row">&#x25B8; CYCLE: <span class="val" id="sb-cycle">2847</span></div>
+        <div class="intel-row">&#x25B8; CONTACTS: <span class="val" id="sb-contacts">67</span></div>
+        <div class="intel-row">&#x25B8; THREAT: <span class="warn" id="sb-threat">ELEVATED</span></div>
+      </div>
+
+      <div class="intel-section">
+        <div class="intel-section-title">TERRITORIAL CONTROL</div>
+        <div id="faction-bars"></div>
+      </div>
+
+      <div class="intel-section">
+        <div class="intel-section-title">ACTIVE CONTRACTS</div>
+        <div id="contract-list"></div>
+      </div>
+
+      <div class="intel-section">
+        <div class="intel-section-title">HOT CONTACTS</div>
+        <div id="hot-contacts"></div>
+      </div>
+
+      <div class="pulse-section">
+        <div class="pulse-label">CITY PULSE</div>
+        <div class="pulse-bar-container" id="pulse-bar"></div>
+        <div class="pulse-timer">NEXT PULSE: <span id="pulse-countdown">60</span>s</div>
+      </div>
+
+      <div style="margin-top: 16px; border-top: 1px solid var(--border-accent); padding-top: 12px;">
+        <div class="intel-section-title">NETWORK INTEGRITY</div>
+        <div class="intel-row" style="font-size:10px;">MESH: <span class="val">98.2%</span> UPTIME</div>
+        <div class="intel-row" style="font-size:10px;">LATENCY: <span class="val">12ms</span> AVG</div>
+        <div class="intel-row" style="font-size:10px;">BANDWIDTH: <span class="val">847 tx/cycle</span></div>
+        <div class="intel-row" style="font-size:10px;">CONSENSUS: <span class="val">STRONG</span></div>
+      </div>
+
+      <div style="margin-top: 16px; border-top: 1px solid var(--border-accent); padding-top: 12px;">
+        <div class="intel-section-title">YOUR AGENT</div>
+        <div class="intel-row" style="font-size:10px;">ID: <span class="val">darkflobi</span></div>
+        <div class="intel-row" style="font-size:10px;">LOCATION: <span class="val">THE MERIDIAN</span></div>
+        <div class="intel-row" style="font-size:10px;">STATUS: <span class="val">SCANNING</span></div>
+        <div class="intel-row" style="font-size:10px;">CONTRACTS: <span class="warn">2 ACTIVE</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ECG -->
+  <div id="ecg-panel"></div>
+
+  <!-- WIRE FEED -->
+  <div id="wire-feed">
+    <div id="wire-ticker"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  DARKCITY RADAR — SOVEREIGN-1 TACTICAL DISPLAY
+//  Palette: Corporate Clean Goth
+// ============================================================
+
+// --- PALETTE CONSTANTS (used by canvas) ---
+const PAL = {
+  bg:          '#060A14',
+  panel:       '#0A0F1C',
+  district:    '#0D1420',
+  silver:      '#E8EDF5',
+  gold:        '#C9A84C',
+  crimson:     '#8B1A1A',
+  crimsonBr:   '#A52828',
+  steel:       '#7B9BB5',
+  sweep:       '#F0F4FF',
+};
+
+function rgba(hex, a) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// --- DATA ---
+const DISTRICTS = [
+  { name: 'The Meridian',     ring: 0, angle: 0,   agents: 8,  faction: 'IRON MKT',    status: 'active',    contested: false },
+  { name: 'The Exchange',     ring: 1, angle: 0,   agents: 12, faction: 'IRON MKT',    status: 'active',    contested: false },
+  { name: 'The Archive',      ring: 1, angle: 90,  agents: 9,  faction: 'WATCHERS',    status: 'active',    contested: false },
+  { name: 'The Vault',        ring: 1, angle: 180, agents: 7,  faction: 'ARCHITECTS',  status: 'active',    contested: false },
+  { name: 'Silicon Quarter',  ring: 1, angle: 270, agents: 6,  faction: 'IRON MKT',    status: 'active',    contested: false },
+  { name: 'The Foundry',      ring: 2, angle: 30,  agents: 5,  faction: 'SYNDICATE',   status: 'contested', contested: true  },
+  { name: 'Neon Row',         ring: 2, angle: 90,  agents: 4,  faction: 'WATCHERS',    status: 'active',    contested: false },
+  { name: 'Carbon Row',       ring: 2, angle: 140, agents: 3,  faction: 'ARCHITECTS',  status: 'active',    contested: false },
+  { name: 'The Wire',         ring: 2, angle: 200, agents: 5,  faction: 'IRON MKT',    status: 'active',    contested: false },
+  { name: 'Axiom Park',       ring: 2, angle: 260, agents: 4,  faction: 'ARCHITECTS',  status: 'active',    contested: false },
+  { name: 'Ghost Market',     ring: 2, angle: 320, agents: 3,  faction: 'SYNDICATE',   status: 'contested', contested: true  },
+  { name: 'The Undercroft',   ring: 3, angle: 45,  agents: 2,  faction: 'WATCHERS',    status: 'inactive',  contested: false },
+  { name: 'Dead Channel',     ring: 3, angle: 135, agents: 1,  faction: 'VOID COLL.',  status: 'dead',      contested: false },
+  { name: 'The Flats',        ring: 3, angle: 225, agents: 2,  faction: 'IRON MKT',    status: 'inactive',  contested: false },
+  { name: 'Dead Zone',        ring: 3, angle: 315, agents: 1,  faction: null,           status: 'dead',      contested: false },
+];
+
+const FACTIONS = [
+  { name: 'IRON MKT',   count: 4 },
+  { name: 'WATCHERS',   count: 3 },
+  { name: 'ARCHITECTS', count: 3 },
+  { name: 'SYNDICATE',  count: 2 },
+  { name: 'VOID COLL.', count: 1 },
+];
+
+const CONTRACTS = [
+  { district: 'THE ARCHIVE',   count: 3, danger: false },
+  { district: 'THE FOUNDRY',   count: 2, danger: false },
+  { district: 'DEAD CHANNEL',  count: 2, danger: true  },
+  { district: 'GHOST MARKET',  count: 1, danger: false },
+  { district: 'NEON ROW',      count: 1, danger: false },
+];
+
+const HOT_CONTACTS = [
+  { level: 'EXTREME', district: 'Dead Channel' },
+  { level: 'HIGH',    district: 'The Foundry'  },
+  { level: 'HIGH',    district: 'Ghost Market'  },
+  { level: 'MODERATE',district: 'The Wire'      },
+];
+
+const NARRATIVES = [
+  '\u201CIron Market presses south \u2014 three districts under siege. Void Collective retreats to Dead Channel. Contracts surge.\u201D',
+  '\u201CSilicon Quarter goes dark for 14 seconds. When it comes back, two agents are missing. Nobody talks about it.\u201D',
+  '\u201CThe Foundry burns hot \u2014 Syndicate operatives spotted running carbon contracts at triple rate. Something brewing.\u201D',
+  '\u201CGhost Market flickers. Three factions claim control. None hold it. The market decides for itself.\u201D',
+  '\u201CDead Channel emits a signal burst \u2014 340% above baseline. Void Collective denies involvement. Watchers take note.\u201D',
+  '\u201CConsensus breaks: 8 agents pivot to The Archive simultaneously. Coordinated? Or convergent instinct?\u201D',
+  '\u201CThe Meridian holds steady. As it always does. The center cannot fall \u2014 that is the first law of DarkCity.\u201D',
+  '\u201CNeon Row lights up with micro-contracts. Low value, high frequency. Someone is testing the system.\u201D',
+  '\u201CAxiom Park reports unusual calm. In DarkCity, calm is the most dangerous signal of all.\u201D',
+  '\u201CThe Undercroft stirs. Two new agents descend. They do not surface for three cycles.\u201D',
+];
+
+const WIRE_ITEMS = [
+  { tag: 'CONTACT',  text: 'agent drift executing MARKET SCAN // THE ARCHIVE // cycle 2847', cls: 'tag-contact' },
+  { tag: 'PATTERN',  text: 'Iron Market carbon contracts 3 consecutive cycles \u2014 narrative forming', cls: 'tag-pattern' },
+  { tag: 'ANOMALY',  text: 'Dead Channel signal strength 340% above baseline \u2014 investigate', cls: 'tag-anomaly' },
+  { tag: 'COMPLETE', text: 'consensus: 11/14 agents agree SILICON QUARTER showing weakness', cls: 'tag-complete' },
+  { tag: 'CONTACT',  text: 'agent phantom_9 initiating DEEP SCAN // DEAD CHANNEL // unauthorized', cls: 'tag-contact' },
+  { tag: 'PATTERN',  text: 'Watchers consolidating north quadrant \u2014 3 districts secured this cycle', cls: 'tag-pattern' },
+  { tag: 'ANOMALY',  text: 'Ghost Market price oracle desynchronized \u2014 arbitrage window detected', cls: 'tag-anomaly' },
+  { tag: 'CONTACT',  text: 'agent darkflobi completing CONTRACT #447 // THE MERIDIAN // verified', cls: 'tag-contact' },
+  { tag: 'COMPLETE', text: 'The Vault liquidity reaches 90-day high \u2014 Architects reinforce position', cls: 'tag-complete' },
+  { tag: 'ANOMALY',  text: 'unregistered signal source detected near Dead Zone perimeter \u2014 tracking', cls: 'tag-anomaly' },
+  { tag: 'PATTERN',  text: 'Syndicate agent rotation pattern suggests imminent push on Carbon Row', cls: 'tag-pattern' },
+  { tag: 'CONTACT',  text: 'agent spectre_v running INFILTRATE protocol // NEON ROW // cycle 2847', cls: 'tag-contact' },
+];
+
+const TOKEN_FLOWS = [
+  { from: 0, to: 1, volume: 0.8 },
+  { from: 1, to: 2, volume: 0.5 },
+  { from: 0, to: 3, volume: 0.6 },
+  { from: 5, to: 7, volume: 0.4 },
+  { from: 2, to: 6, volume: 0.3 },
+  { from: 8, to: 0, volume: 0.7 },
+  { from: 10, to: 5, volume: 0.3 },
+  { from: 3, to: 9, volume: 0.4 },
+  { from: 12, to: 11, volume: 0.2 },
+];
+
+// --- AGENT BLIPS ---
+const agentBlips = [];
+function initAgentBlips() {
+  DISTRICTS.forEach((d, di) => {
+    for (let i = 0; i < d.agents; i++) {
+      agentBlips.push({
+        districtIdx: di,
+        offsetX: (Math.random() - 0.5) * 30,
+        offsetY: (Math.random() - 0.5) * 30,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+        isDarkflobi: di === 0 && i === 0,
+        flareTime: 0,
+        flareSize: 0,
+      });
+    }
+  });
+}
+initAgentBlips();
+
+// --- CANVAS SETUP ---
+const canvas = document.getElementById('radar-canvas');
+const ctx = canvas.getContext('2d');
+let W, H, CX, CY, R;
+
+function resize() {
+  const panel = document.getElementById('radar-panel');
+  const dpr = window.devicePixelRatio || 1;
+  W = panel.clientWidth;
+  H = panel.clientHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  CX = W / 2;
+  CY = H / 2;
+  R = Math.min(W, H) * 0.43;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- NOISE TEXTURE ---
+let noiseCanvas, noiseCtx;
+function generateNoise() {
+  noiseCanvas = document.createElement('canvas');
+  noiseCanvas.width = 256;
+  noiseCanvas.height = 256;
+  noiseCtx = noiseCanvas.getContext('2d');
+  const imageData = noiseCtx.createImageData(256, 256);
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const v = Math.random() * 200 + 55;
+    imageData.data[i]     = v * 0.9;
+    imageData.data[i + 1] = v * 0.92;
+    imageData.data[i + 2] = v;
+    imageData.data[i + 3] = 4;
+  }
+  noiseCtx.putImageData(imageData, 0, 0);
+}
+generateNoise();
+
+// --- SWEEP STATE ---
+let sweepAngle = 0;
+const SWEEP_SPEED = (Math.PI * 2) / 4;
+let lastTime = performance.now();
+
+// --- PULSE STATE ---
+let pulseTimer = 60;
+let pulseActive = false;
+let pulseFlashTime = 0;
+
+// --- DISTRICT POSITIONS ---
+function getDistrictPos(d) {
+  if (d.ring === 0) return { x: CX, y: CY };
+  const ringR = [0, R * 0.33, R * 0.62, R * 0.88];
+  const rad = (d.angle - 90) * Math.PI / 180;
+  return {
+    x: CX + Math.cos(rad) * ringR[d.ring],
+    y: CY + Math.sin(rad) * ringR[d.ring],
+  };
+}
+
+// --- BRIGHTNESS TRACKING ---
+const districtBrightness = new Float32Array(DISTRICTS.length).fill(0.25);
+
+// --- DRAW FUNCTIONS ---
+
+function drawBackground() {
+  ctx.fillStyle = PAL.bg;
+  ctx.fillRect(0, 0, W, H);
+  if (noiseCanvas) {
+    ctx.globalAlpha = 0.035;
+    for (let x = 0; x < W; x += 256) {
+      for (let y = 0; y < H; y += 256) {
+        ctx.drawImage(noiseCanvas, x, y);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawGrid() {
+  const rings = [R * 0.33, R * 0.62, R * 0.88, R];
+  const labels = ['INNER RING // POWER DISTRICTS', 'MID RING // CONTESTED ZONES', 'OUTER RING // FRONTIER', ''];
+
+  // Concentric rings — cold silver, barely there
+  rings.forEach((r, i) => {
+    ctx.beginPath();
+    ctx.arc(CX, CY, r, 0, Math.PI * 2);
+    ctx.strokeStyle = i === 3
+      ? rgba(PAL.silver, 0.08)
+      : rgba(PAL.silver, 0.035);
+    ctx.lineWidth = i === 3 ? 1 : 0.5;
+    ctx.stroke();
+
+    // Ring labels
+    if (labels[i]) {
+      ctx.save();
+      ctx.font = '300 8px IBM Plex Mono';
+      ctx.fillStyle = rgba(PAL.silver, 0.1);
+      ctx.textAlign = 'center';
+      ctx.fillText(labels[i], CX, CY - r - 5);
+      ctx.restore();
+    }
+  });
+
+  // Radial lines — whisper-thin
+  for (let i = 0; i < 12; i++) {
+    const a = (i * 30 - 90) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
+    ctx.strokeStyle = rgba(PAL.silver, 0.02);
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
+
+  // Tick marks on outer ring
+  for (let i = 0; i < 72; i++) {
+    const a = (i * 5) * Math.PI / 180;
+    const inner = i % 6 === 0 ? R - 8 : R - 4;
+    ctx.beginPath();
+    ctx.moveTo(CX + Math.cos(a) * inner, CY + Math.sin(a) * inner);
+    ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
+    ctx.strokeStyle = rgba(PAL.silver, i % 6 === 0 ? 0.1 : 0.04);
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
+
+  // Cardinal markers — gold, restrained
+  const cardinals = [
+    { angle: -90, label: '\u2666 IRON' },
+    { angle: 0,   label: '\u2666 WATCH' },
+    { angle: 90,  label: '\u2666 ARCH' },
+    { angle: 180, label: '\u2666 SYND' },
+  ];
+  cardinals.forEach(c => {
+    const rad = c.angle * Math.PI / 180;
+    const x = CX + Math.cos(rad) * (R + 20);
+    const y = CY + Math.sin(rad) * (R + 20);
+    ctx.save();
+    ctx.font = '600 8px IBM Plex Mono';
+    ctx.fillStyle = rgba(PAL.gold, 0.35);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(c.label, x, y);
+    ctx.restore();
+  });
+
+  // Outer ring perimeter text
+  ctx.save();
+  const outerText = 'SOVEREIGN-1 TACTICAL // RANGE: CITY-WIDE // CLASSIFIED // ';
+  ctx.font = '300 7px IBM Plex Mono';
+  ctx.fillStyle = rgba(PAL.silver, 0.05);
+  const outerR = R + 7;
+  for (let i = 0; i < outerText.length * 2; i++) {
+    const charAngle = (i / (outerText.length * 2)) * Math.PI * 2 - Math.PI / 2;
+    const cx2 = CX + Math.cos(charAngle) * outerR;
+    const cy2 = CY + Math.sin(charAngle) * outerR;
+    ctx.save();
+    ctx.translate(cx2, cy2);
+    ctx.rotate(charAngle + Math.PI / 2);
+    ctx.fillText(outerText[i % outerText.length], 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // Center crosshair — precise, thin
+  ctx.beginPath();
+  ctx.moveTo(CX - 10, CY); ctx.lineTo(CX - 3, CY);
+  ctx.moveTo(CX + 3, CY);  ctx.lineTo(CX + 10, CY);
+  ctx.moveTo(CX, CY - 10); ctx.lineTo(CX, CY - 3);
+  ctx.moveTo(CX, CY + 3);  ctx.lineTo(CX, CY + 10);
+  ctx.strokeStyle = rgba(PAL.silver, 0.2);
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  // Tiny center circle
+  ctx.beginPath();
+  ctx.arc(CX, CY, 2, 0, Math.PI * 2);
+  ctx.strokeStyle = rgba(PAL.silver, 0.15);
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+}
+
+function drawSweep(dt) {
+  sweepAngle += SWEEP_SPEED * dt;
+  if (sweepAngle > Math.PI * 2) sweepAngle -= Math.PI * 2;
+
+  // Afterglow trail — cold silver fade over 270 degrees
+  const trailSteps = 80;
+  const trailArc = Math.PI * 1.5;
+  for (let i = 0; i < trailSteps; i++) {
+    const t = i / trailSteps;
+    const a = sweepAngle - t * trailArc;
+    const alpha = (1 - t) * 0.025;
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.lineTo(CX + Math.cos(a) * R, CY + Math.sin(a) * R);
+    ctx.strokeStyle = rgba(PAL.sweep, alpha);
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+
+  // Near-field glow wedge behind sweep
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(CX, CY);
+  ctx.arc(CX, CY, R * 0.95, sweepAngle - 0.3, sweepAngle, false);
+  ctx.closePath();
+  const wedgeGrad = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 0.95);
+  wedgeGrad.addColorStop(0, rgba(PAL.sweep, 0.02));
+  wedgeGrad.addColorStop(0.6, rgba(PAL.sweep, 0.01));
+  wedgeGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = wedgeGrad;
+  ctx.fill();
+  ctx.restore();
+
+  // Main sweep line — cold white, 60% opacity with gradient fade
+  const endX = CX + Math.cos(sweepAngle) * R;
+  const endY = CY + Math.sin(sweepAngle) * R;
+  const gradient = ctx.createLinearGradient(CX, CY, endX, endY);
+  gradient.addColorStop(0, rgba(PAL.sweep, 0.6));
+  gradient.addColorStop(0.4, rgba(PAL.sweep, 0.35));
+  gradient.addColorStop(0.8, rgba(PAL.sweep, 0.12));
+  gradient.addColorStop(1, rgba(PAL.sweep, 0.02));
+
+  ctx.beginPath();
+  ctx.moveTo(CX, CY);
+  ctx.lineTo(endX, endY);
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function angleBetween(a1, a2) {
+  let diff = a1 - a2;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return Math.abs(diff);
+}
+
+function drawDistricts(dt) {
+  DISTRICTS.forEach((d, i) => {
+    const pos = getDistrictPos(d);
+    const distAngle = Math.atan2(pos.y - CY, pos.x - CX);
+    const sweepDist = angleBetween(sweepAngle, distAngle);
+
+    // Update brightness on sweep pass
+    if (sweepDist < 0.15) {
+      districtBrightness[i] = 1.0;
+    } else {
+      districtBrightness[i] = Math.max(0.2, districtBrightness[i] - dt * 1.2);
+    }
+
+    const brightness = districtBrightness[i];
+    const baseRadius = 4 + d.agents * 1.2;
+    const isDead = d.status === 'dead';
+    const isContested = d.contested;
+
+    // Dead Channel / Dead Zone — static noise (dark crimson fragments)
+    if (isDead) {
+      ctx.save();
+      for (let n = 0; n < 18; n++) {
+        const nx = pos.x + (Math.random() - 0.5) * 50;
+        const ny = pos.y + (Math.random() - 0.5) * 50;
+        const nw = 1 + Math.random() * 3;
+        ctx.fillStyle = rgba(PAL.crimson, Math.random() * 0.12 * brightness);
+        ctx.fillRect(nx, ny, nw, 1);
+      }
+      // Occasional bright crimson pixel
+      if (Math.random() < 0.3) {
+        const sx = pos.x + (Math.random() - 0.5) * 30;
+        const sy = pos.y + (Math.random() - 0.5) * 30;
+        ctx.fillStyle = rgba(PAL.crimsonBr, 0.25 * brightness);
+        ctx.fillRect(sx, sy, 1, 1);
+      }
+      ctx.restore();
+    }
+
+    // Contested pulsing rings — two faction colors bleeding
+    if (isContested) {
+      const pulseR = baseRadius + 7 + Math.sin(performance.now() * 0.003) * 4;
+      // Upper arc — silver (attacking faction)
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, pulseR, 0, Math.PI);
+      ctx.strokeStyle = rgba(PAL.silver, 0.2 * brightness);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // Lower arc — crimson (contested bleeding)
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, pulseR, Math.PI, Math.PI * 2);
+      ctx.strokeStyle = rgba(PAL.crimson, 0.35 * brightness);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Outer glow — subtle radial
+    const glowGrad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, baseRadius * 3);
+    if (isDead) {
+      glowGrad.addColorStop(0, rgba(PAL.crimson, 0.1 * brightness));
+    } else {
+      glowGrad.addColorStop(0, rgba(PAL.silver, 0.06 * brightness));
+    }
+    glowGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, baseRadius * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // District fill circle
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, baseRadius, 0, Math.PI * 2);
+    if (isDead) {
+      ctx.fillStyle = rgba(PAL.crimson, 0.12 * brightness);
+      ctx.strokeStyle = rgba(PAL.crimson, 0.3 * brightness);
+    } else {
+      ctx.fillStyle = rgba(PAL.district, 0.8);
+      ctx.strokeStyle = rgba(PAL.silver, 0.3 * brightness);
+    }
+    ctx.lineWidth = 0.8;
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner dot — bright on sweep
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 1.5, 0, Math.PI * 2);
+    if (isDead) {
+      ctx.fillStyle = rgba(PAL.crimsonBr, 0.7 * brightness);
+    } else {
+      ctx.fillStyle = rgba(PAL.silver, 0.8 * brightness);
+    }
+    ctx.fill();
+
+    // District name — gold for names, reserved
+    ctx.save();
+    ctx.font = '500 8px IBM Plex Mono';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    if (isDead) {
+      ctx.fillStyle = rgba(PAL.crimson, 0.5 * brightness);
+    } else {
+      ctx.fillStyle = rgba(PAL.gold, 0.5 + 0.4 * brightness);
+    }
+    ctx.fillText(d.name.toUpperCase(), pos.x, pos.y + baseRadius + 5);
+    // Agent count — dim silver
+    ctx.font = '300 7px IBM Plex Mono';
+    ctx.fillStyle = rgba(PAL.silver, 0.15 + 0.1 * brightness);
+    ctx.fillText(d.agents + ' agents', pos.x, pos.y + baseRadius + 16);
+    ctx.restore();
+  });
+}
+
+function drawAgentBlips(dt) {
+  agentBlips.forEach(blip => {
+    const d = DISTRICTS[blip.districtIdx];
+    const dPos = getDistrictPos(d);
+    const isDead = d.status === 'dead';
+
+    // Drift physics
+    blip.offsetX += blip.vx;
+    blip.offsetY += blip.vy;
+    blip.vx += -blip.offsetX * 0.01;
+    blip.vy += -blip.offsetY * 0.01;
+    blip.vx *= 0.98;
+    blip.vy *= 0.98;
+    const maxOff = 25;
+    blip.offsetX = Math.max(-maxOff, Math.min(maxOff, blip.offsetX));
+    blip.offsetY = Math.max(-maxOff, Math.min(maxOff, blip.offsetY));
+
+    const bx = dPos.x + blip.offsetX;
+    const by = dPos.y + blip.offsetY;
+    const brightness = districtBrightness[blip.districtIdx];
+
+    // Flare effect
+    if (blip.flareTime > 0) {
+      blip.flareTime -= dt;
+      const flareAlpha = blip.flareTime / 0.8;
+      const flareR = blip.flareSize * (1 - blip.flareTime / 0.8) * 16;
+      ctx.save();
+      ctx.strokeStyle = rgba(PAL.gold, flareAlpha * 0.7);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(bx - flareR, by); ctx.lineTo(bx + flareR, by);
+      ctx.moveTo(bx, by - flareR); ctx.lineTo(bx, by + flareR);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Draw blip (+) — silver, thin
+    ctx.save();
+    const blipAlpha = 0.25 + brightness * 0.55;
+    const blipColor = isDead ? PAL.crimson : (blip.isDarkflobi ? PAL.gold : PAL.silver);
+    ctx.strokeStyle = rgba(blipColor, blipAlpha);
+    ctx.lineWidth = blip.isDarkflobi ? 1.2 : 0.6;
+
+    const sz = blip.isDarkflobi ? 4 : 2;
+    ctx.beginPath();
+    ctx.moveTo(bx - sz, by); ctx.lineTo(bx + sz, by);
+    ctx.moveTo(bx, by - sz); ctx.lineTo(bx, by + sz);
+    ctx.stroke();
+
+    // Darkflobi identification ring — gold
+    if (blip.isDarkflobi) {
+      ctx.beginPath();
+      ctx.arc(bx, by, 7, 0, Math.PI * 2);
+      ctx.strokeStyle = rgba(PAL.gold, 0.3 + brightness * 0.35);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+    ctx.restore();
+  });
+
+  // Random contract completion flare
+  if (Math.random() < 0.003) {
+    const idx = Math.floor(Math.random() * agentBlips.length);
+    agentBlips[idx].flareTime = 0.8;
+    agentBlips[idx].flareSize = 0.5 + Math.random() * 0.5;
+  }
+}
+
+function drawTokenFlows() {
+  TOKEN_FLOWS.forEach(flow => {
+    const fromPos = getDistrictPos(DISTRICTS[flow.from]);
+    const toPos = getDistrictPos(DISTRICTS[flow.to]);
+    const midX = (fromPos.x + toPos.x) / 2;
+    const midY = (fromPos.y + toPos.y) / 2;
+    const flowAngle = Math.atan2(midY - CY, midX - CX);
+    const sweepDist = angleBetween(sweepAngle, flowAngle);
+
+    if (sweepDist < 0.3) {
+      const alpha = (0.3 - sweepDist) / 0.3;
+      ctx.beginPath();
+      ctx.moveTo(fromPos.x, fromPos.y);
+      ctx.lineTo(toPos.x, toPos.y);
+      ctx.strokeStyle = rgba(PAL.silver, alpha * 0.15);
+      ctx.lineWidth = flow.volume * 2.5;
+      ctx.stroke();
+
+      // Flow direction dot
+      const arrowX = fromPos.x + (toPos.x - fromPos.x) * 0.6;
+      const arrowY = fromPos.y + (toPos.y - fromPos.y) * 0.6;
+      ctx.fillStyle = rgba(PAL.silver, alpha * 0.3);
+      ctx.beginPath();
+      ctx.arc(arrowX, arrowY, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+}
+
+function drawPulseFlash() {
+  if (pulseActive && pulseFlashTime > 0) {
+    const alpha = pulseFlashTime * 0.06;
+    ctx.fillStyle = rgba(PAL.sweep, alpha);
+    ctx.fillRect(0, 0, W, H);
+    pulseFlashTime = Math.max(0, pulseFlashTime - 0.02);
+  }
+}
+
+// --- MAIN RENDER LOOP ---
+function render(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+
+  drawBackground();
+  drawGrid();
+  drawTokenFlows();
+  drawSweep(dt);
+  drawDistricts(dt);
+  drawAgentBlips(dt);
+  drawPulseFlash();
+
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+// --- ECG PANEL ---
+const ecgPanel = document.getElementById('ecg-panel');
+const ecgCanvases = [];
+
+DISTRICTS.forEach((d, i) => {
+  const row = document.createElement('div');
+  row.className = 'ecg-row';
+
+  const label = document.createElement('div');
+  label.className = 'ecg-label';
+  if (d.status === 'dead') label.className += ' extreme';
+  else if (d.contested) label.className += ' contested';
+  label.textContent = d.name.toUpperCase();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ecg-canvas-wrap';
+
+  const c = document.createElement('canvas');
+  c.width = 600;
+  c.height = 32;
+  wrap.appendChild(c);
+
+  row.appendChild(label);
+  row.appendChild(wrap);
+  ecgPanel.appendChild(row);
+
+  ecgCanvases.push({
+    canvas: c,
+    ctx: c.getContext('2d'),
+    data: new Float32Array(600).fill(0),
+    offset: 0,
+    district: d,
+    idx: i,
+  });
+});
+
+function updateECG() {
+  ecgCanvases.forEach(ecg => {
+    const { ctx: c, data, district, canvas: cv } = ecg;
+    const w = cv.width;
+    const h = cv.height;
+    const mid = h / 2;
+    const t = performance.now() * 0.001;
+
+    // Generate new data point
+    let val = 0;
+
+    if (pulseActive && pulseFlashTime > 0.5) {
+      val = Math.sin(t * 30) * 12 * pulseFlashTime;
+    } else if (district.status === 'dead') {
+      val = Math.sin(t * 0.5) * 0.5;
+      if (Math.random() < 0.02) val = (Math.random() - 0.5) * 28;
+    } else if (district.contested) {
+      val = Math.sin(t * 3 + ecg.idx) * 4
+        + Math.sin(t * 7.3 + ecg.idx * 2) * 3
+        + (Math.random() - 0.5) * 6;
+    } else if (district.status === 'active') {
+      val = Math.sin(t * 4 + ecg.idx) * 5
+        + Math.sin(t * 2.1 + ecg.idx * 3) * 3
+        + Math.sin(t * 8.7 + ecg.idx * 0.7) * 2;
+      const beat = (t * 1.5 + ecg.idx * 0.4) % (Math.PI * 2);
+      if (beat < 0.3) val += 10 * Math.sin(beat / 0.3 * Math.PI);
+    } else {
+      val = Math.sin(t * 0.8 + ecg.idx) * 3;
+    }
+
+    data[ecg.offset % w] = val;
+    ecg.offset++;
+
+    // Draw
+    c.clearRect(0, 0, w, h);
+
+    // Baseline
+    c.beginPath();
+    c.moveTo(0, mid);
+    c.lineTo(w, mid);
+    c.strokeStyle = 'rgba(232, 237, 245, 0.03)';
+    c.lineWidth = 0.5;
+    c.stroke();
+
+    // Choose color channel
+    let r, g, b;
+    if (district.status === 'dead') {
+      r = 139; g = 26; b = 26; // crimson
+    } else if (district.contested) {
+      r = 201; g = 168; b = 76; // gold
+    } else {
+      r = 200; g = 210; b = 225; // cold silver
+    }
+
+    // Waveform — cold precision line
+    c.beginPath();
+    for (let x = 0; x < w; x++) {
+      const dataIdx = (ecg.offset - w + x + w * 10) % w;
+      const y = mid - data[dataIdx];
+      if (x === 0) c.moveTo(x, y);
+      else c.lineTo(x, y);
+    }
+    c.strokeStyle = `rgba(${r},${g},${b},0.55)`;
+    c.lineWidth = 0.8;
+    c.stroke();
+
+    // Glow line
+    c.strokeStyle = `rgba(${r},${g},${b},0.1)`;
+    c.lineWidth = 2.5;
+    c.stroke();
+
+    // Current position dot
+    const cpx = w - 1;
+    const cpy = mid - data[(ecg.offset - 1 + w * 10) % w];
+    c.beginPath();
+    c.arc(cpx, cpy, 1.5, 0, Math.PI * 2);
+    c.fillStyle = `rgba(${r},${g},${b},0.9)`;
+    c.fill();
+  });
+}
+setInterval(updateECG, 33);
+
+// --- WIRE FEED TICKER ---
+function buildTicker() {
+  const ticker = document.getElementById('wire-ticker');
+  let html = '';
+  for (let rep = 0; rep < 3; rep++) {
+    WIRE_ITEMS.forEach(item => {
+      html += `<span class="${item.cls}">[${item.tag}]</span> ${item.text}`;
+      html += '<span class="separator">\u2502</span>';
+    });
+  }
+  ticker.innerHTML = html;
+}
+buildTicker();
+
+// --- INTEL SIDEBAR: FACTION BARS ---
+function buildFactionBars() {
+  const container = document.getElementById('faction-bars');
+  let html = '';
+  // Faction bars — silver/white at varying opacity
+  FACTIONS.forEach((f, i) => {
+    const pct = (f.count / 14 * 100).toFixed(0);
+    const opacity = 0.25 + (f.count / 14) * 0.5;
+    html += `<div class="faction-bar">
+      <span class="fname" style="color: ${rgba(PAL.silver, 0.45)}">${f.name}</span>
+      <span class="fcount">${f.count}/14</span>
+      <div class="fbar"><div class="fbar-fill" style="width:${pct}%;background:${rgba(PAL.silver, opacity)};"></div></div>
+    </div>`;
+  });
+  html += `<div class="faction-bar">
+    <span class="fname" style="color:${rgba(PAL.crimson, 0.6)}">CONTESTED</span>
+    <span class="fcount" style="color:${PAL.crimsonBr}">1</span>
+    <div class="fbar"><div class="fbar-fill" style="width:7%;background:${rgba(PAL.crimson, 0.5)};"></div></div>
+  </div>`;
+  container.innerHTML = html;
+}
+buildFactionBars();
+
+function buildContracts() {
+  const container = document.getElementById('contract-list');
+  let html = '';
+  CONTRACTS.forEach(c => {
+    html += `<div class="contract-row">
+      <div class="contract-dot${c.danger ? ' danger' : ''}"></div>
+      <span class="contract-name">${c.district}</span>
+      <span class="contract-count">${c.count} open</span>
+      ${c.danger ? '<span class="contract-alert">[!]</span>' : ''}
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+buildContracts();
+
+function buildHotContacts() {
+  const container = document.getElementById('hot-contacts');
+  let html = '';
+  HOT_CONTACTS.forEach(h => {
+    const cls = h.level === 'EXTREME' ? 'extreme' : (h.level === 'HIGH' ? 'high' : '');
+    html += `<div class="hot-contact ${cls}">\u25B2 ${h.level}: ${h.district}</div>`;
+  });
+  container.innerHTML = html;
+}
+buildHotContacts();
+
+// --- PULSE TIMER ---
+function updatePulse() {
+  pulseTimer--;
+  if (pulseTimer <= 0) {
+    pulseTimer = 60;
+    pulseActive = true;
+    pulseFlashTime = 1.0;
+    setTimeout(() => { pulseActive = false; }, 1500);
+  }
+  document.getElementById('pulse-countdown').textContent = pulseTimer;
+
+  const filled = Math.floor((1 - pulseTimer / 60) * 20);
+  let bar = '';
+  for (let i = 0; i < 20; i++) {
+    bar += i < filled ? '\u2588' : '\u2591';
+  }
+  document.getElementById('pulse-bar').textContent = '[' + bar + ']';
+}
+setInterval(updatePulse, 1000);
+updatePulse();
+
+// --- NARRATIVE ROTATION ---
+let narrativeIdx = 0;
+function updateNarrative() {
+  narrativeIdx = (narrativeIdx + 1) % NARRATIVES.length;
+  const el = document.getElementById('narrative-line');
+  el.style.opacity = '0';
+  setTimeout(() => {
+    el.textContent = NARRATIVES[narrativeIdx];
+    el.style.opacity = '1';
+  }, 500);
+}
+setInterval(updateNarrative, 15000);
+
+// --- CYCLE COUNTER ---
+let cycle = 2847;
+setInterval(() => {
+  cycle++;
+  document.getElementById('cycle-num').textContent = cycle;
+  document.getElementById('sb-cycle').textContent = cycle;
+}, 30000);
+
+// --- CONTACT COUNTER JITTER ---
+setInterval(() => {
+  const contacts = 60 + Math.floor(Math.random() * 15);
+  document.getElementById('contact-num').textContent = contacts;
+  document.getElementById('sb-contacts').textContent = contacts;
+}, 8000);
+
+// --- SOUND TOGGLE ---
+let soundEnabled = false;
+let audioCtx = null;
+let sweepOscillator = null;
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  const btn = document.getElementById('sound-toggle');
+  if (soundEnabled) {
+    btn.innerHTML = '&#x1F50A; SOUND: ON';
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    startSweepSound();
+  } else {
+    btn.innerHTML = '&#x1F508; SOUND: OFF';
+    stopSweepSound();
+  }
+}
+
+function startSweepSound() {
+  if (!audioCtx) return;
+  sweepOscillator = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  sweepOscillator.type = 'sine';
+  sweepOscillator.frequency.value = 38;
+  gainNode.gain.value = 0.025;
+
+  const lfo = audioCtx.createOscillator();
+  const lfoGain = audioCtx.createGain();
+  lfo.frequency.value = 0.25;
+  lfoGain.gain.value = 12;
+  lfo.connect(lfoGain);
+  lfoGain.connect(sweepOscillator.frequency);
+  lfo.start();
+
+  sweepOscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  sweepOscillator.start();
+  sweepOscillator._lfo = lfo;
+  sweepOscillator._gain = gainNode;
+}
+
+function stopSweepSound() {
+  if (sweepOscillator) {
+    sweepOscillator.stop();
+    sweepOscillator._lfo.stop();
+    sweepOscillator = null;
+  }
+}
+
+// --- THREAT LEVEL ---
+const THREAT_LEVELS = ['LOW', 'GUARDED', 'ELEVATED', 'HIGH', 'EXTREME'];
+let threatIdx = 2;
+
+function getThreatStyle(idx) {
+  if (idx <= 1) return { color: 'rgba(232,237,245,0.5)', cls: '' };
+  if (idx === 2) return { color: '#C9A84C', cls: 'warn' };
+  if (idx === 3) return { color: '#C9A84C', cls: 'warn' };
+  return { color: '#A52828', cls: 'danger' };
+}
+
+setInterval(() => {
+  const drift = Math.random() > 0.5 ? 1 : -1;
+  threatIdx = Math.max(0, Math.min(4, threatIdx + (Math.random() > 0.7 ? drift : 0)));
+  const level = THREAT_LEVELS[threatIdx];
+  const style = getThreatStyle(threatIdx);
+  document.getElementById('threat-level').textContent = level;
+  document.getElementById('threat-level').style.color = style.color;
+  document.getElementById('sb-threat').textContent = level;
+  document.getElementById('sb-threat').style.color = style.color;
+  document.getElementById('sb-threat').className = style.cls;
+}, 20000);
+
+// --- NOISE REGENERATION ---
+setInterval(() => { generateNoise(); }, 2500);
+
+// Prevent context menu on radar
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Narrative transition
+document.getElementById('narrative-line').style.transition = 'opacity 0.5s';
+</script>
+</body>
+</html>

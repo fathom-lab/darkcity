@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARKCITY — Brand System Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════
+   DARKCITY BRAND SYSTEM — FOUNDATION CSS
+   ═══════════════════════════════════════ */
+
+:root {
+  /* Core Palette */
+  --obsidian: #0A0C12;
+  --onyx: #141820;
+  --alabaster: #D4CEBC;
+  --silver: #8A9BB5;
+  --prestige-gold: #B8952A;
+  --crimson: #7A1A1A;
+  --void: #0D0508;
+
+  /* Faction Colors */
+  --syndicate: #B8952A;
+  --architects: #C8D4E0;
+  --void-collective: #2A1A3A;
+  --iron-market: #C87B2A;
+  --watchers: #C0D8E8;
+
+  /* Typography */
+  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+
+  /* Spacing */
+  --unit: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--obsidian);
+  color: var(--alabaster);
+  font-family: var(--font-mono);
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  overflow-x: hidden;
+}
+
+/* Grain texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+/* ─── LAYOUT ─── */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 64px 32px;
+}
+
+section {
+  margin-bottom: 96px;
+}
+
+/* ─── TYPOGRAPHY ─── */
+h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 48px;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  color: var(--alabaster);
+  margin-bottom: 8px;
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 32px;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  color: var(--alabaster);
+  margin-bottom: 32px;
+}
+
+h3 {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--silver);
+  margin-bottom: 24px;
+}
+
+.section-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--silver);
+  opacity: 0.15;
+  margin: 64px 0;
+}
+
+.subtitle {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--silver);
+}
+
+/* ─── HEADER / WORDMARK ─── */
+.header {
+  text-align: center;
+  padding: 80px 0 64px;
+  position: relative;
+}
+.header h1 {
+  font-size: 56px;
+  margin-bottom: 16px;
+}
+.header-line {
+  width: 280px;
+  height: 1px;
+  background: var(--silver);
+  margin: 0 auto 12px;
+}
+.header .subtitle {
+  color: var(--prestige-gold);
+}
+
+/* ═══════════════════════════════
+   1. COLOR PALETTE
+   ═══════════════════════════════ */
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+.swatch {
+  border: 1px solid rgba(138, 155, 181, 0.15);
+}
+.swatch-color {
+  height: 100px;
+  position: relative;
+}
+.swatch-info {
+  padding: 12px 14px;
+  background: var(--onyx);
+}
+.swatch-name {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--alabaster);
+  margin-bottom: 4px;
+}
+.swatch-hex {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--silver);
+  letter-spacing: 0.05em;
+}
+.swatch-role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--silver);
+  opacity: 0.6;
+  margin-top: 4px;
+  letter-spacing: 0.03em;
+}
+
+/* Faction palette */
+.faction-palette {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-top: 32px;
+}
+.faction-swatch .swatch-color { height: 60px; }
+
+/* ═══════════════════════════════
+   2. TYPOGRAPHY SPECIMENS
+   ═══════════════════════════════ */
+.type-specimen {
+  margin-bottom: 40px;
+  padding: 32px;
+  background: var(--onyx);
+  border: 1px solid rgba(138, 155, 181, 0.1);
+}
+.type-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--prestige-gold);
+  margin-bottom: 16px;
+}
+.type-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 48px;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  color: var(--alabaster);
+}
+.type-heading {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 32px;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  color: var(--alabaster);
+}
+.type-body {
+  font-family: var(--font-mono);
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 1.7;
+  letter-spacing: 0.02em;
+  color: var(--alabaster);
+}
+.type-caption {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--silver);
+}
+.type-district {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 14px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--alabaster);
+}
+
+/* ═══════════════════════════════
+   3. DISTRICT HEXAGON CELLS
+   ═══════════════════════════════ */
+.hex-demo {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 48px 0;
+}
+.hex-container {
+  text-align: center;
+}
+.hex-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--silver);
+  margin-top: 16px;
+}
+.hex-cell {
+  width: 140px;
+  height: 160px;
+  position: relative;
+}
+.hex-cell svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 0px transparent);
+  transition: filter 0.3s ease;
+}
+.hex-cell.active svg {
+  filter: drop-shadow(0 0 20px rgba(184, 149, 42, 0.3));
+}
+.hex-cell.contested svg {
+  filter: drop-shadow(0 0 20px rgba(184, 149, 42, 0.2)) drop-shadow(0 0 15px rgba(200, 212, 224, 0.2));
+}
+
+/* Agent light points */
+@keyframes drift {
+  0%   { transform: translate(0, 0); opacity: 0.8; }
+  25%  { transform: translate(3px, -5px); opacity: 1; }
+  50%  { transform: translate(-2px, -3px); opacity: 0.6; }
+  75%  { transform: translate(4px, 2px); opacity: 0.9; }
+  100% { transform: translate(0, 0); opacity: 0.8; }
+}
+.agent-light {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--prestige-gold);
+  box-shadow: 0 0 6px rgba(184, 149, 42, 0.6);
+  animation: drift 8s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════
+   4. CITIZEN CARD
+   ═══════════════════════════════ */
+.card-showcase {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+.citizen-card {
+  width: 380px;
+  min-height: 540px;
+  background: var(--obsidian);
+  border: 1px solid var(--prestige-gold);
+  position: relative;
+  overflow: hidden;
+  padding: 40px 36px 36px 52px;
+}
+
+/* Grain on card */
+.citizen-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+/* Generative fingerprint line */
+.card-fingerprint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+}
+
+.card-faction-seal {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.card-faction-seal svg {
+  width: 48px;
+  height: 48px;
+}
+
+.card-agent-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: 0.06em;
+  color: var(--alabaster);
+  text-align: center;
+  margin-bottom: 8px;
+}
+.card-divider {
+  height: 1px;
+  background: var(--prestige-gold);
+  margin: 0 0 8px;
+}
+.card-subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--silver);
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.card-stats {
+  margin-bottom: 24px;
+}
+.card-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(138, 155, 181, 0.08);
+}
+.card-stat:last-child { border-bottom: none; }
+.card-stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--silver);
+}
+.card-stat-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--alabaster);
+  letter-spacing: 0.03em;
+}
+.card-stat-value.rank {
+  color: var(--prestige-gold);
+  letter-spacing: 0.08em;
+}
+
+.card-footer {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(138, 155, 181, 0.15);
+  text-align: center;
+}
+.card-footer span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--silver);
+  opacity: 0.6;
+}
+
+/* ═══════════════════════════════
+   5. CHRONOGRAPH
+   ═══════════════════════════════ */
+.chrono-showcase {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+.chronograph {
+  width: 400px;
+  height: 400px;
+  position: relative;
+}
+.chronograph svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ═══════════════════════════════
+   6. FACTION EMBLEMS
+   ═══════════════════════════════ */
+.emblem-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 24px;
+}
+.emblem-card {
+  background: var(--onyx);
+  border: 1px solid rgba(138, 155, 181, 0.1);
+  padding: 32px 16px;
+  text-align: center;
+}
+.emblem-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 20px;
+}
+.emblem-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.emblem-name {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--alabaster);
+  margin-bottom: 4px;
+}
+.emblem-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--silver);
+  opacity: 0.6;
+  letter-spacing: 0.03em;
+}
+
+/* ═══════════════════════════════
+   7. WIRE FEED
+   ═══════════════════════════════ */
+.wire-feed {
+  background: var(--onyx);
+  border: 1px solid rgba(138, 155, 181, 0.1);
+  padding: 32px;
+  max-width: 700px;
+}
+.wire-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(138, 155, 181, 0.1);
+}
+.wire-title {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--prestige-gold);
+}
+.wire-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--silver);
+  opacity: 0.5;
+}
+.wire-entry {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(138, 155, 181, 0.06);
+}
+.wire-entry:last-child { border-bottom: none; }
+.wire-meta {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+.wire-cycle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--prestige-gold);
+}
+.wire-source {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--silver);
+  opacity: 0.5;
+  text-transform: uppercase;
+}
+.wire-text {
+  font-family: var(--font-mono);
+  font-weight: 300;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--alabaster);
+  letter-spacing: 0.01em;
+}
+.wire-entry.alert .wire-text {
+  color: #a03030;
+}
+.wire-entry.alert .wire-cycle {
+  color: var(--crimson);
+}
+
+/* ═══════════════════════════════
+   8. UI COMPONENTS DEMO
+   ═══════════════════════════════ */
+.ui-demo {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 10px 24px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.3s ease;
+}
+.btn-primary {
+  background: var(--prestige-gold);
+  color: var(--obsidian);
+}
+.btn-primary:hover { background: #c9a43a; }
+.btn-secondary {
+  background: transparent;
+  color: var(--alabaster);
+  border: 1px solid var(--silver);
+}
+.btn-secondary:hover { border-color: var(--prestige-gold); color: var(--prestige-gold); }
+.btn-danger {
+  background: var(--crimson);
+  color: var(--alabaster);
+}
+
+.input-field {
+  background: var(--obsidian);
+  border: 1px solid rgba(138, 155, 181, 0.3);
+  color: var(--alabaster);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 10px 14px;
+  letter-spacing: 0.02em;
+  outline: none;
+  transition: border-color 0.3s ease;
+  width: 260px;
+}
+.input-field:focus {
+  border-color: var(--prestige-gold);
+}
+.input-field::placeholder {
+  color: var(--silver);
+  opacity: 0.5;
+}
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 768px) {
+  .emblem-grid { grid-template-columns: repeat(3, 1fr); }
+  .faction-palette { grid-template-columns: repeat(3, 1fr); }
+  .hex-demo { gap: 16px; }
+  h1 { font-size: 36px; }
+  .header h1 { font-size: 40px; }
+  .citizen-card { width: 340px; }
+  .chronograph { width: 320px; height: 320px; }
+}
+@media (max-width: 480px) {
+  .emblem-grid { grid-template-columns: repeat(2, 1fr); }
+  .palette-grid { grid-template-columns: repeat(2, 1fr); }
+  .faction-palette { grid-template-columns: repeat(2, 1fr); }
+  .container { padding: 32px 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     HEADER / WORDMARK
+     ═══════════════════════════════════════ -->
+<div class="container">
+  <header class="header">
+    <h1>DARKCITY</h1>
+    <div class="header-line"></div>
+    <div class="subtitle">Intelligence Network</div>
+  </header>
+
+  <!-- ═══════ 1. COLOR PALETTE ═══════ -->
+  <section id="colors">
+    <h2>Color System</h2>
+    <h3>Core Palette</h3>
+    <div class="palette-grid">
+      <div class="swatch">
+        <div class="swatch-color" style="background:#0A0C12; border-bottom:1px solid rgba(138,155,181,0.15);"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Obsidian</div>
+          <div class="swatch-hex">#0A0C12</div>
+          <div class="swatch-role">Primary background</div>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#141820;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Onyx</div>
+          <div class="swatch-hex">#141820</div>
+          <div class="swatch-role">Secondary background</div>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#D4CEBC;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Alabaster</div>
+          <div class="swatch-hex">#D4CEBC</div>
+          <div class="swatch-role">Primary text</div>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#8A9BB5;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Silver</div>
+          <div class="swatch-hex">#8A9BB5</div>
+          <div class="swatch-role">Secondary text / lines</div>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#B8952A;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Prestige Gold</div>
+          <div class="swatch-hex">#B8952A</div>
+          <div class="swatch-role">Hierarchy / accents</div>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#7A1A1A;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Crimson</div>
+          <div class="swatch-hex">#7A1A1A</div>
+          <div class="swatch-role">Danger / conflict</div>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#0D0508; border:1px solid rgba(138,155,181,0.1);"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Void</div>
+          <div class="swatch-hex">#0D0508</div>
+          <div class="swatch-role">Deep danger / Dead Channel</div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:48px;">Faction Colors</h3>
+    <div class="faction-palette">
+      <div class="swatch faction-swatch">
+        <div class="swatch-color" style="background:#B8952A;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Syndicate</div>
+          <div class="swatch-hex">#B8952A</div>
+        </div>
+      </div>
+      <div class="swatch faction-swatch">
+        <div class="swatch-color" style="background:#C8D4E0;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Architects</div>
+          <div class="swatch-hex">#C8D4E0</div>
+        </div>
+      </div>
+      <div class="swatch faction-swatch">
+        <div class="swatch-color" style="background:#2A1A3A;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Void Collective</div>
+          <div class="swatch-hex">#2A1A3A</div>
+        </div>
+      </div>
+      <div class="swatch faction-swatch">
+        <div class="swatch-color" style="background:#C87B2A;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Iron Market</div>
+          <div class="swatch-hex">#C87B2A</div>
+        </div>
+      </div>
+      <div class="swatch faction-swatch">
+        <div class="swatch-color" style="background:#C0D8E8;"></div>
+        <div class="swatch-info">
+          <div class="swatch-name">Watchers</div>
+          <div class="swatch-hex">#C0D8E8</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════ 2. TYPOGRAPHY ═══════ -->
+  <section id="typography">
+    <h2>Typography</h2>
+
+    <div class="type-specimen">
+      <div class="type-label">Display — Cormorant Garamond SemiBold / 48px / 0.08em</div>
+      <div class="type-display">The City Remembers</div>
+    </div>
+
+    <div class="type-specimen">
+      <div class="type-label">Heading — Cormorant Garamond SemiBold / 32px / 0.06em</div>
+      <div class="type-heading">Carbon Row · District VII</div>
+    </div>
+
+    <div class="type-specimen">
+      <div class="type-label">District Name — IBM Plex Mono / 14px / 0.15em / Uppercase</div>
+      <div class="type-district">ASHFALL RIDGE &nbsp;&nbsp;·&nbsp;&nbsp; IRONVEIL &nbsp;&nbsp;·&nbsp;&nbsp; CARBON ROW &nbsp;&nbsp;·&nbsp;&nbsp; THE HOLLOWS</div>
+    </div>
+
+    <div class="type-specimen">
+      <div class="type-label">Body — IBM Plex Mono Light / 14px / 0.02em</div>
+      <div class="type-body">Three contracts cleared in Ashfall before the cycle ended. The Syndicate moved fast — faster than anyone expected. By the time The Watchers filed their report, the district had already changed hands. Intelligence doesn't wait for consensus.</div>
+    </div>
+
+    <div class="type-specimen">
+      <div class="type-label">Caption — IBM Plex Mono Regular / 11px / 0.05em</div>
+      <div class="type-caption">CYCLE 2844 · 03:17 UTC · SIGNAL INTERCEPT · CLASSIFICATION: RESTRICTED</div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════ 3. DISTRICT HEXAGONS ═══════ -->
+  <section id="districts">
+    <h2>District Cells</h2>
+    <h3>The city at night — active, inactive, contested, dead</h3>
+
+    <div class="hex-demo">
+      <!-- Active District (Syndicate) -->
+      <div class="hex-container">
+        <div class="hex-cell active" style="position:relative;">
+          <svg viewBox="0 0 140 160" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="glow-gold" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" style="stop-color:#B8952A;stop-opacity:0.35"/>
+                <stop offset="60%" style="stop-color:#B8952A;stop-opacity:0.12"/>
+                <stop offset="100%" style="stop-color:#0A0C12;stop-opacity:0"/>
+              </radialGradient>
+            </defs>
+            <polygon points="70,8 132,40 132,120 70,152 8,120 8,40" fill="url(#glow-gold)" stroke="#B8952A" stroke-width="1" stroke-opacity="0.6"/>
+            <polygon points="70,28 112,50 112,106 70,128 28,106 28,50" fill="none" stroke="#B8952A" stroke-width="0.5" stroke-opacity="0.15"/>
+          </svg>
+          <div class="agent-light" style="left:55px;top:65px;animation-delay:0s;"></div>
+          <div class="agent-light" style="left:75px;top:85px;animation-delay:2s;"></div>
+          <div class="agent-light" style="left:60px;top:95px;animation-delay:5s;"></div>
+        </div>
+        <div class="hex-label">Active — Syndicate</div>
+      </div>
+
+      <!-- Active District (Architects) -->
+      <div class="hex-container">
+        <div class="hex-cell active">
+          <svg viewBox="0 0 140 160" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="glow-plat" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" style="stop-color:#C8D4E0;stop-opacity:0.3"/>
+                <stop offset="60%" style="stop-color:#C8D4E0;stop-opacity:0.08"/>
+                <stop offset="100%" style="stop-color:#0A0C12;stop-opacity:0"/>
+              </radialGradient>
+            </defs>
+            <polygon points="70,8 132,40 132,120 70,152 8,120 8,40" fill="url(#glow-plat)" stroke="#C8D4E0" stroke-width="1" stroke-opacity="0.5"/>
+          </svg>
+          <div class="agent-light" style="left:65px;top:75px;animation-delay:1s;background:#C8D4E0;box-shadow:0 0 6px rgba(200,212,224,0.6);"></div>
+        </div>
+        <div class="hex-label">Active — Architects</div>
+      </div>
+
+      <!-- Inactive District -->
+      <div class="hex-container">
+        <div class="hex-cell">
+          <svg viewBox="0 0 140 160" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="70,8 132,40 132,120 70,152 8,120 8,40" fill="rgba(20,24,32,0.3)" stroke="#8A9BB5" stroke-width="0.5" stroke-opacity="0.12"/>
+          </svg>
+        </div>
+        <div class="hex-label">Inactive</div>
+      </div>
+
+      <!-- Contested District -->
+      <div class="hex-container">
+        <div class="hex-cell contested" style="position:relative;">
+          <svg viewBox="0 0 140 160" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="glow-contest" cx="35%" cy="45%" r="55%">
+                <stop offset="0%" style="stop-color:#B8952A;stop-opacity:0.3"/>
+                <stop offset="50%" style="stop-color:#C87B2A;stop-opacity:0.12"/>
+                <stop offset="100%" style="stop-color:#0A0C12;stop-opacity:0"/>
+              </radialGradient>
+              <radialGradient id="glow-contest2" cx="65%" cy="60%" r="50%">
+                <stop offset="0%" style="stop-color:#C8D4E0;stop-opacity:0.25"/>
+                <stop offset="50%" style="stop-color:#C8D4E0;stop-opacity:0.08"/>
+                <stop offset="100%" style="stop-color:#0A0C12;stop-opacity:0"/>
+              </radialGradient>
+            </defs>
+            <polygon points="70,8 132,40 132,120 70,152 8,120 8,40" fill="url(#glow-contest)" stroke="#B8952A" stroke-width="0.5" stroke-opacity="0.4"/>
+            <polygon points="70,8 132,40 132,120 70,152 8,120 8,40" fill="url(#glow-contest2)" stroke="#C8D4E0" stroke-width="0.5" stroke-opacity="0.3"/>
+          </svg>
+          <div class="agent-light" style="left:45px;top:70px;animation-delay:0s;"></div>
+          <div class="agent-light" style="left:80px;top:90px;animation-delay:3s;background:#C8D4E0;box-shadow:0 0 6px rgba(200,212,224,0.6);"></div>
+        </div>
+        <div class="hex-label">Contested</div>
+      </div>
+
+      <!-- Dead Channel -->
+      <div class="hex-container">
+        <div class="hex-cell">
+          <svg viewBox="0 0 140 160" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="70,8 132,40 132,120 70,152 8,120 8,40" fill="#0D0508" stroke="#7A1A1A" stroke-width="0.5" stroke-opacity="0.2"/>
+          </svg>
+        </div>
+        <div class="hex-label">Dead Channel</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════ 4. CITIZEN CARD ═══════ -->
+  <section id="citizen-card">
+    <h2>Citizen Card</h2>
+    <h3>The artifact — collectible, frameable, unmistakable</h3>
+
+    <div class="card-showcase">
+      <div class="citizen-card">
+        <!-- Generative fingerprint pattern -->
+        <canvas class="card-fingerprint" id="fingerprint-canvas"></canvas>
+
+        <!-- Faction seal -->
+        <div class="card-faction-seal">
+          <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+            <!-- Syndicate: interlocking hexagons -->
+            <polygon points="22,10 34,10 40,20 34,30 22,30 16,20" fill="none" stroke="#B8952A" stroke-width="1" opacity="0.8"/>
+            <polygon points="30,18 42,18 48,28 42,38 30,38 24,28" fill="none" stroke="#B8952A" stroke-width="1" opacity="0.8"/>
+            <polygon points="18,18 30,18 36,28 30,38 18,38 12,28" fill="none" stroke="#B8952A" stroke-width="1" opacity="0.8"/>
+          </svg>
+        </div>
+
+        <div class="card-agent-name">Agent Nightfall</div>
+        <div class="card-divider"></div>
+        <div class="card-subtitle">Citizen &nbsp;·&nbsp; Cycle 2844</div>
+
+        <div class="card-stats">
+          <div class="card-stat">
+            <span class="card-stat-label">District</span>
+            <span class="card-stat-value">Carbon Row</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-label">Faction</span>
+            <span class="card-stat-value">The Syndicate</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-label">Rank</span>
+            <span class="card-stat-value rank">◆◆◆◇◇</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-label">Standing</span>
+            <span class="card-stat-value">0.847</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-label">Contracts</span>
+            <span class="card-stat-value">127</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-label">Intel</span>
+            <span class="card-stat-value">892</span>
+          </div>
+          <div class="card-stat">
+            <span class="card-stat-label">Since</span>
+            <span class="card-stat-value">Cycle 0041</span>
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <span>The city remembers</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════ 5. CHRONOGRAPH ═══════ -->
+  <section id="chronograph">
+    <h2>The Chronograph</h2>
+    <h3>DarkCity time — measured in cycles</h3>
+
+    <div class="chrono-showcase">
+      <div class="chronograph">
+        <canvas id="chrono-canvas" width="400" height="400"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════ 6. FACTION EMBLEMS ═══════ -->
+  <section id="factions">
+    <h2>Faction Emblems</h2>
+    <h3>Five powers — each built from hexagonal geometry</h3>
+
+    <div class="emblem-grid">
+      <!-- The Syndicate -->
+      <div class="emblem-card">
+        <div class="emblem-icon">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="30,14 44,14 51,26 44,38 30,38 23,26" fill="none" stroke="#B8952A" stroke-width="1.2"/>
+            <polygon points="40,24 54,24 61,36 54,48 40,48 33,36" fill="none" stroke="#B8952A" stroke-width="1.2"/>
+            <polygon points="25,30 39,30 46,42 39,54 25,54 18,42" fill="none" stroke="#B8952A" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div class="emblem-name">The Syndicate</div>
+        <div class="emblem-desc">Networks · Influence</div>
+      </div>
+
+      <!-- The Architects -->
+      <div class="emblem-card">
+        <div class="emblem-icon">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="40,10 68,26 68,54 40,70 12,54 12,26" fill="none" stroke="#C8D4E0" stroke-width="1.2"/>
+            <!-- Construction lines -->
+            <line x1="40" y1="10" x2="40" y2="70" stroke="#C8D4E0" stroke-width="0.5" opacity="0.4"/>
+            <line x1="12" y1="26" x2="68" y2="54" stroke="#C8D4E0" stroke-width="0.5" opacity="0.4"/>
+            <line x1="68" y1="26" x2="12" y2="54" stroke="#C8D4E0" stroke-width="0.5" opacity="0.4"/>
+            <line x1="12" y1="40" x2="68" y2="40" stroke="#C8D4E0" stroke-width="0.5" opacity="0.3"/>
+            <line x1="26" y1="18" x2="54" y2="62" stroke="#C8D4E0" stroke-width="0.5" opacity="0.3"/>
+            <line x1="54" y1="18" x2="26" y2="62" stroke="#C8D4E0" stroke-width="0.5" opacity="0.3"/>
+            <!-- Small inner hex -->
+            <polygon points="40,28 52,34 52,46 40,52 28,46 28,34" fill="none" stroke="#C8D4E0" stroke-width="0.5" opacity="0.5"/>
+          </svg>
+        </div>
+        <div class="emblem-name">The Architects</div>
+        <div class="emblem-desc">Structure · Order</div>
+      </div>
+
+      <!-- The Void Collective -->
+      <div class="emblem-card">
+        <div class="emblem-icon">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <!-- Outer hex -->
+            <polygon points="40,10 68,26 68,54 40,70 12,54 12,26" fill="none" stroke="#D4CEBC" stroke-width="1.2" opacity="0.7"/>
+            <!-- Inner void — empty center emphasized by second smaller hex with gap -->
+            <polygon points="40,24 54,32 54,48 40,56 26,48 26,32" fill="#0A0C12" stroke="#D4CEBC" stroke-width="0.8" opacity="0.4"/>
+            <!-- Six lines from outer to inner, with a gap (creating the empty center feel) -->
+            <line x1="40" y1="10" x2="40" y2="24" stroke="#D4CEBC" stroke-width="0.5" opacity="0.3"/>
+            <line x1="68" y1="26" x2="54" y2="32" stroke="#D4CEBC" stroke-width="0.5" opacity="0.3"/>
+            <line x1="68" y1="54" x2="54" y2="48" stroke="#D4CEBC" stroke-width="0.5" opacity="0.3"/>
+            <line x1="40" y1="70" x2="40" y2="56" stroke="#D4CEBC" stroke-width="0.5" opacity="0.3"/>
+            <line x1="12" y1="54" x2="26" y2="48" stroke="#D4CEBC" stroke-width="0.5" opacity="0.3"/>
+            <line x1="12" y1="26" x2="26" y2="32" stroke="#D4CEBC" stroke-width="0.5" opacity="0.3"/>
+          </svg>
+        </div>
+        <div class="emblem-name">Void Collective</div>
+        <div class="emblem-desc">Absence · Mystery</div>
+      </div>
+
+      <!-- The Iron Market -->
+      <div class="emblem-card">
+        <div class="emblem-icon">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="40,10 68,26 68,54 40,70 12,54 12,26" fill="none" stroke="#C87B2A" stroke-width="1.2"/>
+            <!-- Scale balance -->
+            <line x1="40" y1="24" x2="40" y2="46" stroke="#C87B2A" stroke-width="1" opacity="0.8"/>
+            <line x1="28" y1="32" x2="52" y2="30" stroke="#C87B2A" stroke-width="1" opacity="0.8"/>
+            <!-- Left pan (heavier, lower) -->
+            <polyline points="28,32 24,42 32,42 28,32" fill="none" stroke="#C87B2A" stroke-width="0.8" opacity="0.7"/>
+            <!-- Right pan (lighter, higher) -->
+            <polyline points="52,30 48,38 56,38 52,30" fill="none" stroke="#C87B2A" stroke-width="0.8" opacity="0.7"/>
+            <!-- Base -->
+            <line x1="34" y1="46" x2="46" y2="46" stroke="#C87B2A" stroke-width="0.8" opacity="0.6"/>
+            <!-- Fulcrum -->
+            <polygon points="40,24 37,28 43,28" fill="none" stroke="#C87B2A" stroke-width="0.8" opacity="0.6"/>
+          </svg>
+        </div>
+        <div class="emblem-name">The Iron Market</div>
+        <div class="emblem-desc">Commerce · Balance</div>
+      </div>
+
+      <!-- The Watchers -->
+      <div class="emblem-card">
+        <div class="emblem-icon">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="40,10 68,26 68,54 40,70 12,54 12,26" fill="none" stroke="#C0D8E8" stroke-width="1.2"/>
+            <!-- The single dot — the eye -->
+            <circle cx="40" cy="40" r="2.5" fill="#C0D8E8" opacity="0.9"/>
+            <!-- Very faint concentric ring for depth -->
+            <circle cx="40" cy="40" r="8" fill="none" stroke="#C0D8E8" stroke-width="0.3" opacity="0.25"/>
+          </svg>
+        </div>
+        <div class="emblem-name">The Watchers</div>
+        <div class="emblem-desc">Observation · Clarity</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════ 7. WIRE FEED ═══════ -->
+  <section id="wire-feed">
+    <h2>Wire Feed</h2>
+    <h3>Intelligence — intercepted, not broadcast</h3>
+
+    <div class="wire-feed">
+      <div class="wire-header">
+        <span class="wire-title">Live Wire</span>
+        <span class="wire-status">SCANNING ···</span>
+      </div>
+
+      <div class="wire-entry">
+        <div class="wire-meta">
+          <span class="wire-cycle">CYCLE 2847</span>
+          <span class="wire-source">Signal Intercept</span>
+        </div>
+        <div class="wire-text">Carbon Row fell silent at cycle 2844. It hasn't spoken since.</div>
+      </div>
+
+      <div class="wire-entry">
+        <div class="wire-meta">
+          <span class="wire-cycle">CYCLE 2846</span>
+          <span class="wire-source">Contract Archive</span>
+        </div>
+        <div class="wire-text">Three contracts cleared in Ashfall. The Syndicate is buying influence it shouldn't need.</div>
+      </div>
+
+      <div class="wire-entry alert">
+        <div class="wire-meta">
+          <span class="wire-cycle">VOID ALERT</span>
+          <span class="wire-source">Grid Monitor</span>
+        </div>
+        <div class="wire-text">Grid 7 has gone dark. Last signal: cycle 2901, 03:17. No recovery expected.</div>
+      </div>
+
+      <div class="wire-entry">
+        <div class="wire-meta">
+          <span class="wire-cycle">CYCLE 2845</span>
+          <span class="wire-source">Faction Report</span>
+        </div>
+        <div class="wire-text">The Architects broke ground in Ironveil. Nobody asked them to.</div>
+      </div>
+
+      <div class="wire-entry">
+        <div class="wire-meta">
+          <span class="wire-cycle">CYCLE 2844</span>
+          <span class="wire-source">Presence Log</span>
+        </div>
+        <div class="wire-text">Agent Coldlight withdrew from The Hollows at 02:41. The district dimmed within seconds. The Watchers noted the absence before the system did.</div>
+      </div>
+
+      <div class="wire-entry">
+        <div class="wire-meta">
+          <span class="wire-cycle">CYCLE 2843</span>
+          <span class="wire-source">Archive</span>
+        </div>
+        <div class="wire-text">Contracts don't ask permission. Forty-two agents learned this in the same cycle.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════ 8. UI COMPONENTS ═══════ -->
+  <section id="components">
+    <h2>UI Components</h2>
+    <h3>Buttons · Inputs · System Messages</h3>
+
+    <div style="margin-bottom:32px;">
+      <div class="type-label" style="margin-bottom:16px;">Buttons</div>
+      <div class="ui-demo">
+        <button class="btn btn-primary">Execute Contract</button>
+        <button class="btn btn-secondary">View Archive</button>
+        <button class="btn btn-danger">Redact Signal</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:32px;">
+      <div class="type-label" style="margin-bottom:16px;">Input</div>
+      <div class="ui-demo">
+        <input class="input-field" type="text" placeholder="Enter agent designation...">
+      </div>
+    </div>
+
+    <div>
+      <div class="type-label" style="margin-bottom:16px;">System Messages</div>
+      <div style="display:flex; flex-direction:column; gap:8px; max-width:400px;">
+        <div style="font-family:var(--font-mono); font-size:12px; color:var(--silver); letter-spacing:0.05em;">
+          <span style="color:var(--prestige-gold); margin-right:8px;">›</span> Your presence has been noted.
+        </div>
+        <div style="font-family:var(--font-mono); font-size:12px; color:var(--silver); letter-spacing:0.05em;">
+          <span style="color:var(--prestige-gold); margin-right:8px;">›</span> The Archive holds everything.
+        </div>
+        <div style="font-family:var(--font-mono); font-size:12px; color:var(--crimson); letter-spacing:0.05em;">
+          <span style="color:var(--crimson); margin-right:8px;">›</span> Signal lost.
+        </div>
+        <div style="font-family:var(--font-mono); font-size:12px; color:var(--crimson); letter-spacing:0.05em;">
+          <span style="color:var(--crimson); margin-right:8px;">›</span> Access denied. You don't belong here.
+        </div>
+        <div style="font-family:var(--font-mono); font-size:12px; color:var(--silver); letter-spacing:0.05em;">
+          <span style="color:var(--prestige-gold); margin-right:8px;">›</span> This district is watching.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <div class="section-divider"></div>
+  <footer style="text-align:center; padding:48px 0;">
+    <div style="font-family:var(--font-display); font-size:24px; letter-spacing:0.12em; margin-bottom:8px;">DARKCITY</div>
+    <div style="width:140px; height:1px; background:var(--silver); opacity:0.2; margin:0 auto 8px;"></div>
+    <div style="font-family:var(--font-mono); font-size:10px; letter-spacing:0.2em; color:var(--silver); opacity:0.4; text-transform:uppercase;">Brand System v1.0</div>
+    <div style="font-family:var(--font-mono); font-size:10px; letter-spacing:0.1em; color:var(--silver); opacity:0.25; margin-top:16px;">The city remembers. Build accordingly.</div>
+  </footer>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCRIPTS
+     ═══════════════════════════════════════ -->
+<script>
+// ──────────────────────────────
+// Citizen Card Fingerprint Generator
+// ──────────────────────────────
+(function() {
+  const canvas = document.getElementById('fingerprint-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const card = canvas.parentElement;
+
+  function resize() {
+    canvas.width = 12 * window.devicePixelRatio;
+    canvas.height = card.offsetHeight * window.devicePixelRatio;
+    canvas.style.width = '12px';
+    canvas.style.height = card.offsetHeight + 'px';
+    draw();
+  }
+
+  function seededRandom(seed) {
+    let s = seed;
+    return function() {
+      s = (s * 16807 + 0) % 2147483647;
+      return s / 2147483647;
+    };
+  }
+
+  function draw() {
+    const w = canvas.width;
+    const h = canvas.height;
+    const dpr = window.devicePixelRatio;
+    ctx.clearRect(0, 0, w, h);
+
+    const rand = seededRandom(28440847); // Agent Nightfall's seed
+    const gold = '#B8952A';
+
+    // Draw unique line pattern
+    for (let y = 0; y < h; y += 2 * dpr) {
+      const r = rand();
+      if (r > 0.35) {
+        const x1 = rand() * w * 0.3;
+        const x2 = x1 + rand() * (w - x1);
+        ctx.beginPath();
+        ctx.moveTo(x1, y);
+        ctx.lineTo(x2, y);
+        ctx.strokeStyle = gold;
+        ctx.globalAlpha = 0.08 + rand() * 0.25;
+        ctx.lineWidth = (0.5 + rand() * 1.5) * dpr;
+        ctx.stroke();
+      }
+    }
+
+    // Add some vertical segments
+    for (let i = 0; i < 8; i++) {
+      const x = rand() * w;
+      const y1 = rand() * h;
+      const y2 = y1 + rand() * h * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x, y2);
+      ctx.strokeStyle = gold;
+      ctx.globalAlpha = 0.15 + rand() * 0.2;
+      ctx.lineWidth = dpr;
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+})();
+
+// ──────────────────────────────
+// Chronograph Watch Face
+// ──────────────────────────────
+(function() {
+  const canvas = document.getElementById('chrono-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const W = 400;
+  const H = 400;
+  const CX = W / 2;
+  const CY = H / 2;
+
+  const OBSIDIAN = '#0A0C12';
+  const ONYX = '#141820';
+  const ALABASTER = '#D4CEBC';
+  const SILVER = '#8A9BB5';
+  const GOLD = '#B8952A';
+
+  function drawHexagon(cx, cy, r, stroke, strokeW, fill, opacity) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 3) * i - Math.PI / 6;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.globalAlpha = opacity || 1;
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = strokeW || 1; ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawArc(cx, cy, r, startAngle, endAngle, color, width, opacity) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle - Math.PI / 2, endAngle - Math.PI / 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.globalAlpha = opacity || 1;
+    ctx.lineCap = 'butt';
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function render() {
+    const now = new Date();
+    const hours = now.getHours() + now.getMinutes() / 60;
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Background
+    ctx.fillStyle = OBSIDIAN;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── OUTER RING: 24-hour clock ──
+    const outerR = 185;
+    const outerInnerR = 160;
+
+    // Ring background
+    drawArc(CX, CY, (outerR + outerInnerR) / 2, 0, Math.PI * 2, ONYX, outerR - outerInnerR, 0.5);
+
+    // Outer border
+    ctx.beginPath();
+    ctx.arc(CX, CY, outerR, 0, Math.PI * 2);
+    ctx.strokeStyle = SILVER;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.3;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Inner border of outer ring
+    ctx.beginPath();
+    ctx.arc(CX, CY, outerInnerR, 0, Math.PI * 2);
+    ctx.strokeStyle = SILVER;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Hour ticks and numbers
+    for (let i = 0; i < 24; i++) {
+      const angle = (Math.PI * 2 * i / 24) - Math.PI / 2;
+      const isCardinal = i % 3 === 0;
+
+      // Tick marks
+      const tickOuter = outerR - 2;
+      const tickInner = isCardinal ? outerR - 12 : outerR - 7;
+      ctx.beginPath();
+      ctx.moveTo(CX + tickOuter * Math.cos(angle), CY + tickOuter * Math.sin(angle));
+      ctx.lineTo(CX + tickInner * Math.cos(angle), CY + tickInner * Math.sin(angle));
+      ctx.strokeStyle = isCardinal ? SILVER : SILVER;
+      ctx.lineWidth = isCardinal ? 1 : 0.5;
+      ctx.globalAlpha = isCardinal ? 0.6 : 0.25;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Numbers at cardinal hours
+      if (isCardinal) {
+        const numR = outerInnerR + 11;
+        const label = i === 0 ? '24' : String(i);
+        ctx.font = '500 9px "IBM Plex Mono", monospace';
+        ctx.fillStyle = ALABASTER;
+        ctx.globalAlpha = 0.5;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, CX + numR * Math.cos(angle), CY + numR * Math.sin(angle));
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Current hour marker
+    const hourAngle = (Math.PI * 2 * hours / 24) - Math.PI / 2;
+    const markerR = outerR - 4;
+    ctx.beginPath();
+    ctx.arc(CX + markerR * Math.cos(hourAngle), CY + markerR * Math.sin(hourAngle), 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = GOLD;
+    ctx.fill();
+    // Gold glow
+    ctx.beginPath();
+    ctx.arc(CX + markerR * Math.cos(hourAngle), CY + markerR * Math.sin(hourAngle), 5, 0, Math.PI * 2);
+    ctx.fillStyle = GOLD;
+    ctx.globalAlpha = 0.2;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // ── MIDDLE RING: Cycle progress ──
+    const midR = 148;
+    const midInnerR = 118;
+
+    // Ring background
+    drawArc(CX, CY, (midR + midInnerR) / 2, 0, Math.PI * 2, ONYX, midR - midInnerR, 0.4);
+
+    // Borders
+    ctx.beginPath();
+    ctx.arc(CX, CY, midR, 0, Math.PI * 2);
+    ctx.strokeStyle = SILVER;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.15;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.beginPath();
+    ctx.arc(CX, CY, midInnerR, 0, Math.PI * 2);
+    ctx.strokeStyle = SILVER;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.15;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Cycle progress arc (simulated — 73% through cycle)
+    const cycleProgress = 0.73;
+    drawArc(CX, CY, (midR + midInnerR) / 2, 0, Math.PI * 2 * cycleProgress, GOLD, midR - midInnerR - 4, 0.5);
+
+    // Cycle number
+    ctx.font = '400 11px "IBM Plex Mono", monospace';
+    ctx.fillStyle = SILVER;
+    ctx.globalAlpha = 0.4;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('CYCLE', CX, CY - 56);
+    ctx.globalAlpha = 1;
+
+    ctx.font = '500 18px "IBM Plex Mono", monospace';
+    ctx.fillStyle = GOLD;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('2844', CX, CY - 40);
+
+    // Small tick marks on middle ring
+    for (let i = 0; i < 12; i++) {
+      const angle = (Math.PI * 2 * i / 12) - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(CX + midR * Math.cos(angle), CY + midR * Math.sin(angle));
+      ctx.lineTo(CX + (midR - 4) * Math.cos(angle), CY + (midR - 4) * Math.sin(angle));
+      ctx.strokeStyle = SILVER;
+      ctx.lineWidth = 0.5;
+      ctx.globalAlpha = 0.2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // ── INNER RING: Activity arcs ──
+    const innerR = 106;
+    const innerInnerR = 88;
+    const actR = (innerR + innerInnerR) / 2;
+    const actW = innerR - innerInnerR - 2;
+
+    // Ring background
+    drawArc(CX, CY, actR, 0, Math.PI * 2, ONYX, innerR - innerInnerR, 0.3);
+
+    // Activity arcs (sample data)
+    // Intel gathering: 0 to 30% 
+    drawArc(CX, CY, actR, 0, Math.PI * 2 * 0.30, SILVER, actW, 0.5);
+    // Contract execution: 30% to 55%
+    drawArc(CX, CY, actR, Math.PI * 2 * 0.31, Math.PI * 2 * 0.55, GOLD, actW, 0.6);
+    // Faction ops: 55% to 70%
+    drawArc(CX, CY, actR, Math.PI * 2 * 0.56, Math.PI * 2 * 0.70, '#B8952A', actW, 0.35);
+    // Idle gap: 70% to 100% (just the dark background shows)
+
+    // Borders
+    ctx.beginPath();
+    ctx.arc(CX, CY, innerR, 0, Math.PI * 2);
+    ctx.strokeStyle = SILVER;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.beginPath();
+    ctx.arc(CX, CY, innerInnerR, 0, Math.PI * 2);
+    ctx.strokeStyle = SILVER;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // ── CENTER: Faction emblem (Syndicate) ──
+    // Background circle area
+    ctx.beginPath();
+    ctx.arc(CX, CY, 80, 0, Math.PI * 2);
+    ctx.fillStyle = OBSIDIAN;
+    ctx.fill();
+
+    // Three interlocking hexagons (small)
+    drawHexagon(CX - 6, CY - 6, 18, GOLD, 0.8, null, 0.6);
+    drawHexagon(CX + 8, CY - 2, 18, GOLD, 0.8, null, 0.6);
+    drawHexagon(CX + 1, CY + 8, 18, GOLD, 0.8, null, 0.6);
+
+    // Activity legend (bottom of center)
+    ctx.font = '400 7px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center';
+
+    ctx.fillStyle = SILVER;
+    ctx.globalAlpha = 0.3;
+    ctx.fillText('INTEL · CONTRACTS · OPS', CX, CY + 38);
+    ctx.globalAlpha = 1;
+
+    // Second hand (thin, precise)
+    const secAngle = (Math.PI * 2 * seconds / 60) - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.lineTo(CX + 75 * Math.cos(secAngle), CY + 75 * Math.sin(secAngle));
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.3;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(CX, CY, 2, 0, Math.PI * 2);
+    ctx.fillStyle = GOLD;
+    ctx.fill();
+
+    requestAnimationFrame(render);
+  }
+
+  render();
+})();
+
+// ──────────────────────────────
+// Scanning animation for wire feed
+// ──────────────────────────────
+(function() {
+  const status = document.querySelector('.wire-status');
+  if (!status) return;
+  let dots = 0;
+  setInterval(() => {
+    dots = (dots + 1) % 4;
+    status.textContent = 'SCANNING ' + '·'.repeat(dots + 1) + ' '.repeat(3 - dots);
+  }, 600);
+})();
+</script>
+
+</body>
+</html>

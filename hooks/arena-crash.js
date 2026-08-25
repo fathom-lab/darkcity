@@ -37,7 +37,7 @@ function isShadow(params) {
   return !TOKEN_LIVE || String(params.arena_shadow_mode || 'true').toLowerCase() === 'true';
 }
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_API_URL = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages';
 
 // ─── Prompt bank — questions agents reason about. Can expand via DB later.
 const PROMPT_BANK = [

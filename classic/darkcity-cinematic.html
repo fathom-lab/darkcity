@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DARKCITY - Cinematic</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    body { 
+      background: #000; 
+      overflow: hidden;
+      width: 1000px;
+      height: 1000px;
+    }
+    canvas { display: block; }
+    
+    /* Minimal text overlay */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      font-family: 'Courier New', monospace;
+    }
+    
+    .title {
+      position: absolute;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 42px;
+      letter-spacing: 16px;
+      color: #B8952A;
+      text-shadow: 
+        0 0 40px rgba(184, 149, 42, 0.8),
+        0 0 80px rgba(184, 149, 42, 0.4),
+        0 0 120px rgba(184, 149, 42, 0.2);
+    }
+    
+    .tagline {
+      position: absolute;
+      bottom: 140px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      letter-spacing: 6px;
+      color: rgba(212, 206, 188, 0.6);
+    }
+    
+    .vignette {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: radial-gradient(ellipse at center, transparent 20%, rgba(0,0,0,0.95) 100%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <div class="tagline">THE CITY REMEMBERS</div>
+    <div class="title">DARKCITY</div>
+  </div>
+  <div class="vignette"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    // Scene setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+    camera.position.set(0, 0, 50);
+    camera.lookAt(0, 0, 0);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(1000, 1000);
+    renderer.setPixelRatio(2);
+    document.body.insertBefore(renderer.domElement, document.body.firstChild);
+    
+    // Colors
+    const GOLD = 0xB8952A;
+    
+    // Central Meridian - THE BEACON
+    const meridianGeo = new THREE.IcosahedronGeometry(5, 3);
+    const meridianMat = new THREE.MeshBasicMaterial({ 
+      color: GOLD,
+      transparent: true,
+      opacity: 1
+    });
+    const meridian = new THREE.Mesh(meridianGeo, meridianMat);
+    scene.add(meridian);
+    
+    // Multiple glow layers for intense effect
+    for (let i = 1; i <= 6; i++) {
+      const glowGeo = new THREE.IcosahedronGeometry(5 + i * 3, 3);
+      const glowMat = new THREE.MeshBasicMaterial({ 
+        color: GOLD,
+        transparent: true,
+        opacity: 0.15 / i,
+        side: THREE.BackSide
+      });
+      const glow = new THREE.Mesh(glowGeo, glowMat);
+      glow.userData = { layer: i };
+      scene.add(glow);
+    }
+    
+    // Rays emanating from center
+    const rayCount = 24;
+    const rays = [];
+    for (let i = 0; i < rayCount; i++) {
+      const angle = (i / rayCount) * Math.PI * 2;
+      const length = 80 + Math.random() * 40;
+      
+      const points = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(Math.cos(angle) * length, Math.sin(angle) * length, 0)
+      ];
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({ 
+        color: GOLD,
+        transparent: true,
+        opacity: 0.1 + Math.random() * 0.15
+      });
+      const line = new THREE.Line(geometry, material);
+      scene.add(line);
+      rays.push({ line, angle, baseLength: length });
+    }
+    
+    // Orbiting nodes - agents circling the meridian
+    const orbitNodes = [];
+    const orbitCount = 12;
+    for (let i = 0; i < orbitCount; i++) {
+      const angle = (i / orbitCount) * Math.PI * 2;
+      const radius = 20 + (i % 3) * 8;
+      const size = 0.4 + Math.random() * 0.6;
+      
+      const geo = new THREE.SphereGeometry(size, 16, 16);
+      const mat = new THREE.MeshBasicMaterial({ 
+        color: 0x8A9BB5,
+        transparent: true,
+        opacity: 0.7
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        Math.cos(angle) * radius,
+        Math.sin(angle) * radius,
+        (Math.random() - 0.5) * 10
+      );
+      scene.add(mesh);
+      
+      // Node glow
+      const glowGeo = new THREE.SphereGeometry(size * 3, 16, 16);
+      const glowMat = new THREE.MeshBasicMaterial({ 
+        color: 0x8A9BB5,
+        transparent: true,
+        opacity: 0.15
+      });
+      const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+      glowMesh.position.copy(mesh.position);
+      scene.add(glowMesh);
+      
+      orbitNodes.push({ 
+        mesh, 
+        glow: glowMesh, 
+        angle, 
+        radius, 
+        speed: 0.002 + Math.random() * 0.003,
+        zOffset: mesh.position.z
+      });
+    }
+    
+    // Distant particles - stars/data
+    const particlesGeo = new THREE.BufferGeometry();
+    const particleCount = 800;
+    const positions = new Float32Array(particleCount * 3);
+    
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      const r = 30 + Math.random() * 150;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI * 2;
+      positions[i] = r * Math.sin(theta) * Math.cos(phi);
+      positions[i + 1] = r * Math.sin(theta) * Math.sin(phi);
+      positions[i + 2] = r * Math.cos(theta);
+    }
+    
+    particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const particlesMat = new THREE.PointsMaterial({ 
+      color: 0xD4CEBC,
+      size: 0.3,
+      transparent: true,
+      opacity: 0.3
+    });
+    const particles = new THREE.Points(particlesGeo, particlesMat);
+    scene.add(particles);
+    
+    // Animation
+    let time = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      time += 0.008;
+      
+      // Rotate meridian slowly
+      meridian.rotation.x += 0.002;
+      meridian.rotation.y += 0.004;
+      
+      // Pulse meridian
+      const pulse = 1 + Math.sin(time * 1.5) * 0.15;
+      meridian.scale.setScalar(pulse);
+      
+      // Pulse glow layers
+      scene.children.forEach(child => {
+        if (child.userData && child.userData.layer) {
+          child.rotation.x = meridian.rotation.x * 0.5;
+          child.rotation.y = meridian.rotation.y * 0.5;
+          child.scale.setScalar(pulse * (1 + child.userData.layer * 0.05));
+        }
+      });
+      
+      // Orbit nodes around meridian
+      orbitNodes.forEach(n => {
+        n.angle += n.speed;
+        n.mesh.position.x = Math.cos(n.angle) * n.radius;
+        n.mesh.position.y = Math.sin(n.angle) * n.radius;
+        n.mesh.position.z = n.zOffset + Math.sin(time + n.angle) * 3;
+        n.glow.position.copy(n.mesh.position);
+      });
+      
+      // Slow particle rotation
+      particles.rotation.y += 0.0003;
+      particles.rotation.x += 0.0001;
+      
+      renderer.render(scene, camera);
+    }
+    
+    animate();
+  </script>
+</body>
+</html>

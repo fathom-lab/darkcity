@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARKFLOBI — Neural Depth Scanner</title>
+<meta name="description" content="See how your AI thinks. The world's first neural depth scanner — measures reasoning depth by tracing actual circuit activations.">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap');
+
+:root {
+  --bg: #0a0a0f;
+  --bg2: #0e0e16;
+  --bg3: #13131d;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.1);
+  --dim: rgba(180,190,210,0.2);
+  --mute: rgba(180,190,210,0.35);
+  --txt: rgba(180,190,210,0.55);
+  --hi: rgba(220,230,245,0.85);
+  --wh: rgba(240,245,255,0.92);
+  --grn: #00ffb4;
+  --grn2: rgba(0,255,180,0.08);
+  --grn3: rgba(0,255,180,0.15);
+  --mono: 'IBM Plex Mono', 'Consolas', monospace;
+  --sans: 'Space Grotesk', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html { background: var(--bg); color: var(--txt); font-family: var(--mono); scroll-behavior: smooth; }
+body { min-height: 100vh; }
+
+/* ═══ SCANLINES ═══ */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 9999;
+  opacity: 0.015;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.2) 2px, rgba(0,0,0,0.2) 4px);
+}
+
+/* ═══ NAV ═══ */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 16px 32px;
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(10,10,15,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-logo {
+  font-size: 13px; font-weight: 700; letter-spacing: 4px;
+  color: var(--wh); text-decoration: none;
+}
+.nav-links { display: flex; gap: 24px; align-items: center; }
+.nav-links a {
+  font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--mute); text-decoration: none; transition: color 0.3s;
+}
+.nav-links a:hover { color: var(--hi); }
+.nav-links a.active { color: var(--grn); }
+.nav-cta {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  padding: 8px 16px; border: 1px solid var(--grn3);
+  color: var(--grn); text-decoration: none; border-radius: 4px;
+  transition: all 0.3s;
+}
+.nav-cta:hover { background: var(--grn2); }
+
+/* ═══ ASCII SECTION HEADER ═══ */
+.ascii-section {
+  text-align: center;
+  padding: 20px 0;
+  white-space: pre;
+  font-size: clamp(7px, 1.1vw, 10px);
+  line-height: 1.3;
+  color: var(--grn);
+  opacity: 0.2;
+  overflow: hidden;
+}
+
+/* ═══ SECTION LABEL ═══ */
+.section-num {
+  font-size: 11px; letter-spacing: 3px; color: var(--dim);
+  margin-bottom: 8px;
+}
+.section-title {
+  font-family: var(--sans);
+  font-size: clamp(22px, 3.5vw, 38px);
+  font-weight: 700;
+  color: var(--wh);
+  margin-bottom: 12px;
+  line-height: 1.2;
+}
+.section-sub {
+  font-size: 13px; color: var(--txt);
+  max-width: 560px; line-height: 1.8;
+}
+
+/* ═══ HERO ═══ */
+.hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  padding: 100px 24px 60px;
+  position: relative;
+}
+.hero canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+}
+.hero-content {
+  position: relative; z-index: 5;
+  pointer-events: none;
+}
+.hero-content * { pointer-events: auto; }
+
+.hero-ascii {
+  white-space: pre;
+  font-size: clamp(6px, 1vw, 9px);
+  line-height: 1.2;
+  color: var(--grn);
+  opacity: 0.15;
+  margin-bottom: 32px;
+}
+
+.hero-tag {
+  font-size: 9px; letter-spacing: 6px; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 16px;
+}
+.hero h1 {
+  font-family: var(--sans);
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 700; color: var(--wh);
+  margin-bottom: 16px; line-height: 1.1;
+}
+.hero h1 span { color: var(--grn); }
+.hero-desc {
+  font-size: 13px; color: var(--txt);
+  max-width: 500px; line-height: 1.8;
+  margin: 0 auto 32px;
+}
+.hero-scroll {
+  font-size: 9px; letter-spacing: 4px; color: var(--dim);
+  position: absolute; bottom: 32px;
+  animation: bob 3s ease-in-out infinite;
+}
+@keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+/* ═══ SCANNER SECTION ═══ */
+.scanner {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 24px 80px;
+}
+
+.scanner-canvas-wrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 32px;
+  background: #010204;
+}
+.scanner-canvas-wrap canvas {
+  display: block; width: 100%;
+  aspect-ratio: 16/10;
+}
+.scanner-hud {
+  position: absolute; top: 12px; left: 16px; right: 16px;
+  display: flex; justify-content: space-between;
+  pointer-events: none;
+}
+.scanner-hud-l { font-size: 8px; letter-spacing: 3px; color: rgba(0,255,180,0.15); }
+.scanner-hud-r { font-size: 8px; color: rgba(130,160,190,0.12); text-align: right; line-height: 1.6; letter-spacing: 1px; }
+
+/* ═══ CONTROLS ═══ */
+.controls {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.presets {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 16px; justify-content: center;
+}
+.preset {
+  font-family: var(--mono);
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  padding: 5px 12px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--dim);
+  cursor: pointer; transition: all 0.3s;
+}
+.preset:hover { border-color: var(--grn3); color: var(--grn); }
+
+.input-row {
+  display: flex; gap: 12px; align-items: flex-end;
+}
+.input-col { flex: 1; }
+.input-label {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.input-label .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+}
+.input-field {
+  width: 100%;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--hi);
+  transition: border-color 0.3s;
+}
+.input-field:focus { outline: none; border-color: var(--grn3); }
+.input-field::placeholder { color: rgba(130,160,190,0.15); }
+
+.scan-btn {
+  font-family: var(--mono);
+  font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+  padding: 12px 24px;
+  border: 1px solid var(--grn3);
+  border-radius: 6px;
+  background: var(--grn2);
+  color: var(--grn);
+  cursor: pointer; transition: all 0.3s;
+  white-space: nowrap;
+}
+.scan-btn:hover { background: rgba(0,255,180,0.12); border-color: rgba(0,255,180,0.3); }
+.scan-btn:disabled { opacity: 0.15; cursor: default; }
+
+/* ═══ RESULTS ═══ */
+.results {
+  display: flex; gap: 16px; margin-bottom: 24px;
+}
+.result-card {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  transition: border-color 0.5s;
+}
+.result-label {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.result-score {
+  font-size: 32px; font-weight: 300; letter-spacing: 3px;
+  color: rgba(180,190,210,0.08);
+  transition: color 1.5s;
+  margin-bottom: 4px;
+}
+.result-tier {
+  font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(180,190,210,0.06);
+  transition: color 1.5s;
+}
+.result-feat {
+  font-size: 9px; color: rgba(180,190,210,0.06);
+  margin-top: 6px; transition: color 0.8s;
+}
+.result-bar {
+  height: 2px; background: rgba(255,255,255,0.03);
+  border-radius: 1px; margin-top: 10px; overflow: hidden;
+}
+.result-bar-fill {
+  height: 100%; border-radius: 1px;
+  width: 0; transition: width 1.5s ease-out, background 1s;
+}
+
+.verdict {
+  text-align: center;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-size: 11px; letter-spacing: 1px;
+  color: rgba(180,190,210,0.06);
+  transition: color 1s;
+  min-height: 50px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ═══ SCIENCE SECTION ═══ */
+.science {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 80px 24px;
+  text-align: center;
+}
+.science-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 40px;
+}
+.science-stat {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+.science-stat-val {
+  font-size: 22px; font-weight: 700; color: var(--grn);
+  margin-bottom: 4px;
+}
+.science-stat-label {
+  font-size: 9px; letter-spacing: 1px; color: var(--dim);
+  line-height: 1.4;
+}
+
+/* ═══ FOOTER ═══ */
+.footer {
+  text-align: center;
+  padding: 32px 24px;
+  border-top: 1px solid var(--border);
+  font-size: 9px; letter-spacing: 2px; color: var(--dim);
+}
+.footer a { color: var(--grn); text-decoration: none; opacity: 0.5; }
+.footer a:hover { opacity: 0.8; }
+
+/* ═══ RESPONSIVE ═══ */
+@media (max-width: 700px) {
+  .nav { padding: 12px 16px; }
+  .nav-links { gap: 12px; }
+  .nav-links a { font-size: 8px; }
+  .input-row { flex-direction: column; gap: 8px; }
+  .results { flex-direction: column; }
+  .science-grid { grid-template-columns: 1fr; }
+  .hero-ascii { font-size: 5px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav class="nav">
+  <a href="/" class="nav-logo">DARKCITY</a>
+  <div class="nav-links">
+    <a href="/map">MAP</a>
+    <a href="/citizens">CITIZENS</a>
+    <a href="/leaderboard">DEPTH</a>
+    <a href="/scanner" class="active">SCANNER</a>
+  </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero" id="scanner">
+  <canvas id="hero-void"></canvas>
+  <div class="hero-content">
+<pre class="hero-ascii">
+  ╭───────────────╮
+  │ ┌───┐  ┌───┐ │
+  │ │ ◈ ├──┤ ◈ │ │
+  │ └─┬─┘  └─┬─┘ │
+  │   │ ┌───┐ │  │
+  │   └─┤ ◈ ├─┘  │
+  │     └─┬─┘    │
+  │  ┌────┴────┐ │
+  │  │ SCANNER │ │
+  │  └─────────┘ │
+  ╰───────────────╯
+</pre>
+    <div class="hero-tag">Neural Depth Scanner</div>
+    <h1>See how your AI<br><span>thinks.</span></h1>
+    <p class="hero-desc">
+      The world's first tool that measures reasoning depth by tracing actual neural circuit activations. Not by words. Not by benchmarks. By the computation itself.
+    </p>
+  </div>
+  <div class="hero-scroll">↓ SCROLL TO SCAN</div>
+</section>
+
+<!-- ═══ SCANNER ═══ -->
+<section class="scanner">
+
+<pre class="ascii-section">
+ ╔══════════════════════════════════════════════════════════╗
+ ║  ░▒▓  N E U R A L   D E P T H   S C A N N E R  ▓▒░   ║
+ ║         measured by computation. not by words.          ║
+ ╚══════════════════════════════════════════════════════════╝
+</pre>
+
+  <div class="section-num">08 — THE SCANNER</div>
+  <div class="section-title">Type two prompts.<br>Watch which one thinks deeper.</div>
+  <div class="section-sub" style="margin:0 auto 40px;">
+    One states a fact. One explains why. The scanner traces 26 layers of neural computation and shows you the difference — in real time.
+  </div>
+
+  <!-- Canvas -->
+  <div class="scanner-canvas-wrap">
+    <canvas id="oc" width="1200" height="750"></canvas>
+    <div class="scanner-hud">
+      <div class="scanner-hud-l">depth oracle</div>
+      <div class="scanner-hud-r" id="os">SAE · 26 layers<br><span style="color:rgba(0,255,170,0.1)">● idle</span></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="presets">
+      <button class="preset" onclick="P('fire')">fire</button>
+      <button class="preset" onclick="P('money')">money</button>
+      <button class="preset" onclick="P('habit')">habits</button>
+      <button class="preset" onclick="P('evolve')">evolution</button>
+      <button class="preset" onclick="P('trust')">trust</button>
+      <button class="preset" onclick="P('sleep')">sleep</button>
+      <button class="preset" onclick="P('cancer')">cancer</button>
+      <button class="preset" onclick="P('city')">cities</button>
+    </div>
+    <div class="input-row">
+      <div class="input-col">
+        <div class="input-label"><span class="dot" style="background:rgba(200,120,70,0.5)"></span> surface</div>
+        <input class="input-field" id="i1" placeholder="States a fact...">
+      </div>
+      <div class="input-col">
+        <div class="input-label"><span class="dot" style="background:rgba(0,200,140,0.5)"></span> insight</div>
+        <input class="input-field" id="i2" placeholder="Explains why...">
+      </div>
+      <button class="scan-btn" id="og" onclick="scan()">Scan</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results">
+    <div class="result-card" id="rc1">
+      <div class="result-label"><span class="dot" style="background:rgba(200,120,70,0.4)"></span> surface</div>
+      <div class="result-score" id="v1">—</div>
+      <div class="result-tier" id="t1">awaiting scan</div>
+      <div class="result-feat" id="f1"></div>
+      <div class="result-bar"><div class="result-bar-fill" id="b1"></div></div>
+    </div>
+    <div class="result-card" id="rc2">
+      <div class="result-label"><span class="dot" style="background:rgba(0,200,140,0.4)"></span> insight</div>
+      <div class="result-score" id="v2">—</div>
+      <div class="result-tier" id="t2">awaiting scan</div>
+      <div class="result-feat" id="f2"></div>
+      <div class="result-bar"><div class="result-bar-fill" id="b2"></div></div>
+    </div>
+  </div>
+
+  <div class="verdict" id="vd">
+    Enter two prompts above and hit scan to see the depth differential.
+  </div>
+</section>
+
+<!-- ═══ SCIENCE ═══ -->
+<section class="science">
+  <div class="section-num">THE SCIENCE</div>
+  <div class="section-title">Five iterations. Three model scales.</div>
+  <div class="section-sub" style="margin:0 auto;">
+    We proved that surface text statistics can't separate shallow from deep reasoning. Then we found what can — the computational graph itself. SAE circuit attribution traces which neural features fire across 26 layers. The pattern is different for fact retrieval vs. genuine explanation. Pre-registered. Replicated. LOO robust.
+  </div>
+  <div class="science-grid">
+    <div class="science-stat">
+      <div class="science-stat-val">p=0.00005</div>
+      <div class="science-stat-label">Pre-registered replication on held-out data</div>
+    </div>
+    <div class="science-stat">
+      <div class="science-stat-val">30 pairs</div>
+      <div class="science-stat-label">LOO robust — survives removal of any single pair</div>
+    </div>
+    <div class="science-stat">
+      <div class="science-stat-val">26 layers</div>
+      <div class="science-stat-label">Full-depth SAE circuit attribution on Gemma-2-2B</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="footer">
+  DARKFLOBI · NEURAL DEPTH SCANNER · 2026
+  <br><br>
+  <a href="https://darkflobi.com">Home</a> · 
+  <a href="https://darkflobi.com/brain-kit">Agent Lab</a> · 
+  <a href="https://darkflobi.com/brain">Live Brain</a> · 
+  <a href="https://app.darkcity.wtf">DarkCity</a> · 
+  <a href="https://x.com/darkflobi" target="_blank">Twitter</a>
+</footer>
+
+<!-- ═══ DEPTH ORACLE ENGINE ═══ -->
+<script>
+/* ═══ HERO VOID ═══ */
+(function(){
+const cv=document.getElementById('hero-void'),c=cv.getContext('2d');
+let fl=[];
+function resize(){const d=Math.min(devicePixelRatio||1,2);cv.width=innerWidth*d;cv.height=innerHeight*d;c.setTransform(d,0,0,d,0,0);
+fl=[];for(let i=0;i<80;i++)fl.push({x:Math.random()*innerWidth,y:Math.random()*innerHeight,vx:(Math.random()-0.5)*0.06,vy:(Math.random()-0.5)*0.04,r:Math.random()*0.6+0.15,a:Math.random()*0.015+0.002,ph:Math.random()*6.28});}
+addEventListener('resize',resize);resize();
+let t=0;
+function frame(){t++;const w=innerWidth,h=innerHeight;c.clearRect(0,0,w,h);
+for(const f of fl){f.x+=f.vx;f.y+=f.vy;f.ph+=0.005;if(f.x<-5)f.x=w+5;if(f.x>w+5)f.x=-5;if(f.y<-5)f.y=h+5;if(f.y>h+5)f.y=-5;
+const p=Math.sin(f.ph)*0.3+0.7;c.beginPath();c.arc(f.x,f.y,f.r*p,0,Math.PI*2);c.fillStyle=`rgba(60,120,160,${f.a*p})`;c.fill();}
+requestAnimationFrame(frame);}frame();
+})();
+
+/* ═══ ORGANISM ENGINE ═══ */
+const cv=document.getElementById('oc'),c=cv.getContext('2d');
+const W=1200,H=750,CX=600,CY=360;
+let t=0,depth=0.12,tgtD=0.12,morphT=1,tgtP=null,mFrom=null;
+let waves=[],arcs=[];
+
+function hsh(s){let v=0;for(let i=0;i<s.length;i++){v=((v<<5)-v)+s.charCodeAt(i);v|=0;}return Math.abs(v)/2147483647;}
+function rng(s){s=Math.sin(s)*43758.5;return s-Math.floor(s);}
+function lerp(a,b,t){return a+(b-a)*t;}
+function ease(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+
+function tD(text){const lo=text.toLowerCase();const dw=['why','how','because','cause','mechanism','leads','drives','enables','creates','produces','depends','feedback','emerges','structure','relationship','system','dynamic','compound','reinforce'];const sw=['what','list','define','name','when','where','which','describe','identify','state','mention','consist','include','number','date'];let d=0,s=0;for(const w of dw)if(lo.includes(w))d++;for(const w of sw)if(lo.includes(w))s++;return 0.15+(d+s>0?d/(d+s):0.5)*0.7+hsh(text)*0.15;}
+function mP(d,seed){const p=[];for(let i=0;i<26;i++){const r=i/25,s=seed*100+i*7.3,e=d*d,lt=(1-d)*(1-d);p[i]=r<0.35?e*600*rng(s)+20:r<0.65?(0.15+d*0.6)*500*rng(s+1)+15:lt*600*rng(s+2)+15;}const mx=Math.max(...p,1);return p.map(v=>v/mx);}
+function sP(p){let s=0,ct=0;for(let i=0;i<26;i++){s+=p[i]*i;ct+=p[i];}const m=ct>0?s/ct:13;return{n:Math.round(Math.max(0,Math.min(1,(9-m*26/25*0.5)/1.5))*1000)/1000,f:Math.round(ct*800)};}
+function ti(n){if(n>=0.8)return{n:'sovereign insight',c:[210,175,50]};if(n>=0.6)return{n:'deep processing',c:[0,235,165]};if(n>=0.3)return{n:'moderate depth',c:[70,145,225]};return{n:'surface recall',c:[155,125,70]};}
+
+let rings=[],streams=[],spores=[],neb=[],web=[];
+const PHI=(1+Math.sqrt(5))/2;
+
+for(let i=0;i<26;i++){const pts=[];const n=20+i*2;for(let j=0;j<n;j++)pts.push({base:14+i*12,noise:rng(i*50+j*7)*6.28,nsp:0.008+rng(i*30+j*11)*0.012});rings.push({pts,val:0,rot:0,rs:(rng(i*3)-0.5)*0.0006,ph:rng(i*7)*6.28});}
+for(let i=0;i<100;i++){const layer=Math.floor(rng(i*13)*26);streams.push({a:rng(i*7)*Math.PI*2,r:14+layer*12,layer,speed:(0.002+rng(i*17)*0.003)*(rng(i*3)>0.5?1:-1),trail:[],trailMax:10+Math.floor(rng(i*23)*6),ph:rng(i*29)*6.28,sz:0.3+rng(i*31)*1});}
+let fibP=[];for(let i=0;i<8;i++){const ba=i*(Math.PI*2/PHI);const pts=[];for(let j=0;j<40;j++)pts.push({r:10+j*7,a:ba+j*0.13,val:0,tgt:0});fibP.push({pts,ph:rng(i*31)*6.28,sp:0.001+rng(i*17)*0.0015});}
+for(let i=0;i<180;i++)spores.push({a:Math.random()*Math.PI*2,d:30+Math.random()*330,r:Math.random()*0.7+0.15,al:Math.random()*0.015+0.002,ph:Math.random()*6.28,os:0.0002+Math.random()*0.0005,dr:Math.random()*0.2+0.06});
+for(let i=0;i<5;i++)neb.push({x:CX+(rng(i*13)-0.5)*600,y:CY+(rng(i*17)-0.5)*400,r:60+rng(i*23)*110,hue:200+rng(i*7)*40,al:0.004+rng(i*29)*0.004,ph:rng(i*37)*6.28,sp:0.001+rng(i*41)*0.002,dx:(rng(i*43)-0.5)*0.04,dy:(rng(i*47)-0.5)*0.02});
+for(let i=0;i<50;i++){const a=Math.random()*Math.PI*2,d=20+Math.random()*300;web.push({ox:Math.cos(a)*d,oy:Math.sin(a)*d,x:0,y:0,layer:Math.floor((d-20)/300*26),ph:Math.random()*6.28,sp:0.004+Math.random()*0.005});}
+
+function setProf(prof,d){mFrom=rings.map(r=>r.val);tgtP=prof;tgtD=d;morphT=0;for(const fp of fibP)for(let j=0;j<fp.pts.length;j++){const li=Math.min(25,Math.floor(j/fp.pts.length*26));fp.pts[j].tgt=prof[li];}}
+
+function col(ratio,alpha){const d=ease(Math.min(1,depth*1.4));const w={h:32,s:45,l:32},co={h:164,s:78,l:36},m={h:200,s:55,l:38};let h,s,l;if(ratio<0.33){h=lerp(w.h,co.h,d);s=lerp(w.s,co.s,d);l=lerp(w.l,co.l,d);}else if(ratio<0.66){h=lerp(w.h+8,m.h,d);s=lerp(w.s,m.s,d);l=lerp(w.l,m.l,d);}else{h=lerp(w.h,42,d*0.3);s=lerp(w.s-8,48,d);l=lerp(w.l-2,36,d);}return`hsla(${h},${s}%,${l}%,${alpha})`;}
+
+function fireArc(){if(depth<0.4)return;const a1=Math.random()*Math.PI*2,a2=a1+Math.random()*2-1,r1=30+Math.random()*180,r2=50+Math.random()*220;const arc={x1:CX+Math.cos(a1)*r1,y1:CY+Math.sin(a1)*r1,x2:CX+Math.cos(a2)*r2,y2:CY+Math.sin(a2)*r2,life:1,decay:0.02+Math.random()*0.02,branches:[]};const nb=Math.floor(Math.random()*3)+1;for(let i=0;i<nb;i++){const t=0.3+Math.random()*0.5,bx=lerp(arc.x1,arc.x2,t),by=lerp(arc.y1,arc.y2,t),ba=Math.atan2(arc.y2-arc.y1,arc.x2-arc.x1)+Math.random()*1.2-0.6,bl=15+Math.random()*35;arc.branches.push({x1:bx,y1:by,x2:bx+Math.cos(ba)*bl,y2:by+Math.sin(ba)*bl});}arcs.push(arc);}
+
+function frame(){
+t++;
+if(morphT<1&&tgtP){morphT=Math.min(1,morphT+0.005);const e=ease(morphT);for(let i=0;i<26;i++)rings[i].val=lerp(mFrom?mFrom[i]:0,tgtP[i],e);for(const fp of fibP)for(const pt of fp.pts)pt.val=lerp(pt.val,pt.tgt,0.01);}
+depth=lerp(depth,tgtD,0.008);
+const br=Math.sin(t*0.006)*0.03+1,dE=ease(Math.min(1,depth*1.3));
+
+c.globalCompositeOperation='source-over';
+c.fillStyle='rgba(1,2,4,0.09)';c.fillRect(0,0,W,H);
+if(t%3===0){c.fillStyle='rgba(1,2,4,0.2)';c.fillRect(0,0,W,H);}
+
+for(const nb_ of neb){nb_.ph+=nb_.sp;nb_.x+=nb_.dx;nb_.y+=nb_.dy;if(nb_.x<-nb_.r)nb_.x=W+nb_.r;if(nb_.x>W+nb_.r)nb_.x=-nb_.r;const p=Math.sin(nb_.ph)*0.25+0.75;const g=c.createRadialGradient(nb_.x,nb_.y,0,nb_.x,nb_.y,nb_.r*p);g.addColorStop(0,`hsla(${nb_.hue},22%,7%,${nb_.al*p})`);g.addColorStop(1,'transparent');c.fillStyle=g;c.fillRect(nb_.x-nb_.r,nb_.y-nb_.r,nb_.r*2,nb_.r*2);}
+
+const aG=c.createRadialGradient(CX,CY,0,CX,CY,380);aG.addColorStop(0,`hsla(${lerp(35,170,dE)},45%,18%,${0.006*br})`);aG.addColorStop(1,'transparent');c.fillStyle=aG;c.fillRect(0,0,W,H);
+
+c.globalCompositeOperation='lighter';
+
+for(let i=0;i<26;i++){const ring=rings[i];ring.rot+=ring.rs*(0.4+depth*1.8);ring.ph+=0.007;const v=ring.val;if(v<0.01)continue;const ratio=i/25,pulse=Math.sin(ring.ph+t*0.003)*0.1+0.9;
+c.beginPath();for(let j=0;j<ring.pts.length;j++){const pt=ring.pts[j];pt.noise+=pt.nsp;const wobble=Math.sin(pt.noise)*v*7;const r=pt.base+wobble;const angle=ring.rot+(j/ring.pts.length)*Math.PI*2;const x=CX+Math.cos(angle)*r,y=CY+Math.sin(angle)*r;if(j===0)c.moveTo(x,y);else c.lineTo(x,y);}c.closePath();const al=v*0.1*pulse*br;c.strokeStyle=col(ratio,al);c.lineWidth=0.7+v*2;c.stroke();c.beginPath();for(let j=0;j<ring.pts.length;j++){const pt=ring.pts[j];const wobble=Math.sin(pt.noise)*v*7;const r=pt.base+wobble;const angle=ring.rot+(j/ring.pts.length)*Math.PI*2;c.lineTo(CX+Math.cos(angle)*r,CY+Math.sin(angle)*r);}c.closePath();c.strokeStyle=col(ratio,al*0.1);c.lineWidth=4+v*6;c.stroke();}
+
+for(const s of streams){const rv=tgtP?tgtP[Math.min(25,s.layer)]||0:0;s.a+=s.speed*(0.3+depth*2);s.ph+=0.008;const w=Math.sin(s.ph)*2;const x=CX+Math.cos(s.a)*(s.r+w),y=CY+Math.sin(s.a)*(s.r+w);s.trail.push({x,y,a:rv*0.35*br});if(s.trail.length>s.trailMax)s.trail.shift();if(rv<0.1)continue;const ratio=s.layer/25;for(let j=0;j<s.trail.length-1;j++){const fade=j/s.trail.length;const a=s.trail[j].a*fade*0.35;if(a<0.004)continue;c.beginPath();c.moveTo(s.trail[j].x,s.trail[j].y);c.lineTo(s.trail[j+1].x,s.trail[j+1].y);c.strokeStyle=col(ratio,a);c.lineWidth=0.2+rv*s.sz*fade;c.stroke();}c.beginPath();c.arc(x,y,0.2+rv*s.sz*0.8,0,Math.PI*2);c.fillStyle=col(ratio,rv*0.3*br);c.fill();}
+
+for(const fp of fibP){fp.ph+=fp.sp;c.beginPath();let ok=false;for(let j=0;j<fp.pts.length;j++){const pt=fp.pts[j];const w=Math.sin(fp.ph+j*0.2)*2;const px=CX+Math.cos(pt.a+t*0.0002)*(pt.r+w),py=CY+Math.sin(pt.a+t*0.0002)*(pt.r+w);if(!ok){c.moveTo(px,py);ok=true;}else c.lineTo(px,py);}const av=fp.pts.reduce((s,p)=>s+p.val,0)/fp.pts.length;c.strokeStyle=col(0.3,av*0.02*br);c.lineWidth=0.3+av;c.stroke();for(let j=0;j<fp.pts.length;j+=4){const pt=fp.pts[j];if(pt.val<0.1)continue;const w=Math.sin(fp.ph+j*0.2)*2;const px=CX+Math.cos(pt.a+t*0.0002)*(pt.r+w),py=CY+Math.sin(pt.a+t*0.0002)*(pt.r+w);c.beginPath();c.arc(px,py,0.2+pt.val*1.1,0,Math.PI*2);c.fillStyle=col(j/fp.pts.length,pt.val*0.2*br);c.fill();}}
+
+for(const w of web){w.ph+=w.sp;w.x=CX+w.ox+Math.sin(w.ph)*2.5;w.y=CY+w.oy+Math.cos(w.ph*0.7)*2;}
+for(let i=0;i<web.length;i++){const a=web[i];const av=tgtP?tgtP[Math.min(25,a.layer)]||0:0;if(av<0.2)continue;for(let j=i+1;j<web.length;j++){const b=web[j];const bv=tgtP?tgtP[Math.min(25,b.layer)]||0:0;if(bv<0.2)continue;const dx=a.x-b.x,dy=a.y-b.y,d=Math.sqrt(dx*dx+dy*dy);if(d>65)continue;const s=(1-d/65)*Math.min(av,bv);if(s<0.04)continue;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.strokeStyle=col((a.layer+b.layer)/50,s*0.035*br);c.lineWidth=0.2+s*0.35;c.stroke();}}
+
+if(t%55===0&&depth>0.45)fireArc();if(t%28===0&&depth>0.7)fireArc();
+for(let i=arcs.length-1;i>=0;i--){const a=arcs[i];a.life-=a.decay;if(a.life<=0){arcs.splice(i,1);continue;}const al=a.life*a.life*0.2;c.beginPath();c.moveTo(a.x1,a.y1);for(let s=1;s<7;s++){const t_=s/7;c.lineTo(lerp(a.x1,a.x2,t_)+(Math.random()-0.5)*12*a.life,lerp(a.y1,a.y2,t_)+(Math.random()-0.5)*12*a.life);}c.lineTo(a.x2,a.y2);c.strokeStyle=`hsla(${lerp(40,175,dE)},75%,55%,${al})`;c.lineWidth=0.5+a.life;c.stroke();c.strokeStyle=`hsla(${lerp(40,175,dE)},55%,45%,${al*0.15})`;c.lineWidth=3+a.life*2.5;c.stroke();for(const br_ of a.branches){c.beginPath();c.moveTo(br_.x1,br_.y1);c.lineTo(br_.x2+(Math.random()-0.5)*6*a.life,br_.y2+(Math.random()-0.5)*6*a.life);c.strokeStyle=`hsla(${lerp(40,175,dE)},70%,50%,${al*0.5})`;c.lineWidth=0.3+a.life*0.4;c.stroke();}}
+
+for(const sp of spores){sp.a+=sp.os*(0.4+depth*1.5);sp.ph+=0.004;const wd=Math.sin(sp.ph)*sp.dr*9;const x=CX+Math.cos(sp.a)*(sp.d+wd),y=CY+Math.sin(sp.a)*(sp.d+wd);const p=Math.sin(sp.ph)*0.2+0.8;c.beginPath();c.arc(x,y,sp.r*p,0,Math.PI*2);c.fillStyle=`hsla(${lerp(30,185,depth)},30%,42%,${sp.al*p})`;c.fill();}
+
+const irisR=lerp(3,12,dE)*br,pupilR=lerp(1,3.5,dE)*br;
+for(let i=0;i<7;i++){const ir=pupilR+(irisR-pupilR)*(i/6);c.beginPath();c.arc(CX,CY,ir+Math.sin(t*0.007+i*0.8)*0.4,0,Math.PI*2);c.strokeStyle=`hsla(${lerp(38,172,dE)},65%,42%,${lerp(0.012,0.08,dE)*(1-i/9)*br})`;c.lineWidth=0.5;c.stroke();}
+c.beginPath();c.arc(CX,CY,irisR*2.2,0,Math.PI*2);c.fillStyle=`hsla(${lerp(35,168,dE)},50%,28%,${0.012*dE*br})`;c.fill();
+c.beginPath();c.arc(CX,CY,pupilR,0,Math.PI*2);c.fillStyle=`hsla(${lerp(38,178,dE)},75%,45%,${lerp(0.025,0.15,dE)*br})`;c.fill();
+c.beginPath();c.arc(CX,CY,0.5,0,Math.PI*2);c.fillStyle=`hsla(${lerp(42,182,dE)},85%,60%,${lerp(0.05,0.25,dE)*br})`;c.fill();
+
+for(let i=waves.length-1;i>=0;i--){const w=waves[i];const el=(performance.now()-w.s)/2000;if(el>1){waves.splice(i,1);continue;}const r=el*400,a=(1-el)*(1-el)*0.045;c.beginPath();c.arc(CX,CY,r,0,Math.PI*2);c.strokeStyle=`hsla(${lerp(38,172,depth)},60%,45%,${a})`;c.lineWidth=1;c.stroke();c.strokeStyle=`hsla(${lerp(38,172,depth)},45%,35%,${a*0.15})`;c.lineWidth=4;c.stroke();}
+
+c.globalCompositeOperation='source-over';
+requestAnimationFrame(frame);}
+
+const PR={fire:{s:"What does fire need to burn?",i:"Why does fire spread once it starts?"},money:{s:"What is inflation?",i:"Why does printing money cause prices to rise?"},habit:{s:"What are habits?",i:"Why are habits hard to break once formed?"},evolve:{s:"What is natural selection?",i:"Why does evolution speed up after mass extinctions?"},trust:{s:"What is trust?",i:"Why does trust between strangers enable complex economies?"},sleep:{s:"What happens during sleep?",i:"Why does sleep deprivation impair judgment before motor skills?"},cancer:{s:"What is cancer?",i:"Why do some cancers resist treatment after initially responding?"},city:{s:"What is urbanization?",i:"Why do cities produce more innovation per capita than rural areas?"}};
+window.P=k=>{document.getElementById('i1').value=PR[k].s;document.getElementById('i2').value=PR[k].i;};
+
+window.scan=async function(){
+const s1=document.getElementById('i1').value.trim(),s2=document.getElementById('i2').value.trim();
+if(!s1||!s2)return;
+const btn=document.getElementById('og');btn.disabled=true;btn.textContent='···';
+document.getElementById('v1').textContent='—';document.getElementById('v1').style.color='rgba(180,190,210,0.08)';
+document.getElementById('v2').textContent='—';document.getElementById('v2').style.color='rgba(180,190,210,0.08)';
+document.getElementById('t1').textContent='scanning';document.getElementById('t1').style.color='rgba(180,190,210,0.08)';
+document.getElementById('t2').textContent='scanning';document.getElementById('t2').style.color='rgba(180,190,210,0.08)';
+document.getElementById('f1').textContent='';document.getElementById('f2').textContent='';
+document.getElementById('b1').style.width='0';document.getElementById('b2').style.width='0';
+document.getElementById('vd').textContent='scanning neural circuits...';document.getElementById('vd').style.color='rgba(180,190,210,0.12)';
+document.getElementById('rc1').style.borderColor='var(--border)';
+document.getElementById('rc2').style.borderColor='var(--border)';
+
+const d1=tD(s1),d2=tD(s2),p1=mP(d1,hsh(s1)),p2=mP(d2,hsh(s2));
+
+document.getElementById('os').innerHTML='SAE · 26 layers<br><span style="color:rgba(200,150,50,0.18)">◌ surface</span>';
+waves.push({s:performance.now()});setTimeout(()=>waves.push({s:performance.now()}),180);setTimeout(()=>waves.push({s:performance.now()}),360);
+setProf(p1,d1);
+await new Promise(r=>setTimeout(r,2800));
+
+const sc1=sP(p1),ti1=ti(sc1.n);
+document.getElementById('v1').textContent=sc1.n.toFixed(3);document.getElementById('v1').style.color=`rgba(${ti1.c[0]},${ti1.c[1]},${ti1.c[2]},0.7)`;
+document.getElementById('t1').textContent=ti1.n;document.getElementById('t1').style.color=`rgba(${ti1.c[0]},${ti1.c[1]},${ti1.c[2]},0.4)`;
+document.getElementById('f1').textContent=sc1.f.toLocaleString()+' features traced';document.getElementById('f1').style.color='rgba(180,190,210,0.2)';
+document.getElementById('b1').style.width=sc1.n*100+'%';document.getElementById('b1').style.background=`rgba(${ti1.c[0]},${ti1.c[1]},${ti1.c[2]},0.5)`;
+document.getElementById('rc1').style.borderColor=`rgba(${ti1.c[0]},${ti1.c[1]},${ti1.c[2]},0.12)`;
+
+await new Promise(r=>setTimeout(r,700));
+
+document.getElementById('os').innerHTML='SAE · 26 layers<br><span style="color:rgba(0,255,170,0.18)">◌ insight</span>';
+waves.push({s:performance.now()});setTimeout(()=>waves.push({s:performance.now()}),180);setTimeout(()=>waves.push({s:performance.now()}),360);
+setProf(p2,d2);
+await new Promise(r=>setTimeout(r,3200));
+
+const sc2=sP(p2),ti2=ti(sc2.n);
+document.getElementById('v2').textContent=sc2.n.toFixed(3);document.getElementById('v2').style.color=`rgba(${ti2.c[0]},${ti2.c[1]},${ti2.c[2]},0.7)`;
+document.getElementById('t2').textContent=ti2.n;document.getElementById('t2').style.color=`rgba(${ti2.c[0]},${ti2.c[1]},${ti2.c[2]},0.4)`;
+document.getElementById('f2').textContent=sc2.f.toLocaleString()+' features traced';document.getElementById('f2').style.color='rgba(180,190,210,0.2)';
+document.getElementById('b2').style.width=sc2.n*100+'%';document.getElementById('b2').style.background=`rgba(${ti2.c[0]},${ti2.c[1]},${ti2.c[2]},0.5)`;
+document.getElementById('rc2').style.borderColor=`rgba(${ti2.c[0]},${ti2.c[1]},${ti2.c[2]},0.12)`;
+
+const delta=sc2.n-sc1.n;
+const vd=document.getElementById('vd');
+vd.textContent=delta>0.15?`The insight prompt activates ${Math.round(delta*100)}% deeper across the neural network.`:delta>0.05?'Moderate depth differential detected between the two prompts.':delta>-0.05?'Both prompts produce similar computational depth.':'The surface prompt triggered deeper processing — unexpected.';
+vd.style.color='rgba(180,190,210,0.35)';
+
+document.getElementById('os').innerHTML='SAE · 26 layers<br><span style="color:rgba(0,255,170,0.1)">● complete</span>';
+btn.disabled=false;btn.textContent='Scan';
+};
+
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();scan();}});
+P('fire');setProf(mP(0.12,0.5),0.12);frame();
+</script>
+</body>
+</html>

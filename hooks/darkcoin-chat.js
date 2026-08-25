@@ -26,7 +26,7 @@ const { TOKEN_MINT_ADDR, TOKEN_DECIMALS, TOKEN_LIVE } = require('../lib/token-co
 const { PublicKey } = require('@solana/web3.js');
 
 const CHAT_MODEL = process.env.CHAT_MODEL_ID || 'claude-haiku-4-5-20251001';
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_API_URL = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages';
 
 // Native fetch-based LLM call (matches npc-brain.js pattern — no extra SDK).
 async function callAnthropic({ system, messages, max_tokens = 400 }) {

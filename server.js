@@ -595,6 +595,23 @@ app.use(cookieParser());
 // Trust the Railway/Cloudflare proxy so express-rate-limit sees real client IPs.
 app.set('trust proxy', 1);
 
+// ─── The classic city — app.darkcity.wtf ────────────────────────────────────
+// The March-era site ("DARKCITY — Mycelium Network", Living Agents, the
+// contract board) served at its historical home. Static pages live in
+// classic/; their /api/* calls fall through this middleware to the live
+// backend, bridged by the classic-compat routes in hooks/classic-compat.js.
+// Also reachable from the main site at /classic for side-by-side use.
+const CLASSIC_DIR = require('path').join(__dirname, 'classic');
+const classicStatic = express.static(CLASSIC_DIR, { extensions: ['html'] });
+app.use((req, res, next) => {
+  if (req.hostname === 'app.darkcity.wtf') return classicStatic(req, res, next);
+  return next();
+});
+app.use('/classic', classicStatic);
+// Data bridge for the classic pages — registered BEFORE the main routes so
+// the classic shapes win on the classic host (and only there).
+require('./hooks/classic-compat').register(app, pool);
+
 // Raise the global limit and skip the read-only public polling endpoints
 // used by /arena, /flow, /chat, /me (any page polling more than once a second
 // would otherwise exhaust the old 100 req/min window in ~30 seconds).

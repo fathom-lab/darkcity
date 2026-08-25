@@ -1,0 +1,793 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARKCITY // CITIZEN DOSSIER</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --void: #050507;
+  --card-bg: #0a0a10;
+  --border: #1a1f2e;
+  --green: #00ff88;
+  --amber: #ffaa00;
+  --gold: #c4a24e;
+  --red: #ff3355;
+  --cyan: #00ccff;
+  --dim: #4a4a5a;
+  --text: #8899aa;
+  --text-bright: #ccdde8;
+  --bone: #d4cfc0;
+  --font-mono: 'Share Tech Mono', 'JetBrains Mono', monospace;
+  --font-display: 'Orbitron', sans-serif;
+}
+body {
+  background: var(--void);
+  color: var(--text);
+  font-family: var(--font-mono);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 128px;
+}
+.scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+}
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.8) 100%);
+}
+
+/* NAV */
+nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(5,5,7,0.95);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+.nav-logo {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 18px;
+  color: var(--green);
+  letter-spacing: 3px;
+  text-decoration: none;
+}
+.nav-links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+.nav-links a {
+  color: var(--text);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+.nav-links a:hover, .nav-links a.active { color: var(--amber); }
+.nav-links a.active { border-bottom: 1px solid var(--amber); padding-bottom: 2px; }
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--green);
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse-dot 2s infinite;
+  margin-left: 4px;
+}
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.nav-live { font-size: 11px; letter-spacing: 2px; color: var(--text); }
+
+/* PAGE */
+.page { position: relative; z-index: 3; }
+
+/* LOADING */
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+}
+.loading-screen .spinner {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--border);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-screen p { color: var(--dim); font-size: 13px; }
+
+/* ERROR */
+.error-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+}
+.error-screen h2 {
+  color: var(--red);
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 3px;
+}
+.error-screen p {
+  color: var(--dim);
+  max-width: 400px;
+  text-align: center;
+  line-height: 1.6;
+}
+.error-screen a {
+  color: var(--green);
+  text-decoration: none;
+  border: 1px solid var(--green);
+  padding: 8px 20px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+.error-screen a:hover { background: var(--green); color: var(--void); }
+
+/* DOSSIER */
+.dossier {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+}
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  transition: color 0.2s;
+}
+.back-link:hover { color: var(--green); }
+.back-link::before { content: '\2190'; }
+
+/* HERO PORTRAIT */
+.hero-portrait-wrap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 24px;
+  background: var(--void);
+  padding: 24px 0;
+}
+.hero-portrait-wrap canvas { display: block; border-radius: 6px; }
+.hero-portrait-wrap .heartbeat-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--green);
+  opacity: 0;
+  animation: heartbeat 2s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes heartbeat {
+  0% { opacity: 0.5; transform: scale(0.98); }
+  50% { opacity: 0; transform: scale(1.04); }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+.hero-portrait-wrap .thought-overlay {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  right: 16px;
+  font-size: 13px;
+  color: var(--green);
+  opacity: 0.8;
+  z-index: 2;
+  text-shadow: 0 0 8px rgba(0,255,136,0.3);
+}
+.hero-portrait-wrap .thought-overlay::before { content: '> '; opacity: 0.5; }
+.hero-portrait-wrap .agent-label {
+  position: absolute;
+  bottom: 36px;
+  left: 16px;
+  z-index: 2;
+}
+.hero-portrait-wrap .agent-label .name {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 28px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 20px rgba(0,0,0,0.8);
+}
+
+/* ORGANISM OVERLAY */
+.organism-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.organism-overlay canvas { display: block; }
+
+/* DEPTH DISPLAY */
+.depth-display {
+  text-align: center;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-top: none;
+  background: var(--card-bg);
+  margin-top: -24px;
+  margin-bottom: 24px;
+}
+.depth-display .depth-label {
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.3);
+  margin-bottom: 4px;
+}
+.depth-display .depth-value {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.depth-display .depth-tier {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+/* IDENTITY BAR */
+.identity-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.identity-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.agent-archetype {
+  font-size: 11px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.status-badge.online { border-color: var(--green); color: var(--green); }
+.status-badge.offline { border-color: var(--dim); color: var(--dim); }
+.status-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.identity-right { font-size: 12px; color: var(--dim); }
+.identity-right span { color: var(--cyan); }
+
+/* STATS GRID */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 20px 0 28px;
+}
+.stat-cell {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 16px;
+  text-align: center;
+}
+.stat-cell .label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+  margin-bottom: 8px;
+  display: block;
+}
+.stat-cell .value {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.stat-cell .value.credits { color: var(--green); }
+.stat-cell .value.respect { color: var(--amber); }
+.stat-cell .value.experience { color: var(--cyan); }
+.stat-cell .value.rank { color: var(--text-bright); }
+
+/* SECTIONS */
+.section { margin-bottom: 24px; }
+.section-header {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text-bright);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.thought-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 16px;
+  min-height: 48px;
+}
+.thought-section::before { content: '>'; color: var(--green); margin-right: 8px; opacity: 0.5; }
+.thought-section .thought-text {
+  color: var(--green);
+  opacity: 0.8;
+  font-size: 13px;
+  transition: opacity 0.4s;
+  text-shadow: 0 0 6px rgba(0,255,136,0.2);
+}
+.backstory {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 16px 20px;
+  line-height: 1.8;
+  font-size: 13px;
+  color: var(--bone);
+  font-style: italic;
+}
+
+/* ACTIONS LIST */
+.actions-list { list-style: none; }
+.actions-list li {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.actions-list .action-type {
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.actions-list .action-desc { flex: 1; color: var(--text); line-height: 1.5; }
+.actions-list .action-time { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.empty-state { color: var(--dim); font-size: 12px; font-style: italic; padding: 12px 0; }
+
+/* FOOTER */
+footer {
+  text-align: center;
+  padding: 24px;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 600px) {
+  nav { padding: 12px 16px; }
+  .nav-links { gap: 14px; }
+  .nav-links a { font-size: 11px; letter-spacing: 1px; }
+  .hero-portrait-wrap { padding: 16px 0; }
+  .hero-portrait-wrap .agent-label .name { font-size: 22px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .dossier { padding: 20px 16px 40px; }
+}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<nav>
+  <a href="/" class="nav-logo">DARKCITY</a>
+  <div class="nav-links">
+    <a href="/map">MAP</a>
+    <a href="/citizens">CITIZENS</a>
+    <a href="/leaderboard">DEPTH</a>
+    <a href="/scanner">SCANNER</a>
+    <span class="status-dot"></span>
+    <span class="nav-live">LIVE</span>
+  </div>
+</nav>
+
+<div class="page">
+  <div id="app"></div>
+</div>
+
+<footer>DARKCITY - CITIZEN DOSSIER - ALL RIGHTS OBSERVED</footer>
+
+<script src="/public/profile-organism.js"></script>
+<script type="module">
+// DARKCITY Citizen Dossier Page
+// Parses /citizen/NAME from URL path
+
+// Try to import portrait engine
+let initPortrait, renderPortrait, getAccentColor;
+let portraitEngineAvailable = false;
+
+try {
+  const engine = await import('/lib/portraitEngine.js');
+  initPortrait = engine.initPortrait;
+  renderPortrait = engine.renderPortrait;
+  getAccentColor = engine.getAccentColor;
+  portraitEngineAvailable = true;
+  console.log('[CITIZEN] Portrait engine loaded');
+} catch (e) {
+  console.warn('[CITIZEN] Portrait engine not available:', e.message);
+}
+
+const app = document.getElementById('app');
+
+// District short codes
+const DISTRICT_SHORT = {
+  'financial-district': 'FIN',
+  'lower-east-side': 'LES',
+  'brooklyn-heights': 'BKH',
+  'warehouse-district': 'WHS',
+  'chinatown': 'CHI',
+  'red-hook': 'RHK',
+  'harlem': 'HAR',
+  'battery-park': 'BAT',
+  'tribeca': 'TRI',
+  'civic-center': 'CIV',
+  'soho': 'SOH',
+  'chelsea': 'CHL',
+  'gramercy': 'GRM',
+  'midtown': 'MID'
+};
+
+// Thought pools by archetype
+const thoughts = {
+  predator: ['scanning perimeter for vulnerabilities...', 'calculating optimal strike vector...', 'target acquisition in progress...'],
+  operative: ['executing mission parameters...', 'field reconnaissance active...', 'secure channel established...'],
+  builder: ['optimizing resource allocation...', 'structural integrity: nominal...', 'compiling infrastructure blueprint...'],
+  ghost: ['signal masked... listening...', 'routing through shadow network...', 'decrypting intercepted traffic...'],
+  broker: ['evaluating market vectors...', 'arbitrage opportunity detected...', 'negotiating asset exchange...'],
+  diplomat: ['analyzing social graph tensions...', 'composing alliance proposal...', 'mediating factional dispute...'],
+  oracle: ['processing probability matrices...', 'futures divergence detected...', 'pattern recognition: deep scan...'],
+  default: ['processing city signals...', 'analyzing district activity...', 'monitoring network traffic...']
+};
+
+const STYLE_TO_ARCHETYPE = {
+  aggressive: 'predator',
+  diplomatic: 'diplomat',
+  analytical: 'oracle',
+  cautious: 'ghost',
+  friendly: 'diplomat',
+  mysterious: 'ghost',
+  bold: 'operative',
+  strategic: 'broker'
+};
+
+// Parse citizen name from URL path: /citizen/MARBLE
+const pathParts = window.location.pathname.split('/').filter(Boolean);
+let citizenSlug = null;
+if (pathParts[0] === 'citizen' && pathParts[1]) {
+  citizenSlug = decodeURIComponent(pathParts[1]);
+}
+
+if (!citizenSlug) {
+  app.innerHTML = `
+    <div class="error-screen">
+      <h2>NO TARGET</h2>
+      <p>No citizen specified in the dossier request.</p>
+      <a href="/citizens">Back to Citizens</a>
+    </div>`;
+} else {
+  app.innerHTML = `
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <p>> accessing dossier: ${citizenSlug}...</p>
+    </div>`;
+  loadDossier();
+}
+
+// Helpers
+function getThoughts(arch) {
+  return thoughts[(arch || '').toLowerCase()] || thoughts['default'];
+}
+
+function normalizeCitizen(citizen) {
+  if (!citizen) return null;
+  const districtShort = DISTRICT_SHORT[citizen.district_id] || (citizen.district_id || 'FIN').toUpperCase().slice(0, 3);
+  return {
+    name: citizen.display_name || citizen.name || 'UNKNOWN',
+    credits: citizen.credits || 0,
+    reputation: citizen.reputation || 0,
+    xp: citizen.xp || 0,
+    district: districtShort,
+    online: citizen.online === true || citizen.status === 'online',
+  };
+}
+
+function getRankColor(rank) {
+  if (typeof rank === 'string') {
+    const r = rank.toLowerCase();
+    if (r === 'lich_king' || r === 'sovereign' || r === 'legend') return '#ffd700';
+    if (r === 'elite' || r === 'veteran') return '#ff6600';
+    if (r === 'established' || r === 'resident') return '#00ff88';
+    if (r === 'newcomer') return '#4a4a5a';
+    return '#00ccff';
+  }
+  return '#00ccff';
+}
+
+function timeAgo(d) {
+  if (!d) return '';
+  const diff = Date.now() - new Date(d).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function startThoughts(heroEl, sectionEl, arch) {
+  const pool = getThoughts(arch);
+  let idx = 0;
+  function cycle() {
+    if (heroEl) heroEl.style.opacity = '0';
+    if (sectionEl) sectionEl.style.opacity = '0';
+    setTimeout(function() {
+      const text = pool[idx % pool.length];
+      if (heroEl) { heroEl.textContent = text; heroEl.style.opacity = '0.8'; }
+      if (sectionEl) { sectionEl.textContent = text; sectionEl.style.opacity = '0.8'; }
+      idx++;
+    }, 400);
+  }
+  cycle();
+  setInterval(cycle, 2500);
+}
+
+// Portrait rendering
+function initHeroPortrait(canvas, normalized) {
+  if (!canvas || !normalized) return;
+  const maxSize = Math.min(400, window.innerWidth - 48);
+  const size = maxSize;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.scale(dpr, dpr);
+  const state = initPortrait(normalized);
+  const startTime = performance.now();
+  function render(now) {
+    const t = (now - startTime) / 1000;
+    renderPortrait(ctx, state, size, t);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+}
+
+// Main data load
+async function loadDossier() {
+  try {
+    const res = await fetch('/api/citizens');
+    if (!res.ok) throw new Error('API returned ' + res.status);
+    const data = await res.json();
+    const citizens = data.citizens || data;
+
+    // Find matching citizen (case-insensitive)
+    let agent = null;
+    for (let i = 0; i < citizens.length; i++) {
+      const n = (citizens[i].display_name || citizens[i].name || '').toLowerCase();
+      if (n === citizenSlug.toLowerCase()) {
+        agent = citizens[i];
+        break;
+      }
+    }
+
+    if (!agent) {
+      app.innerHTML = `
+        <div class="error-screen">
+          <h2>CITIZEN NOT FOUND</h2>
+          <p>No dossier exists for "${citizenSlug}". This citizen may have been decommissioned or never existed.</p>
+          <a href="/citizens">Back to Citizens</a>
+        </div>`;
+      return;
+    }
+
+    // Extract data
+    const name = agent.display_name || agent.name || citizenSlug;
+    const rawType = agent.specialization || agent.chat_style || '';
+    const archetype = STYLE_TO_ARCHETYPE[rawType.toLowerCase()] || rawType.toLowerCase() || 'operative';
+    const isOnline = agent.online || false;
+    const districtSlug = agent.district_id || '';
+    const district = DISTRICT_SHORT[districtSlug] || districtSlug || 'Unknown';
+    const credits = agent.credits != null ? agent.credits : 0;
+    const respect = agent.reputation || 0;
+    const experience = agent.xp != null ? agent.xp : 0;
+    const backstory = agent.bio || null;
+    const rank = agent.rank || '-';
+    const builds = agent.builds || 0;
+    const rankColor = getRankColor(rank);
+    const normalized = normalizeCitizen(agent);
+    const accentColor = (portraitEngineAvailable && normalized) ? getAccentColor(normalized) : 'transparent';
+
+    // Render dossier
+    app.innerHTML = `
+      <div class="dossier">
+        <a href="/citizens" class="back-link">Back to Citizens</a>
+
+        <div class="hero-portrait-wrap" style="box-shadow: ${isOnline ? '0 0 30px ' + accentColor + '15, inset 0 0 60px ' + accentColor + '08' : 'none'};">
+          <canvas id="heroPortrait"></canvas>
+          <div id="organismOverlay" class="organism-overlay"></div>
+          ${isOnline ? '<div class="heartbeat-ring"></div>' : ''}
+          <div class="agent-label"><div class="name" style="color:${rankColor}">${name}</div></div>
+          <div class="thought-overlay" id="heroThought"></div>
+        </div>
+
+        <div id="depthDisplay" class="depth-display" style="display:none">
+          <div class="depth-label">Neural Depth</div>
+          <div class="depth-value" id="depthValue">---</div>
+          <div class="depth-tier" id="depthTier">scanning...</div>
+        </div>
+
+        <div class="identity-bar">
+          <div class="identity-left">
+            <span class="agent-archetype">${archetype.toUpperCase()}</span>
+            <span class="status-badge ${isOnline ? 'online' : 'offline'}">
+              <span class="dot"></span> ${isOnline ? 'ONLINE' : 'OFFLINE'}
+            </span>
+          </div>
+          <div class="identity-right">District: <span>${district}</span></div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-cell">
+            <div class="label">Credits</div>
+            <div class="value credits">$${credits.toLocaleString()}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="label">Reputation</div>
+            <div class="value respect">${respect.toLocaleString()}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="label">Experience</div>
+            <div class="value experience">${experience.toLocaleString()}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="label">Rank</div>
+            <div class="value rank" style="color:${rankColor}">${rank}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="label">Builds</div>
+            <div class="value">${builds}</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">Live Thought Stream</div>
+          <div class="thought-section"><span class="thought-text" id="sectionThought"></span></div>
+        </div>
+
+        ${backstory ? `
+        <div class="section">
+          <div class="section-header">Bio</div>
+          <div class="backstory">${backstory}</div>
+        </div>
+        ` : ''}
+      </div>`;
+
+    // Init portrait engine on hero canvas
+    const heroCanvas = document.getElementById('heroPortrait');
+    if (heroCanvas && normalized && portraitEngineAvailable) {
+      initHeroPortrait(heroCanvas, normalized);
+    }
+
+    // Start thought streams
+    setTimeout(function() {
+      startThoughts(
+        document.getElementById('heroThought'),
+        document.getElementById('sectionThought'),
+        archetype
+      );
+    }, 100);
+
+    // Init neural organism overlay
+    if (typeof ProfileOrganism !== 'undefined') {
+      ProfileOrganism.init('organismOverlay', name, {
+        apiUrl: ''
+      });
+    }
+
+    // Fetch depth score
+    fetch(`/api/depth/citizen/${encodeURIComponent(name)}`)
+      .then(r => r.json())
+      .then(depth => {
+        const score = parseFloat(depth.mean_depth || 0);
+        if (score <= 0) return;
+        const depthEl = document.getElementById('depthDisplay');
+        const valueEl = document.getElementById('depthValue');
+        const tierEl = document.getElementById('depthTier');
+        if (!depthEl) return;
+
+        let tierName, tierColor;
+        if (score >= 0.8) { tierName = 'SOVEREIGN INSIGHT'; tierColor = '#ba7517'; }
+        else if (score >= 0.6) { tierName = 'DEEP PROCESSING'; tierColor = '#00ffb4'; }
+        else if (score >= 0.3) { tierName = 'MODERATE DEPTH'; tierColor = '#378add'; }
+        else { tierName = 'SURFACE RECALL'; tierColor = '#888780'; }
+
+        valueEl.textContent = score.toFixed(3);
+        valueEl.style.color = tierColor;
+        tierEl.textContent = tierName;
+        tierEl.style.color = tierColor;
+        depthEl.style.display = '';
+      })
+      .catch(() => {});
+
+    document.title = name + ' - DARKCITY DOSSIER';
+
+  } catch (err) {
+    console.error('[CITIZEN] Load error:', err);
+    app.innerHTML = `
+      <div class="error-screen">
+        <h2>NETWORK ERROR</h2>
+        <p>Failed to retrieve dossier data.</p>
+        <p style="font-size:11px;color:var(--red)">${err.message}</p>
+        <a href="/citizens">Back to Citizens</a>
+      </div>`;
+  }
+}
+</script>
+</body>
+</html>
