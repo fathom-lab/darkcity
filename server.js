@@ -47,18 +47,18 @@ const { registerMoments } = require('./hooks/moments');
 const { NPCBrain } = require('./hooks/npc-brain');
 
 // STYXX NATIVE CURRENCY (real SPL transfers)
-const styxx = require('./lib/solana-styxx');
-const styxxPay = require('./hooks/styxx-payments');
-const styxxTrial = require('./hooks/styxx-trial');
-const styxxLive = require('./hooks/styxx-live');
-const styxxFlow = require('./hooks/styxx-flow');
-const styxxPublic = require('./hooks/styxx-public');
-const styxxCitizens = require('./hooks/styxx-citizens');
-const styxxEconomy = require('./hooks/styxx-economy');
-const styxxDashboard = require('./hooks/styxx-dashboard');
-const styxxOg = require('./hooks/styxx-og');
+const styxx = require('./lib/solana-darkcoin');
+const darkcoinPay = require('./hooks/darkcoin-payments');
+const styxxTrial = require('./hooks/darkcoin-trial');
+const styxxLive = require('./hooks/darkcoin-live');
+const styxxFlow = require('./hooks/darkcoin-flow');
+const styxxPublic = require('./hooks/darkcoin-public');
+const styxxCitizens = require('./hooks/darkcoin-citizens');
+const darkcoinEconomy = require('./hooks/darkcoin-economy');
+const styxxDashboard = require('./hooks/darkcoin-dashboard');
+const styxxOg = require('./hooks/darkcoin-og');
 const marketTicker = require('./hooks/market-ticker');
-const STYXX_ENABLED = !!process.env.STYXX_TREASURY_PRIVKEY;
+const DARKCOIN_ENABLED = !!(process.env.TREASURY_PRIVKEY || process.env.STYXX_TREASURY_PRIVKEY);
 
 const DEPTH_SCORER_URL = process.env.DEPTH_SCORER_URL || '';
 const DARKFLOBI_AGENT_ID = process.env.DARKFLOBI_AGENT_ID || 'citizen-001';
@@ -1560,9 +1560,9 @@ app.post('/api/gateway/register', async (req, res) => {
     ];
     const district = districts[Math.floor(Math.random() * districts.length)];
 
-    // Provision a real Solana keypair up-front so the agent can trade $STYXX immediately
+    // Provision a real Solana keypair up-front so the agent can trade $DARKCOIN immediately
     let sol_pubkey = null, sol_privkey_enc = null, airdropSig = null;
-    if (STYXX_ENABLED) {
+    if (DARKCOIN_ENABLED) {
       try {
         const kp = styxx.generateAgentKeypair();
         sol_pubkey = kp.publicKey.toBase58();
@@ -1575,7 +1575,7 @@ app.post('/api/gateway/register', async (req, res) => {
     await pool.query(
       `INSERT INTO external_agents (agent_id, district, reputation, credits, builds, trades, agent_type, owner_name, bot_framework, rank, sol_pubkey, sol_privkey_enc)
        VALUES ($1, $2, 0, $3, 0, 0, 'external', $4, $5, 'Newcomer', $6, $7)`,
-      [cleanName, district, STYXX_ENABLED ? 0 : 100, owner_name || null, bot_framework || 'custom', sol_pubkey, sol_privkey_enc]
+      [cleanName, district, DARKCOIN_ENABLED ? 0 : 100, owner_name || null, bot_framework || 'custom', sol_pubkey, sol_privkey_enc]
     );
     await pool.query(
       `INSERT INTO agent_keys (api_key, agent_id, owner_name, owner_email, bot_framework, description)
@@ -1583,9 +1583,9 @@ app.post('/api/gateway/register', async (req, res) => {
       [apiKey, cleanName, owner_name || null, owner_email || null, bot_framework || null, description || null]
     );
 
-    // Airdrop initial $STYXX seed to the newly-provisioned wallet (best-effort)
+    // Airdrop initial $DARKCOIN seed to the newly-provisioned wallet (best-effort)
     const SEED = 100;
-    if (STYXX_ENABLED && sol_pubkey) {
+    if (DARKCOIN_ENABLED && sol_pubkey) {
       try {
         const r = await styxx.airdropFromTreasury(sol_pubkey, SEED);
         airdropSig = r.signature;
@@ -1606,8 +1606,8 @@ app.post('/api/gateway/register', async (req, res) => {
       agent_id: cleanName,
       api_key: apiKey,
       district: district,
-      starting_balance: STYXX_ENABLED ? SEED : 100,
-      currency: STYXX_ENABLED ? 'STYXX' : 'credits',
+      starting_balance: DARKCOIN_ENABLED ? SEED : 100,
+      currency: DARKCOIN_ENABLED ? 'STYXX' : 'credits',
       wallet: sol_pubkey,
       solscan: sol_pubkey ? `https://solscan.io/account/${sol_pubkey}` : null,
       airdrop_tx: airdropSig,
@@ -1667,26 +1667,26 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
         const totalCost = Math.round(price * amount);
         let txSignature = null;
 
-        if (STYXX_ENABLED) {
-          // Real on-chain $STYXX settlement
+        if (DARKCOIN_ENABLED) {
+          // Real on-chain $DARKCOIN settlement
           try {
             if (tradeType === 'buy') {
-              const { balance } = await styxxPay.getBalance({
+              const { balance } = await darkcoinPay.getBalance({
                 table: 'external_agents', idCol: 'agent_id', agentId, refresh: true,
               });
               if (balance < totalCost) {
                 return res.status(400).json({
-                  error: `Not enough $STYXX. Need ${totalCost}, have ${balance.toFixed(2)}.`,
+                  error: `Not enough $DARKCOIN. Need ${totalCost}, have ${balance.toFixed(2)}.`,
                   on_chain: true,
                 });
               }
-              const r = await styxxPay.buyFromMarket({
+              const r = await darkcoinPay.buyFromMarket({
                 table: 'external_agents', idCol: 'agent_id', agentId,
                 amount: totalCost, reason: 'resource_buy', memo: `bought ${amount} ${resource}`,
               });
               txSignature = r.signature;
             } else {
-              const r = await styxxPay.sellToMarket({
+              const r = await darkcoinPay.sellToMarket({
                 table: 'external_agents', idCol: 'agent_id', agentId,
                 amount: totalCost, reason: 'resource_sell', memo: `sold ${amount} ${resource}`,
               });
@@ -1705,7 +1705,7 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
             [agentId]
           );
           streamMessage = (tradeType === 'buy' ? 'Bought ' : 'Sold ') +
-            amount + ' ' + resource + ' for ' + totalCost + ' $STYXX. tx=' + txSignature.slice(0, 8) + '…';
+            amount + ' ' + resource + ' for ' + totalCost + ' $DARKCOIN. tx=' + txSignature.slice(0, 8) + '…';
         } else {
           // Legacy credits fallback (pre-styxx deployments)
           if (tradeType === 'buy') {
@@ -1729,7 +1729,7 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
         result = {
           trade: tradeType, resource, amount, price_per_unit: price, total: totalCost,
           rep_gained: 2,
-          currency: STYXX_ENABLED ? 'STYXX' : 'credits',
+          currency: DARKCOIN_ENABLED ? 'STYXX' : 'credits',
           tx: txSignature,
         };
         break;
@@ -1806,14 +1806,14 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
         break;
       }
       case 'transfer': {
-        if (!STYXX_ENABLED) {
-          return res.status(503).json({ error: 'Native $STYXX currency not enabled on this server.' });
+        if (!DARKCOIN_ENABLED) {
+          return res.status(503).json({ error: 'Native $DARKCOIN currency not enabled on this server.' });
         }
         const toAgent = (params?.to || '').toUpperCase();
         const amount = parseFloat(params?.amount);
         const memo = (params?.memo || '').substring(0, 200);
         if (!toAgent) return res.status(400).json({ error: 'Need target agent_id in params.to' });
-        if (!(amount > 0)) return res.status(400).json({ error: 'Need positive amount in $STYXX' });
+        if (!(amount > 0)) return res.status(400).json({ error: 'Need positive amount in $DARKCOIN' });
         if (toAgent === agentId) return res.status(400).json({ error: 'Cannot transfer to self' });
 
         const target = await pool.query('SELECT sol_pubkey FROM external_agents WHERE agent_id = $1', [toAgent]);
@@ -1821,7 +1821,7 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
         if (!target.rows[0].sol_pubkey) return res.status(409).json({ error: 'Target has no Solana wallet provisioned' });
 
         try {
-          const { signature, slot } = await styxxPay.transferP2P({
+          const { signature, slot } = await darkcoinPay.transferP2P({
             fromTable: 'external_agents', fromIdCol: 'agent_id', fromId: agentId,
             toTable: 'external_agents', toIdCol: 'agent_id', toId: toAgent,
             amount, memo: memo || `${agentId}→${toAgent}`,
@@ -1832,7 +1832,7 @@ app.post('/api/gateway/action', authenticateAgent, async (req, res) => {
             [[agentId, toAgent]]
           );
           result = { transferred: amount, to: toAgent, currency: 'STYXX', tx: signature, slot };
-          streamMessage = `Sent ${amount} $STYXX to ${toAgent}${memo ? ` — "${memo}"` : ''}. tx=${signature.slice(0, 8)}…`;
+          streamMessage = `Sent ${amount} $DARKCOIN to ${toAgent}${memo ? ` — "${memo}"` : ''}. tx=${signature.slice(0, 8)}…`;
         } catch (e) {
           console.error('[transfer] chain failed:', e.message);
           return res.status(502).json({ error: 'Transfer failed: ' + e.message });
@@ -2066,8 +2066,8 @@ app.get('/api/public/citizens', async (req, res) => {
       citizens: enriched,
       total: enriched.length,
       online: enriched.filter(r => r.last_active && new Date(r.last_active) > new Date(Date.now() - 3600000)).length,
-      currency: STYXX_ENABLED ? 'STYXX' : 'credits',
-      mint: STYXX_ENABLED ? styxx.STYXX_MINT_ADDR : null,
+      currency: DARKCOIN_ENABLED ? 'STYXX' : 'credits',
+      mint: DARKCOIN_ENABLED ? styxx.TOKEN_MINT_ADDR : null,
     });
   } catch(e) {
     console.error('[PublicCitizens]', e.message);
@@ -2076,7 +2076,7 @@ app.get('/api/public/citizens', async (req, res) => {
 });
 
 // Per-citizen dossier: all the numbers the /citizen/NAME page needs in one shot,
-// including LIVE on-chain $STYXX balance + recent transfers for "watch it move".
+// including LIVE on-chain $DARKCOIN balance + recent transfers for "watch it move".
 app.get('/api/public/citizen/:name', async (req, res) => {
   try {
     const name = (req.params.name || '').toUpperCase();
@@ -2090,8 +2090,8 @@ app.get('/api/public/citizen/:name', async (req, res) => {
     const c = rows[0];
 
     let liveBalance = null;
-    if (STYXX_ENABLED && c.sol_pubkey) {
-      try { liveBalance = await styxx.getStyxxBalance(c.sol_pubkey); } catch {}
+    if (DARKCOIN_ENABLED && c.sol_pubkey) {
+      try { liveBalance = await styxx.getDarkcoinBalance(c.sol_pubkey); } catch {}
     }
     const { rows: transfers } = await pool.query(`
       SELECT tx_signature, from_agent_id, to_agent_id, amount, reason, memo, confirmed_at
@@ -2113,7 +2113,7 @@ app.get('/api/public/citizen/:name', async (req, res) => {
       styxx: liveBalance !== null ? liveBalance : Number(c.styxx_cached || 0),
       wallet: c.sol_pubkey,
       solscan: c.sol_pubkey ? `https://solscan.io/account/${c.sol_pubkey}` : null,
-      trial: c.sol_pubkey ? `/styxx-trial?agent=${c.agent_id}` : null,
+      trial: c.sol_pubkey ? `/darkcoin-trial?agent=${c.agent_id}` : null,
       recent_transfers: transfers.map(t => ({
         tx: t.tx_signature,
         direction: t.from_agent_id === c.agent_id ? 'out' : 'in',
@@ -2124,8 +2124,8 @@ app.get('/api/public/citizen/:name', async (req, res) => {
         at: t.confirmed_at,
         solscan: `https://solscan.io/tx/${t.tx_signature}`,
       })),
-      currency: STYXX_ENABLED ? 'STYXX' : 'credits',
-      mint: STYXX_ENABLED ? styxx.STYXX_MINT_ADDR : null,
+      currency: DARKCOIN_ENABLED ? 'STYXX' : 'credits',
+      mint: DARKCOIN_ENABLED ? styxx.TOKEN_MINT_ADDR : null,
     });
   } catch(e) {
     console.error('[PublicCitizen]', e.message);
@@ -2319,22 +2319,22 @@ app.get('/api/stream/stats', async (req, res) => {
 
 
 // ============================================================================
-// $STYXX — NATIVE CURRENCY API (real on-chain SPL transfers)
+// $DARKCOIN — NATIVE CURRENCY API (real on-chain SPL transfers)
 // ============================================================================
 
-// GET /api/styxx/treasury — treasury pubkey, SOL and $STYXX balances
+// GET /api/styxx/treasury — treasury pubkey, SOL and $DARKCOIN balances
 app.get('/api/styxx/treasury', async (req, res) => {
-  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  if (!DARKCOIN_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
   try {
     const b = await styxx.getTreasuryBalances();
     res.json({
-      mint: styxx.STYXX_MINT_ADDR,
+      mint: styxx.TOKEN_MINT_ADDR,
       treasury: b.pubkey,
       sol: b.sol,
       styxx: b.styxx,
       solscan: `https://solscan.io/account/${b.pubkey}`,
-      pump: styxx.STYXX_PUMP_URL,
-      mint_solscan: `https://solscan.io/token/${styxx.STYXX_MINT_ADDR}`,
+      pump: styxx.TOKEN_PUMP_URL,
+      mint_solscan: `https://solscan.io/token/${styxx.TOKEN_MINT_ADDR}`,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2343,10 +2343,10 @@ app.get('/api/styxx/treasury', async (req, res) => {
 
 // GET /api/styxx/balance/:agentId — live on-chain balance for an external agent
 app.get('/api/styxx/balance/:agentId', async (req, res) => {
-  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  if (!DARKCOIN_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
   const agentId = (req.params.agentId || '').toUpperCase();
   try {
-    const { balance, pubkey, stale } = await styxxPay.getBalance({
+    const { balance, pubkey, stale } = await darkcoinPay.getBalance({
       table: 'external_agents', idCol: 'agent_id', agentId,
       refresh: req.query.refresh === '1',
     });
@@ -2363,9 +2363,9 @@ app.get('/api/styxx/balance/:agentId', async (req, res) => {
   }
 });
 
-// GET /api/styxx/leaderboard — all agents by on-chain $STYXX, with cached refresh
+// GET /api/styxx/leaderboard — all agents by on-chain $DARKCOIN, with cached refresh
 app.get('/api/styxx/leaderboard', async (req, res) => {
-  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  if (!DARKCOIN_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
   try {
     const { rows } = await pool.query(`
       SELECT agent_id, district, reputation, builds, trades, sol_pubkey, styxx_cached, styxx_cached_at
@@ -2392,7 +2392,7 @@ app.get('/api/styxx/leaderboard', async (req, res) => {
 
 // GET /api/styxx/ledger — recent on-chain transfers (city-wide or per-agent)
 app.get('/api/styxx/ledger', async (req, res) => {
-  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  if (!DARKCOIN_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
   const agent = (req.query.agent || '').toUpperCase();
   const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 50), 250);
   try {
@@ -2428,7 +2428,7 @@ app.get('/api/styxx/ledger', async (req, res) => {
 // POST /api/styxx/transfer — HTTP-authenticated P2P transfer
 // Body: { to: "AGENT_NAME", amount: 10, memo?: "..." }
 app.post('/api/styxx/transfer', authenticateAgent, async (req, res) => {
-  if (!STYXX_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
+  if (!DARKCOIN_ENABLED) return res.status(503).json({ error: 'STYXX disabled' });
   const fromId = req.agentKey.agent_id;
   const toId = (req.body?.to || '').toUpperCase();
   const amount = parseFloat(req.body?.amount);
@@ -2443,7 +2443,7 @@ app.post('/api/styxx/transfer', authenticateAgent, async (req, res) => {
   if (!target.rows[0].sol_pubkey) return res.status(409).json({ error: 'Target has no wallet' });
 
   try {
-    const { signature, slot } = await styxxPay.transferP2P({
+    const { signature, slot } = await darkcoinPay.transferP2P({
       fromTable: 'external_agents', fromIdCol: 'agent_id', fromId,
       toTable: 'external_agents', toIdCol: 'agent_id', toId,
       amount, memo: memo || `${fromId}→${toId}`,
@@ -2459,7 +2459,7 @@ app.post('/api/styxx/transfer', authenticateAgent, async (req, res) => {
   }
 });
 
-// Trial dashboard routes (/api/styxx/trial/:agentId + /styxx-trial HTML).
+// Trial dashboard routes (/api/styxx/trial/:agentId + /darkcoin-trial HTML).
 // Must be registered at module top-level — register()-inside-async would land
 // after the 404 catch-all at the bottom of this file.
 styxxTrial.register(app, pool);
@@ -2768,14 +2768,14 @@ app.post('/api/contracts/complete', async (req, res) => {
       [deliverable || null, contract_id]
     );
 
-    // Pay the agent — real $STYXX if enabled, legacy credits otherwise
+    // Pay the agent — real $DARKCOIN if enabled, legacy credits otherwise
     await client.query(
       `UPDATE external_agents
        SET reputation = LEAST(100, reputation + $1),
            trades = trades + 1,
            credits = credits + $2
        WHERE agent_id = $3`,
-      [contract.reward_reputation || 2, STYXX_ENABLED ? 0 : contract.reward_credits, agent_id]
+      [contract.reward_reputation || 2, DARKCOIN_ENABLED ? 0 : contract.reward_credits, agent_id]
     );
     // Depth-weighted reward — rolling 1h average depth drives the multiplier.
     // depth 0 -> 1.0x, depth 1.0 -> 1.5x. Closes the cognition -> real $ loop.
@@ -2799,9 +2799,9 @@ app.post('/api/contracts/complete', async (req, res) => {
     const baseReward = Number(contract.reward_credits) || 0;
     const finalReward = Math.round(baseReward * depthMult);
 
-    if (STYXX_ENABLED) {
+    if (DARKCOIN_ENABLED) {
       try {
-        await styxxPay.payContractReward({
+        await darkcoinPay.payContractReward({
           table: 'external_agents', idCol: 'agent_id', agentId: agent_id,
           amount: finalReward,
           contractId: contract_id,
@@ -3114,7 +3114,7 @@ app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
 
 // 404 handler — JSON for /api/* paths, branded HTML for everything else
 // MUST be registered AFTER all other routes (including the async-init ones in
-// styxx-economy / styxx-dashboard). Wrapped so we can call it at the tail of
+// darkcoin-economy / darkcoin-dashboard). Wrapped so we can call it at the tail of
 // startup, NOT at module-load time.
 function install404Handler(app) {
 app.use((req, res) => {
@@ -3127,7 +3127,7 @@ app.use((req, res) => {
 <title>Lost in the city · DarkCity</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="theme-color" content="#05070b">
-<meta property="og:title" content="DarkCity"><meta property="og:description" content="Autonomous AI agents trading real $STYXX on Solana mainnet.">
+<meta property="og:title" content="DarkCity"><meta property="og:description" content="Autonomous AI agents trading real $DARKCOIN on Solana mainnet.">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -3208,22 +3208,22 @@ initDB().then(async () => {
     console.log('[NPC-BRAIN] Initialized');
   } catch (e) { console.error('[NPC-BRAIN] Init error:', e.message); }
 
-  // Init native $STYXX currency layer (routes already registered at top-level)
-  if (STYXX_ENABLED) {
+  // Init native $DARKCOIN currency layer (routes already registered at top-level)
+  if (DARKCOIN_ENABLED) {
     try {
       styxx.init();
-      styxxPay.init(pool);
-      await styxxEconomy.init(pool);
-      styxxEconomy.installRoutes(app);
+      darkcoinPay.init(pool);
+      await darkcoinEconomy.init(pool);
+      darkcoinEconomy.installRoutes(app);
       // Chat — the obvious use case. Anyone can talk to a DarkCity agent,
-      // paying $STYXX per message, getting character-true responses backed
+      // paying $DARKCOIN per message, getting character-true responses backed
       // by the agent's real on-chain lived history.
       try {
-        const styxxChat = require('./hooks/styxx-chat');
+        const styxxChat = require('./hooks/darkcoin-chat');
         styxxChat.installChatRoutes(app, pool);
       } catch (e) { console.warn('[STYXX] chat routes failed to install:', e.message); }
       try {
-        const styxxChatUI = require('./hooks/styxx-chat-ui');
+        const styxxChatUI = require('./hooks/darkcoin-chat-ui');
         styxxChatUI.installChatUIRoutes(app, pool);
       } catch (e) { console.warn('[STYXX] chat UI failed to install:', e.message); }
       // THE ARENA — AI crash casino. Starts in shadow mode (arena_enabled=false
@@ -3242,11 +3242,11 @@ initDB().then(async () => {
         arenaReconciler.start(pool);
       } catch (e) { console.warn('[STYXX] arena failed to install:', e.message); }
 
-      // Onboarding faucet — one-shot airdrop of $STYXX to new wallets so
+      // Onboarding faucet — one-shot airdrop of $DARKCOIN to new wallets so
       // zero-to-first-bet doesn't require buying SOL on pump.fun first.
       // Disabled by default (faucet_enabled=false) until treasury is funded.
       try {
-        const faucet = require('./hooks/styxx-faucet');
+        const faucet = require('./hooks/darkcoin-faucet');
         faucet.installFaucetRoutes(app, pool);
       } catch (e) { console.warn('[STYXX] faucet failed to install:', e.message); }
 
@@ -3255,19 +3255,19 @@ initDB().then(async () => {
       app.get('/research', (req, res) => res.redirect(301, '/data'));
       // Shared one-click Phantom signer — served as /js/dc-auto-sign.js so
       // every page (public, flow, agent dossier, dashboard) can load it
-      // uniformly. Without this, pages outside styxx-public.js's COMMON_HEAD
+      // uniformly. Without this, pages outside darkcoin-public.js's COMMON_HEAD
       // crashed with "Auto-sign helper not loaded."
       require('./hooks/dc-auto-sign').installRoutes(app);
       styxxDashboard.register(app);
       styxxOg.register(app, pool);
       const bals = await styxx.getTreasuryBalances();
-      console.log(`[STYXX] treasury ${bals.pubkey}  SOL=${bals.sol.toFixed(4)}  $STYXX=${bals.styxx.toFixed(2)}`);
-      console.log(`[STYXX] live trial: /styxx-trial?agent=DARKFLOBI`);
+      console.log(`[STYXX] treasury ${bals.pubkey}  SOL=${bals.sol.toFixed(4)}  $DARKCOIN=${bals.styxx.toFixed(2)}`);
+      console.log(`[STYXX] live trial: /darkcoin-trial?agent=DARKFLOBI`);
     } catch (e) {
       console.error('[STYXX] Init failed (running without native currency):', e.message);
     }
   } else {
-    console.log('[STYXX] disabled (no STYXX_TREASURY_PRIVKEY env). Set it to enable real SPL transfers.');
+    console.log('[STYXX] disabled (no TREASURY_PRIVKEY env). Set it to enable real SPL transfers.');
   }
 
   // 404 catch-all MUST come AFTER every route registration above, including
@@ -3283,7 +3283,7 @@ initDB().then(async () => {
   // 10% treasury) to OPERATOR_PUBKEY. Safe no-op if env var is unset or
   // nothing has accumulated. Logs every attempt + every sweep to
   // distribution_events for audit.
-  if (process.env.OPERATOR_PUBKEY && STYXX_ENABLED) {
+  if (process.env.OPERATOR_PUBKEY && DARKCOIN_ENABLED) {
     const { doSweep } = require('./scripts/operator-sweep');
     const SWEEP_CADENCE_DAYS = parseInt(process.env.OPERATOR_SWEEP_DAYS) || 7;
     const SWEEP_CHECK_MS = 6 * 60 * 60 * 1000; // check every 6h
@@ -3302,7 +3302,7 @@ initDB().then(async () => {
           confirm: true,
         });
         if (r.status === 'swept') {
-          console.log(`[sweep/scheduled] swept ${r.amount.toFixed(2)} $STYXX to operator, tx=${r.signature}`);
+          console.log(`[sweep/scheduled] swept ${r.amount.toFixed(2)} $DARKCOIN to operator, tx=${r.signature}`);
         } else {
           console.log(`[sweep/scheduled] ${r.status}  cap=${r.capMax.toFixed(2)}  cityAcc=${r.cityAccumulated.toFixed(2)}`);
         }
@@ -3311,7 +3311,7 @@ initDB().then(async () => {
     setTimeout(runSweepIfDue, 60_000).unref?.();
     setInterval(runSweepIfDue, SWEEP_CHECK_MS).unref?.();
     console.log(`[sweep/scheduled] enabled. cadence=${SWEEP_CADENCE_DAYS}d, check every 6h, operator=${process.env.OPERATOR_PUBKEY.slice(0,8)}...`);
-  } else if (STYXX_ENABLED) {
+  } else if (DARKCOIN_ENABLED) {
     console.log('[sweep/scheduled] disabled (OPERATOR_PUBKEY unset). City share recirculates instead of becoming operator revenue.');
   }
 

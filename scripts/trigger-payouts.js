@@ -9,7 +9,7 @@
 //   railway run --service=darkcity-backend -- node scripts/trigger-payouts.js --holder-pool-only
 //   railway run --service=darkcity-backend -- node scripts/trigger-payouts.js --pulse-too
 //
-// The railway env provides STYXX_TREASURY_PRIVKEY + STYXX_WALLET_ENC_KEY.
+// The railway env provides TREASURY_PRIVKEY + WALLET_ENC_KEY.
 // We override DATABASE_URL to the public proxy since CLI runs outside the
 // Railway private network.
 'use strict';
@@ -22,12 +22,12 @@ async function main() {
     console.error('no DATABASE_PUBLIC_URL or DATABASE_URL available');
     process.exit(1);
   }
-  if (!process.env.STYXX_TREASURY_PRIVKEY) {
-    console.error('STYXX_TREASURY_PRIVKEY missing — run via `railway run` so env vars are injected');
+  if (!process.env.TREASURY_PRIVKEY) {
+    console.error('TREASURY_PRIVKEY missing — run via `railway run` so env vars are injected');
     process.exit(1);
   }
 
-  // Force DATABASE_URL to public proxy for this invocation so the solana-styxx
+  // Force DATABASE_URL to public proxy for this invocation so the solana-darkcoin
   // module (which may read DATABASE_URL elsewhere) uses the reachable host.
   process.env.DATABASE_URL = publicDbUrl;
 
@@ -37,8 +37,8 @@ async function main() {
   });
 
   const holderPool = require('../hooks/holder-pool');
-  const solanaStyxx = require('../lib/solana-styxx');
-  solanaStyxx.init();
+  const solanaDarkcoin = require('../lib/solana-darkcoin');
+  solanaDarkcoin.init();
 
   const args = process.argv.slice(2);
   const pulseToo = args.includes('--pulse-too');
@@ -62,7 +62,7 @@ async function main() {
   // ─── 1. Holder pool distribution ────────────────────────────────────────
   console.log('\n== running holder pool distribution ==');
   try {
-    const r = await holderPool.runDistribution(pool, { connection: solanaStyxx.getConnection() });
+    const r = await holderPool.runDistribution(pool, { connection: solanaDarkcoin.getConnection() });
     console.log('[holder-pool] result:', JSON.stringify(r, null, 2));
   } catch (e) {
     console.error('[holder-pool] FAILED:', e.message);

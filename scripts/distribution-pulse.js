@@ -36,7 +36,7 @@
 'use strict';
 
 const { Pool } = require('pg');
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 const PULSE_HOURS = parseInt(process.env.PULSE_HOURS || '4', 10);
 const PULSES_PER_WEEK = (7 * 24) / PULSE_HOURS;         // 42 pulses/week at 4h
@@ -136,7 +136,7 @@ async function main() {
 
   // ─── Sustainable pulse budget ──────────────────────────────────────────────
   // The old formula paid treasuryFloor (0.02% of treasury) every pulse REGARDLESS
-  // of activity. With 3M $STYXX treasury that's 600+ STYXX/pulse outflow even
+  // of activity. With 3M $DARKCOIN treasury that's 600+ STYXX/pulse outflow even
   // when nothing happened. Multiplied across 6 pulses/day that's guaranteed
   // treasury deflation toward zero unless mint fees come in.
   //
@@ -178,7 +178,7 @@ async function main() {
 
   let totals = { paid: 0, burned_fee: 0, city: 0, sponsors: 0, hyphal: 0, fruiting: 0, referral: 0, owner_phantom: 0, dust_skipped: 0, rent_collected: 0, reserve_dormant: 0 };
 
-  // ─── $STYXX as currency of life — reserves + rent ─────────────────────
+  // ─── $DARKCOIN as currency of life — reserves + rent ─────────────────────
   // Every pulse: (a) agent must hold rank-minimum to stay active,
   // (b) agent's district charges rent paid from gross before split.
   // Locks circulating supply in agent wallets + creates a real on-chain

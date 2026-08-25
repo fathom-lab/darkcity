@@ -1,5 +1,5 @@
 // scripts/dry-run-migration.js
-// Applies styxx-economy-v1.sql inside a transaction and ROLLS BACK.
+// Applies darkcoin-economy-v1.sql inside a transaction and ROLLS BACK.
 // Verifies the migration parses + satisfies all constraints on real prod
 // schema WITHOUT leaving any changes. Run via: railway ssh from /app.
 
@@ -9,7 +9,7 @@ const path = require('path');
 const { Pool } = require('pg');
 
 async function main() {
-  const sqlPath = path.join(__dirname, '..', 'migrations', 'styxx-economy-v1.sql');
+  const sqlPath = path.join(__dirname, '..', 'migrations', 'darkcoin-economy-v1.sql');
   const sql = fs.readFileSync(sqlPath, 'utf-8');
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,

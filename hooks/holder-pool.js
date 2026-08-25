@@ -1,5 +1,5 @@
 // ============================================================================
-// HOLDER POOL — hold $STYXX, get paid. Fully autonomous.
+// HOLDER POOL — hold $DARKCOIN, get paid. Fully autonomous.
 // ============================================================================
 // One rule, zero friction:
 //   • A slice of every real STYXX inflow to DarkCity goes to a Holder Pool.
@@ -26,7 +26,7 @@
 
 'use strict';
 
-const solanaStyxx = require('../lib/solana-styxx');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
 const { PublicKey } = require('@solana/web3.js');
 const { TOKEN_2022_PROGRAM_ID } = require('@solana/spl-token');
 
@@ -72,7 +72,7 @@ async function accrueFromPulse(pool, { pulse_id, net_earnings_styxx }) {
 }
 
 /**
- * Tap a mint fee. Called by styxx-economy.js mintFinalize right after the
+ * Tap a mint fee. Called by darkcoin-economy.js mintFinalize right after the
  * on-chain mint payment is verified. Writes a pending row to the
  * holder_pool_distributions ledger. The actual on-chain push happens at the
  * next pulse via runDistribution().
@@ -106,12 +106,12 @@ async function accrueFromMint(pool, { quote_id, fee_styxx }) {
  * Uses Token-2022. Rejects on RPC failure so callers can fall back.
  */
 async function discoverHoldersOnChain(connection) {
-  const STYXX_MINT = solanaStyxx.STYXX_MINT_ADDR;
+  const TOKEN_MINT = solanaDarkcoin.TOKEN_MINT_ADDR;
   // Token-2022 accounts have the mint at offset 0 (first 32 bytes).
   const accounts = await connection.getParsedProgramAccounts(TOKEN_2022_PROGRAM_ID, {
     commitment: 'confirmed',
     filters: [
-      { memcmp: { offset: 0, bytes: STYXX_MINT } },
+      { memcmp: { offset: 0, bytes: TOKEN_MINT } },
     ],
   });
   const holders = [];
@@ -178,14 +178,14 @@ async function discoverHoldersUnion(pgPool) {
     known = rows.map(r => r.pubkey);
   } catch (_) { /* table missing → no known wallets */ }
 
-  const solanaStyxx = require('../lib/solana-styxx');
+  const solanaDarkcoin = require('../lib/solana-darkcoin');
   // Fetch on-chain balance for each known wallet. Serial + small backoff so
   // we don't trip RPC rate limits. ~50 wallets × ~400ms = 20s worst case —
   // acceptable for a per-pulse operation.
   for (const pk of known) {
     try { new PublicKey(pk); } catch { continue; }
     try {
-      const bal = await solanaStyxx.getStyxxBalance(pk);
+      const bal = await solanaDarkcoin.getDarkcoinBalance(pk);
       if (Number.isFinite(bal) && bal > 0) {
         // On-chain is source of truth — replace ledger estimate if present.
         byPubkey.set(pk, bal);
@@ -223,7 +223,7 @@ async function runDistribution(pool, { connection } = {}) {
   if (totalPool <= 0) return { ok: true, distributed: 0, note: 'zero pool' };
 
   // ── Snapshot holders on-chain ───────────────────────────────────────
-  const conn = connection || solanaStyxx.getConnection?.();
+  const conn = connection || solanaDarkcoin.getConnection?.();
   if (!conn) return { ok: false, reason: 'no_connection' };
 
   let holders;
@@ -250,7 +250,7 @@ async function runDistribution(pool, { connection } = {}) {
   const excludedRaw = await getParam(pool, 'holder_pool_excluded_pubkeys', '[]');
   let excluded = [];
   try { excluded = JSON.parse(excludedRaw); } catch { excluded = []; }
-  const treasuryPk = solanaStyxx.getTreasury?.()?.publicKey?.toBase58?.() || '';
+  const treasuryPk = solanaDarkcoin.getTreasury?.()?.publicKey?.toBase58?.() || '';
   const excludedSet = new Set([treasuryPk, ...excluded]);
   // Sort qualifying holders by holding desc — if we hit the max-per-pulse
   // cap, the biggest holders get paid first (fairest under a cap). Smaller
@@ -289,7 +289,7 @@ async function runDistribution(pool, { connection } = {}) {
     // compounds instead of evaporating into gas.
     if (share < minPayout) { results.push({ pubkey: h.pubkey, share, ok: false, skipped: 'dust' }); continue; }
     try {
-      const r = await solanaStyxx.airdropFromTreasury(h.pubkey, share);
+      const r = await solanaDarkcoin.airdropFromTreasury(h.pubkey, share);
       const sig = r?.signature;
       totalPaid += share;
 
@@ -341,7 +341,7 @@ async function runDistribution(pool, { connection } = {}) {
     );
   }
 
-  console.log(`[holder-pool] pushed ${totalPaid} \$STYXX to ${results.filter(r=>r.ok).length}/${qualifying.length} holders`);
+  console.log(`[holder-pool] pushed ${totalPaid} \$DARKCOIN to ${results.filter(r=>r.ok).length}/${qualifying.length} holders`);
   return {
     ok: true,
     distributed: totalPaid,
@@ -368,7 +368,7 @@ async function getHolderStatus(pool, wallet_pubkey) {
 
   // Current on-chain holding so the user sees "you hold X, last pulse paid you Y"
   let holding = null;
-  try { holding = await solanaStyxx.getStyxxBalance(wallet_pubkey); } catch {}
+  try { holding = await solanaDarkcoin.getDarkcoinBalance(wallet_pubkey); } catch {}
 
   const { rows: poolRows } = await pool.query(
     `SELECT COALESCE(SUM(pool_styxx), 0) AS pending FROM holder_pool_distributions WHERE distributed = FALSE`

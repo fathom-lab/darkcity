@@ -194,7 +194,7 @@ async function main() {
   } else {
     console.log(`RUGGED · held past crash@ ${Number(resolved.multiplier).toFixed(2)}×  (${STAKE.toLocaleString()} STYXX stake "lost")`);
   }
-  console.log('\nshadow mode: all flows exercised, no real $STYXX moved.');
+  console.log('\nshadow mode: all flows exercised, no real $DARKCOIN moved.');
   console.log('end-to-end: ✓\n');
 }
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Self-test: verify the $STYXX plumbing works end-to-end without needing funded wallets.
+// Self-test: verify the $DARKCOIN plumbing works end-to-end without needing funded wallets.
 //   1. Env / lib load
 //   2. Keypair generation + encrypt/decrypt round-trip
 //   3. RPC reachable
-//   4. $STYXX mint exists + decimals match
+//   4. $DARKCOIN mint exists + decimals match
 //   5. ATA derivation
 //   6. Transaction building (simulated, not submitted)
 // All pass = plumbing works. Real funded run becomes a one-command airdrop test.
@@ -17,11 +17,11 @@ const MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
 const RPC = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 // Stub env before requiring our lib
-process.env.STYXX_WALLET_ENC_KEY = process.env.STYXX_WALLET_ENC_KEY || crypto.randomBytes(32).toString('hex');
-process.env.STYXX_TREASURY_PRIVKEY = process.env.STYXX_TREASURY_PRIVKEY || bs58.encode(Keypair.generate().secretKey);
+process.env.WALLET_ENC_KEY = process.env.WALLET_ENC_KEY || crypto.randomBytes(32).toString('hex');
+process.env.TREASURY_PRIVKEY = process.env.TREASURY_PRIVKEY || bs58.encode(Keypair.generate().secretKey);
 process.env.SOLANA_RPC_URL = RPC;
 
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {
@@ -31,7 +31,7 @@ function check(name, cond, detail) {
 }
 
 async function main() {
-  console.log(`\n── $STYXX plumbing self-test ─────────────────────────────────`);
+  console.log(`\n── $DARKCOIN plumbing self-test ─────────────────────────────────`);
   console.log(`RPC:  ${RPC}`);
   console.log(`Mint: ${MINT}\n`);
 
@@ -56,25 +56,25 @@ async function main() {
 
   // 3. Wrong-key decrypt fails (GCM auth)
   try {
-    const badLib = require('../lib/solana-styxx');
+    const badLib = require('../lib/solana-darkcoin');
     // swap enc key — simulate by re-calling with bad key
     const badKey = crypto.randomBytes(32).toString('hex');
-    const origKey = process.env.STYXX_WALLET_ENC_KEY;
-    process.env.STYXX_WALLET_ENC_KEY = badKey;
-    delete require.cache[require.resolve('../lib/solana-styxx')];
-    const reloaded = require('../lib/solana-styxx');
+    const origKey = process.env.WALLET_ENC_KEY;
+    process.env.WALLET_ENC_KEY = badKey;
+    delete require.cache[require.resolve('../lib/solana-darkcoin')];
+    const reloaded = require('../lib/solana-darkcoin');
     reloaded.init();
     let threw = false;
     try { reloaded.keypairFromEncrypted(enc); } catch { threw = true; }
     check('wrong-key decrypt fails (GCM auth intact)', threw);
-    process.env.STYXX_WALLET_ENC_KEY = origKey;
-    delete require.cache[require.resolve('../lib/solana-styxx')];
+    process.env.WALLET_ENC_KEY = origKey;
+    delete require.cache[require.resolve('../lib/solana-darkcoin')];
   } catch (e) {
     check('wrong-key decrypt fails', false, e.message);
   }
 
   // Re-init with original key
-  const styxxFinal = require('../lib/solana-styxx');
+  const styxxFinal = require('../lib/solana-darkcoin');
   styxxFinal.init();
 
   // 4. RPC reachable
@@ -92,11 +92,11 @@ async function main() {
   let mintInfo;
   try {
     mintInfo = await getMint(conn, new PublicKey(MINT), 'confirmed', TOKEN_2022_PROGRAM_ID);
-    check('$STYXX mint exists on mainnet (Token-2022)', true,
+    check('$DARKCOIN mint exists on mainnet (Token-2022)', true,
       `supply=${mintInfo.supply.toString()} decimals=${mintInfo.decimals}`);
     check('decimals match constant (6)', mintInfo.decimals === 6);
   } catch (e) {
-    check('$STYXX mint exists on mainnet', false, e.message);
+    check('$DARKCOIN mint exists on mainnet', false, e.message);
   }
 
   // 6. ATA derivation (Token-2022)
@@ -129,10 +129,10 @@ async function main() {
 
   // 8. Live balance query of a known pubkey (should return 0 for empty, no throw)
   try {
-    const bal = await styxxFinal.getStyxxBalance(alice.publicKey.toBase58());
-    check('getStyxxBalance on empty wallet returns 0', bal === 0, `balance=${bal}`);
+    const bal = await styxxFinal.getDarkcoinBalance(alice.publicKey.toBase58());
+    check('getDarkcoinBalance on empty wallet returns 0', bal === 0, `balance=${bal}`);
   } catch (e) {
-    check('getStyxxBalance on empty wallet', false, e.message);
+    check('getDarkcoinBalance on empty wallet', false, e.message);
   }
 
   // 9. Treasury balance fetch (our fresh random keypair has no SOL / no ATA)

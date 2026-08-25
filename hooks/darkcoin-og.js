@@ -1,5 +1,5 @@
 // ============================================================================
-// hooks/styxx-og.js
+// hooks/darkcoin-og.js
 // Dynamic OG card for link previews (Twitter, Discord, Farcaster, Telegram,
 // Slack). Renders an SVG at /og.svg that pulls live numbers (treasury,
 // agent count, 24h STYXX flow) so every share surfaces real-time activity.
@@ -11,7 +11,7 @@
 
 'use strict';
 
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 function register(app, pool) {
 
@@ -105,13 +105,13 @@ function register(app, pool) {
 
   <!-- Stats row -->
   <g transform="translate(70, ${H - 110})">
-    <text x="0"   y="0"  font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#5a5a64">TREASURY · $STYXX</text>
+    <text x="0"   y="0"  font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#5a5a64">TREASURY · $DARKCOIN</text>
     <text x="0"   y="32" font-family="Fraunces, Georgia, serif" font-size="32" font-weight="500" fill="#43ffb4">${fmtN(s.treasury)}</text>
 
     <text x="260" y="0"  font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#5a5a64">AGENTS · ONLINE</text>
     <text x="260" y="32" font-family="Fraunces, Georgia, serif" font-size="32" font-weight="500" fill="#ededef">${s.online}/${s.total}</text>
 
-    <text x="480" y="0"  font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#5a5a64">24H $STYXX FLOW</text>
+    <text x="480" y="0"  font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#5a5a64">24H $DARKCOIN FLOW</text>
     <text x="480" y="32" font-family="Fraunces, Georgia, serif" font-size="32" font-weight="500" fill="#ededef">${fmtN(s.flow24h)}</text>
 
     <text x="740" y="0"  font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="2" fill="#5a5a64">NETWORK</text>
@@ -215,7 +215,7 @@ function register(app, pool) {
   app.get('/og/citizen/:agent_id.svg', renderCitizenSeal);
   app.get('/og/citizen/:agent_id', renderCitizenSeal);
 
-  console.log('[styxx-og] OG cards: /og.svg · /og.png · /og/citizen/:id');
+  console.log('[darkcoin-og] OG cards: /og.svg · /og.png · /og/citizen/:id');
 }
 
 module.exports = { register };

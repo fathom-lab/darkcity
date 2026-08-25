@@ -30,7 +30,7 @@
 'use strict';
 
 const { Pool } = require('pg');
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 const args = process.argv.slice(2);
 const CONFIRM = args.includes('--confirm');
@@ -45,7 +45,7 @@ const AMOUNT_REQ = amountIdx >= 0 ? args[amountIdx + 1] : null;
  * @param {string} operator - recipient pubkey
  * @param {string|number|null} requestedAmount - 'max' | number | null (null = preview)
  * @param {boolean} confirm - true to actually execute
- * @returns {Promise<{status, amount, signature?, capMax, cityAccumulated, treasuryStyxx}>}
+ * @returns {Promise<{status, amount, signature?, capMax, cityAccumulated, treasuryDarkcoin}>}
  */
 async function doSweep({ pool, operator, requestedAmount, confirm }) {
   styxx.init();
@@ -69,7 +69,7 @@ async function doSweep({ pool, operator, requestedAmount, confirm }) {
   const capByTreasury = tBal.styxx * 0.10;
   const capMax        = Math.max(0, Math.min(capByCity, capByTreasury));
 
-  const ctx = { cityAccumulated, treasuryStyxx: tBal.styxx, capByCity, capByTreasury, capMax };
+  const ctx = { cityAccumulated, treasuryDarkcoin: tBal.styxx, capByCity, capByTreasury, capMax };
 
   if (capMax < 1) return { status: 'nothing_to_sweep', amount: 0, ...ctx };
 
@@ -112,7 +112,7 @@ async function main() {
 
   try {
     const r = await doSweep({ pool, operator, requestedAmount: AMOUNT_REQ, confirm: CONFIRM });
-    console.log(`[sweep] treasury: ${r.treasuryStyxx.toFixed(2)} STYXX`);
+    console.log(`[sweep] treasury: ${r.treasuryDarkcoin.toFixed(2)} STYXX`);
     console.log(`[sweep] city share accumulated since last sweep: ${r.cityAccumulated.toFixed(2)} STYXX`);
     console.log(`[sweep] caps: city30%=${r.capByCity.toFixed(2)} treasury10%=${r.capByTreasury.toFixed(2)} -> maxAllowed=${r.capMax.toFixed(2)}`);
     if (r.status === 'nothing_to_sweep') console.log('[sweep] nothing meaningful to sweep yet.');

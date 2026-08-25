@@ -46,7 +46,7 @@ const { Pool } = require('pg');
        WHERE a.owner_pubkey IS NOT NULL AND t.tx_signature IS NULL
     `);
     push('Minted agents missing starter grant on-chain', rows,
-      'Agent exists but the 100 $STYXX seed transfer never landed. Airdrop needed.');
+      'Agent exists but the 100 $DARKCOIN seed transfer never landed. Airdrop needed.');
   }
 
   // 3. Mint quotes where user DID pay on-chain (memo matches) but quote is not finalized

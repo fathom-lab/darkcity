@@ -9,8 +9,8 @@
 //
 // Usage:
 //   # 1. export the key (one line, from Railway):
-//   export STYXX_TREASURY_PRIVKEY='...'
-//   export STYXX_WALLET_ENC_KEY='...'   # needed by lib/solana-styxx
+//   export TREASURY_PRIVKEY='...'
+//   export WALLET_ENC_KEY='...'   # needed by lib/solana-darkcoin
 //
 //   # 2. run it:
 //   node scripts/treasury-send.js <destination_pubkey> <amount_or_max>
@@ -25,7 +25,7 @@
 require('dotenv').config();
 const readline = require('readline');
 const { PublicKey } = require('@solana/web3.js');
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 const [, , DEST_PUBKEY, AMOUNT_ARG] = process.argv;
 if (!DEST_PUBKEY || !AMOUNT_ARG) {
@@ -58,9 +58,9 @@ async function main() {
   console.log('──────────────────────────────────────────────────────');
   console.log(' From        :', treasuryPubkey);
   console.log(' To          :', DEST.toBase58());
-  console.log(' Amount      :', amount.toLocaleString(), '$STYXX');
-  console.log(' Balance now :', bal.toLocaleString(), '$STYXX');
-  console.log(' After send  :', (bal - amount).toLocaleString(), '$STYXX');
+  console.log(' Amount      :', amount.toLocaleString(), '$DARKCOIN');
+  console.log(' Balance now :', bal.toLocaleString(), '$DARKCOIN');
+  console.log(' After send  :', (bal - amount).toLocaleString(), '$DARKCOIN');
   if (AMOUNT_ARG === 'max' || amount / bal > 0.5) {
     console.log('');
     console.log(' ⚠  WARNING: this moves ≥50% of the treasury.');
@@ -82,7 +82,7 @@ async function main() {
   const { signature } = await styxx.airdropFromTreasury(DEST.toBase58(), amount);
 
   console.log('\n ✓ sent');
-  console.log('   amount    :', amount.toLocaleString(), '$STYXX');
+  console.log('   amount    :', amount.toLocaleString(), '$DARKCOIN');
   console.log('   to        :', DEST.toBase58());
   console.log('   signature :', signature);
   console.log('   solscan   : https://solscan.io/tx/' + signature);

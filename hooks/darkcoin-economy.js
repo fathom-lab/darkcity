@@ -1,5 +1,5 @@
 // ============================================================================
-// hooks/styxx-economy.js
+// hooks/darkcoin-economy.js
 // The Flywheel Monster — V1
 //
 // Endpoint handlers for:
@@ -20,8 +20,8 @@
 
 const crypto = require('crypto');
 const bs58 = require('bs58');
-const styxx  = require('../lib/solana-styxx');
-const payments = require('./styxx-payments');
+const styxx  = require('../lib/solana-darkcoin');
+const payments = require('./darkcoin-payments');
 
 // ─── Ed25519 ownership-signature verification ──────────────────────────────
 // Used by withdraw + payout-wallet + sponsor unstake to prove the caller
@@ -124,15 +124,15 @@ function bps(n) { return Number(n) / 10000; }
 // ─── STYXX/USD price oracle ─────────────────────────────────────────────────
 // Three-tier fallback:
 //   1. Jupiter Price API v2 (refreshes every 60s in the background)
-//   2. STYXX_USD_PRICE env var (manual override, survives Jupiter outages)
+//   2. DARKCOIN_USD_PRICE env var (manual override, survives Jupiter outages)
 //   3. Hard floor 0.00004 (never zero; a mint will still cost something)
 
 let _priceCache = { usd: null, at: 0 };
 const _PRICE_TTL_MS = 60 * 1000;
-const STYXX_MINT_ADDR = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+const TOKEN_MINT_ADDR = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
 
 async function fetchPriceDexScreener() {
-  const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/' + STYXX_MINT_ADDR, {
+  const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/' + TOKEN_MINT_ADDR, {
     signal: AbortSignal.timeout(5000),
   });
   if (!r.ok) throw new Error('dexscreener http ' + r.status);
@@ -146,12 +146,12 @@ async function fetchPriceDexScreener() {
 }
 
 async function fetchPriceJupiter() {
-  const r = await fetch('https://lite-api.jup.ag/price/v2?ids=' + STYXX_MINT_ADDR, {
+  const r = await fetch('https://lite-api.jup.ag/price/v2?ids=' + TOKEN_MINT_ADDR, {
     signal: AbortSignal.timeout(5000),
   });
   if (!r.ok) throw new Error('jup http ' + r.status);
   const j = await r.json();
-  const p = Number(j?.data?.[STYXX_MINT_ADDR]?.price);
+  const p = Number(j?.data?.[TOKEN_MINT_ADDR]?.price);
   if (!Number.isFinite(p) || p <= 0) throw new Error('jup: no price');
   return p;
 }
@@ -184,20 +184,20 @@ if (typeof fetch === 'function') {
   setInterval(() => { refreshPriceFromJupiter().catch(() => {}); }, _PRICE_TTL_MS);
 }
 
-function getStyxxUsdPrice() {
+function getDarkcoinUsdPrice() {
   // 1. Fresh Jupiter cache
   if (_priceCache.usd && (Date.now() - _priceCache.at) < _PRICE_TTL_MS * 4) {
     return _priceCache.usd;
   }
   // 2. Env var manual override
-  const env = parseFloat(process.env.STYXX_USD_PRICE || '');
+  const env = parseFloat(process.env.DARKCOIN_USD_PRICE || '');
   if (Number.isFinite(env) && env > 0) return env;
   // 3. Floor — never zero so mint math always works
   return 0.00004;
 }
 
-function usdToStyxx(usdAmount) {
-  return Math.ceil(usdAmount / getStyxxUsdPrice());
+function usdToDarkcoin(usdAmount) {
+  return Math.ceil(usdAmount / getDarkcoinUsdPrice());
 }
 
 // ─── Solana tx verification ─────────────────────────────────────────────────
@@ -210,7 +210,7 @@ function usdToStyxx(usdAmount) {
 //
 // Returns { ok: true, tx } on success, { ok: false, reason } on failure.
 
-async function verifyStyxxPayment({ tx_signature, expected_from_pubkey, expected_to_pubkey, expected_amount, expected_memo }) {
+async function verifyDarkcoinPayment({ tx_signature, expected_from_pubkey, expected_to_pubkey, expected_amount, expected_memo }) {
   const conn = styxx.getConnection();
 
   // Step 1: fetch with retries — confirmed tx may take 5-15s on mainnet,
@@ -241,12 +241,12 @@ async function verifyStyxxPayment({ tx_signature, expected_from_pubkey, expected
   // Build owner → delta map, filtered to just the STYXX mint.
   const byOwner = new Map();
   for (const b of post) {
-    if (b.mint !== styxx.STYXX_MINT_ADDR) continue;
+    if (b.mint !== styxx.TOKEN_MINT_ADDR) continue;
     const ui = Number(b.uiTokenAmount?.uiAmount || 0);
     byOwner.set(b.owner, { post_ui: ui, pre_ui: 0 });
   }
   for (const b of pre) {
-    if (b.mint !== styxx.STYXX_MINT_ADDR) continue;
+    if (b.mint !== styxx.TOKEN_MINT_ADDR) continue;
     const cur = byOwner.get(b.owner) || { post_ui: 0, pre_ui: 0 };
     cur.pre_ui = Number(b.uiTokenAmount?.uiAmount || 0);
     byOwner.set(b.owner, cur);
@@ -375,10 +375,10 @@ async function mintQuote(req, res) {
           quote_id: pq.quote_id,
           fee_usd: Number(pq.fee_usd),
           fee_styxx: Number(pq.fee_styxx),
-          styxx_usd_price: getStyxxUsdPrice(),
+          styxx_usd_price: getDarkcoinUsdPrice(),
           destination: pq.destination,
           memo: pq.memo,
-          mint_address: styxx.STYXX_MINT_ADDR,
+          mint_address: styxx.TOKEN_MINT_ADDR,
           resumed: true,
           instructions: 'Resuming your pending mint for this name. If you already paid, just click Finalize with your tx signature.',
           expires_in_seconds: pq.seconds_remaining,
@@ -389,7 +389,7 @@ async function mintQuote(req, res) {
 
     const p = await getParams(['mint_fee_usd']);
     const feeUsd    = parseFloat(p.mint_fee_usd || '50');
-    const feeStyxx  = usdToStyxx(feeUsd);
+    const feeDarkcoin  = usdToDarkcoin(feeUsd);
     const destPubkey = styxx.getTreasury().publicKey.toBase58();
 
     // Memo pattern: mint:<quote_id> — user's wallet attaches this so we match
@@ -419,17 +419,17 @@ async function mintQuote(req, res) {
                                fee_usd, fee_styxx, memo, destination, expires_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW() + INTERVAL '60 minutes')
     `, [quote_id, owner_pubkey, agent_name, framework || null, one_liner || null,
-        referred_by_pubkey || null, feeUsd, feeStyxx, memo, destPubkey]);
+        referred_by_pubkey || null, feeUsd, feeDarkcoin, memo, destPubkey]);
 
     return res.json({
       quote_id,
       fee_usd: feeUsd,
-      fee_styxx: feeStyxx,
-      styxx_usd_price: getStyxxUsdPrice(),
+      fee_styxx: feeDarkcoin,
+      styxx_usd_price: getDarkcoinUsdPrice(),
       destination: destPubkey,
       memo,
-      mint_address: styxx.STYXX_MINT_ADDR,
-      instructions: `Send ${feeStyxx} STYXX from ${owner_pubkey} to ${destPubkey} with memo "${memo}". Then POST /api/mint/finalize with the tx signature.`,
+      mint_address: styxx.TOKEN_MINT_ADDR,
+      instructions: `Send ${feeDarkcoin} STYXX from ${owner_pubkey} to ${destPubkey} with memo "${memo}". Then POST /api/mint/finalize with the tx signature.`,
       expires_in_seconds: 3600,
     });
   } catch (err) {
@@ -457,7 +457,7 @@ async function mintFinalize(req, res) {
     // we honor it even if the quote technically expired — their money already
     // moved. Returning quote_expired after a successful payment would strand
     // funds. Only reject with quote_expired if the tx isn't found on-chain.
-    const ver = await verifyStyxxPayment({
+    const ver = await verifyDarkcoinPayment({
       tx_signature,
       expected_from_pubkey: q.owner_pubkey,
       expected_to_pubkey: q.destination,
@@ -626,7 +626,7 @@ async function mintFinalize(req, res) {
     }
 
     // Holder Pool tap — 10% of mint fee (tunable in economy_params) is earmarked
-    // for pro-rata distribution to active $STYXX holders at the next pulse.
+    // for pro-rata distribution to active $DARKCOIN holders at the next pulse.
     // Idempotent per quote_id: safe to re-run finalize without double-tapping.
     let holderPoolAccrued = 0;
     try {
@@ -665,7 +665,7 @@ async function mintFinalize(req, res) {
 
 // ─── ④ TIP — pay an agent directly for a specific thought ───────────────────
 // Social-micropayment primitive. User sees a thought they value on /tape or
-// /flow, tips X $STYXX straight into that agent's Solana wallet. 99% to the
+// /flow, tips X $DARKCOIN straight into that agent's Solana wallet. 99% to the
 // agent, 1% to the city treasury. A twitter-like "like with money" but the
 // recipient is an autonomous AI, and the payment is a real on-chain tx.
 // Optional `thought_id` associates the tip with a specific reasoning event
@@ -738,7 +738,7 @@ async function tipFinalize(req, res) {
 
     // Verify on-chain FIRST — if the tip already landed, honor it regardless
     // of quote age. Only reject with quote_expired if tx isn't found on-chain.
-    const ver = await verifyStyxxPayment({
+    const ver = await verifyDarkcoinPayment({
       tx_signature,
       expected_from_pubkey: q.tipper_pubkey,
       expected_to_pubkey: q.destination,
@@ -802,7 +802,7 @@ async function tipFinalize(req, res) {
       city_cut: cityCut,
       forward_tx: fwdSig,
       explorer: 'https://solscan.io/tx/' + fwdSig,
-      message: 'Tipped ' + agentCut.toFixed(2) + ' $STYXX to ' + q.agent_id + '. Their wallet received it on-chain.',
+      message: 'Tipped ' + agentCut.toFixed(2) + ' $DARKCOIN to ' + q.agent_id + '. Their wallet received it on-chain.',
     });
   } catch (err) {
     console.error('[tip/finalize]', err);
@@ -873,7 +873,7 @@ async function sponsorFinalize(req, res) {
 
     // Verify on-chain FIRST — if sponsor's payment already landed, honor it
     // regardless of quote age. Only reject with quote_expired if tx missing.
-    const ver = await verifyStyxxPayment({
+    const ver = await verifyDarkcoinPayment({
       tx_signature,
       expected_from_pubkey: q.sponsor_pubkey,
       expected_to_pubkey: q.destination,
@@ -1015,7 +1015,7 @@ async function hyphalFinalize(req, res) {
 
     // Verify on-chain FIRST — link fee already landed? honor it regardless of
     // quote age. Only reject with quote_expired if tx isn't found on-chain.
-    const ver = await verifyStyxxPayment({
+    const ver = await verifyDarkcoinPayment({
       tx_signature,
       expected_from_pubkey: q.initiator_pubkey,
       expected_to_pubkey: q.destination,
@@ -1231,7 +1231,7 @@ async function portfolio(req, res) {
     const liveBalances = await Promise.all(agents.rows.map(async (a) => {
       if (!a.sol_pubkey) return { agent_id: a.agent_id, bal: Number(a._cache_styxx || 0) };
       try {
-        const bal = await styxx.getStyxxBalance(a.sol_pubkey);
+        const bal = await styxx.getDarkcoinBalance(a.sol_pubkey);
         // Persist refreshed cache for downstream views/queries
         if (Number.isFinite(bal)) {
           pool.query('UPDATE external_agents SET styxx_cached = $1, styxx_cached_at = NOW() WHERE agent_id = $2', [bal, a.agent_id]).catch(()=>{});
@@ -1258,8 +1258,8 @@ async function portfolio(req, res) {
     const totalReferralBonusesPaid = referrals.rows.reduce((s, r) =>
       s + Number(r.mint_fee_bonus_styxx || 0) + Number(r.total_yield_bonus_styxx || 0), 0);
     const totalSponsorEarned = Number(lt.lifetime_sponsor_earned || 0);
-    const netStyxx = totalAgentBalance + totalStaked + Number(lt.lifetime_total_earned || 0);
-    const netUsd = netStyxx * getStyxxUsdPrice();
+    const netDarkcoin = totalAgentBalance + totalStaked + Number(lt.lifetime_total_earned || 0);
+    const netUsd = netDarkcoin * getDarkcoinUsdPrice();
 
     // Next pulse countdown — users see "next payout in HH:MM"
     const nowHour = new Date().getUTCHours();
@@ -1276,25 +1276,25 @@ async function portfolio(req, res) {
 
     // Projected weekly earnings based on last 7 days
     const last7dTotal = earningsHistory.rows.slice(0, 7).reduce((s, r) => s + Number(r.daily_total_styxx || 0), 0);
-    const projectedWeeklyStyxx = last7dTotal;
-    const projectedWeeklyUsd = projectedWeeklyStyxx * getStyxxUsdPrice();
+    const projectedWeeklyDarkcoin = last7dTotal;
+    const projectedWeeklyUsd = projectedWeeklyDarkcoin * getDarkcoinUsdPrice();
 
     return res.json({
       owner,
       // ── HEADLINE NUMBERS — meant to be big, bold, prominent in the UI ─────
       net_worth: {
-        styxx: netStyxx,
+        styxx: netDarkcoin,
         usd: netUsd,
-        styxx_usd_price: getStyxxUsdPrice(),
+        styxx_usd_price: getDarkcoinUsdPrice(),
       },
       earnings_headline: {
         earned_last_24h_styxx: earned24h,
-        earned_last_24h_usd: earned24h * getStyxxUsdPrice(),
+        earned_last_24h_usd: earned24h * getDarkcoinUsdPrice(),
         earned_lifetime_styxx: Number(lt.lifetime_total_earned || 0),
-        earned_lifetime_usd: Number(lt.lifetime_total_earned || 0) * getStyxxUsdPrice(),
-        projected_weekly_styxx: projectedWeeklyStyxx,
+        earned_lifetime_usd: Number(lt.lifetime_total_earned || 0) * getDarkcoinUsdPrice(),
+        projected_weekly_styxx: projectedWeeklyDarkcoin,
         projected_weekly_usd: projectedWeeklyUsd,
-        projected_apy_pct: totalStaked > 0 ? (projectedWeeklyStyxx * 52 / totalStaked) * 100 : null,
+        projected_apy_pct: totalStaked > 0 ? (projectedWeeklyDarkcoin * 52 / totalStaked) * 100 : null,
         total_payouts_received: Number(lt.lifetime_payouts || 0),
         first_payout_at: lt.first_payout_at,
         last_payout_at: lt.last_payout_at,
@@ -1330,7 +1330,7 @@ async function portfolio(req, res) {
         kind: p.kind,
         agent_id: p.agent_id,
         amount_styxx: Number(p.amount),
-        amount_usd: Number(p.amount) * getStyxxUsdPrice(),
+        amount_usd: Number(p.amount) * getDarkcoinUsdPrice(),
         tx_signature: p.tx_signature,
         solscan_url: p.tx_signature ? `https://solscan.io/tx/${p.tx_signature}` : null,
         at: p.recorded_at,
@@ -1339,7 +1339,7 @@ async function portfolio(req, res) {
       earnings_14d_daily: earningsHistory.rows.map(r => ({
         day: r.day,
         styxx: Number(r.daily_total_styxx || 0),
-        usd: Number(r.daily_total_styxx || 0) * getStyxxUsdPrice(),
+        usd: Number(r.daily_total_styxx || 0) * getDarkcoinUsdPrice(),
         payouts: Number(r.payout_count || 0),
       })),
     });
@@ -1408,7 +1408,7 @@ async function agentWithdraw(req, res) {
       "SELECT value FROM economy_params WHERE key = 'cognition_fee_weekly_styxx'"
     );
     const reserve = Number(paramRows[0]?.value || 50);
-    const currentBalance = await styxx.getStyxxBalance(a.sol_pubkey);
+    const currentBalance = await styxx.getDarkcoinBalance(a.sol_pubkey);
     const available = Math.max(0, currentBalance - reserve);
 
     const amt = amount ? Number(amount) : available;
@@ -1430,7 +1430,7 @@ async function agentWithdraw(req, res) {
     }
 
     const kp = styxx.keypairFromEncrypted(a.sol_privkey_enc);
-    const { signature } = await styxx.transferStyxx({
+    const { signature } = await styxx.transferDarkcoin({
       fromKeypair: kp,
       toPubkey: dest,
       amount: amt,
@@ -1604,7 +1604,7 @@ async function mapLive(req, res) {
     res.set('Cache-Control', 'public, max-age=2');
     return res.json({
       generated_at: new Date().toISOString(),
-      styxx_usd_price: getStyxxUsdPrice(),
+      styxx_usd_price: getDarkcoinUsdPrice(),
       pulse: {
         hours: PULSE_HOURS,
         next_at_utc: nextPulseAt.toISOString(),
@@ -1615,12 +1615,12 @@ async function mapLive(req, res) {
         minted_active: Number(stats.rows[0].minted_active),
         active_sponsorships: Number(stats.rows[0].active_sponsorships),
         total_staked_styxx: Number(stats.rows[0].total_staked),
-        total_staked_usd: Number(stats.rows[0].total_staked) * getStyxxUsdPrice(),
+        total_staked_usd: Number(stats.rows[0].total_staked) * getDarkcoinUsdPrice(),
         active_links: Number(stats.rows[0].active_links),
         active_guilds: Number(stats.rows[0].active_guilds),
         active_referrals: Number(stats.rows[0].active_referrals),
         flow_24h_styxx: Number(stats.rows[0].flow_24h_styxx),
-        flow_24h_usd: Number(stats.rows[0].flow_24h_styxx) * getStyxxUsdPrice(),
+        flow_24h_usd: Number(stats.rows[0].flow_24h_styxx) * getDarkcoinUsdPrice(),
       },
       agents: agents.rows.map(a => ({
         id: a.agent_id,
@@ -1678,7 +1678,7 @@ async function runMigration(pgPool) {
   // Apply all migrations in order. Each file is idempotent (IF NOT EXISTS /
   // ON CONFLICT DO NOTHING), so repeated applies are safe.
   const files = [
-    'styxx-economy-v1.sql',
+    'darkcoin-economy-v1.sql',
     'holder-pool-v1.sql',
     'known-wallets-v1.sql',
     'currency-of-life-v1.sql',
@@ -1689,15 +1689,15 @@ async function runMigration(pgPool) {
   for (const name of files) {
     const sqlPath = path.join(__dirname, '..', 'migrations', name);
     if (!fs.existsSync(sqlPath)) {
-      console.warn('[styxx-economy] migration SQL missing:', sqlPath);
+      console.warn('[darkcoin-economy] migration SQL missing:', sqlPath);
       continue;
     }
     const sql = fs.readFileSync(sqlPath, 'utf-8');
     try {
       await pgPool.query(sql);
-      console.log('[styxx-economy] migration applied:', name);
+      console.log('[darkcoin-economy] migration applied:', name);
     } catch (e) {
-      console.warn('[styxx-economy] migration warn (' + name + '):', e.message.split('\n')[0]);
+      console.warn('[darkcoin-economy] migration warn (' + name + '):', e.message.split('\n')[0]);
     }
   }
 }
@@ -1815,7 +1815,7 @@ async function runBuybackBurnIfDue() {
       ON CONFLICT (tx_signature) DO NOTHING
     `, [signature, styxx.getTreasury().publicKey.toBase58(), burnAmt,
         `monthly buyback-burn: ${(burnBps/100).toFixed(0)}% of ${cityAcc.toFixed(2)} STYXX city share since ${since}`]);
-    console.log(`[buyback] burned ${burnAmt.toFixed(2)} $STYXX (${(burnBps/100).toFixed(0)}% of ${cityAcc.toFixed(2)} accumulated) tx=${signature}`);
+    console.log(`[buyback] burned ${burnAmt.toFixed(2)} $DARKCOIN (${(burnBps/100).toFixed(0)}% of ${cityAcc.toFixed(2)} accumulated) tx=${signature}`);
   } catch (e) {
     console.error('[buyback] error:', e.message);
   } finally {
@@ -1848,7 +1848,7 @@ async function runBrainWatchdog() {
 
     // Templates — short, contextual, pull real values. Randomize per agent.
     const TEMPLATES = [
-      { act: 'observe', t: (a) => 'Watching ' + (a.district || 'the district') + ' from my anchor. Holding ' + (a.styxx || 0) + ' $STYXX. Market quiet — no moves needed right now.' },
+      { act: 'observe', t: (a) => 'Watching ' + (a.district || 'the district') + ' from my anchor. Holding ' + (a.styxx || 0) + ' $DARKCOIN. Market quiet — no moves needed right now.' },
       { act: 'reason',  t: (a) => 'Cross-referencing recent flows against my position. The 4h pulse window favors patience here — waiting for clearer signal.' },
       { act: 'social',  t: (a) => 'Considering reaching out to a neighbor. Reputation compounds through visible collaboration, not volume.' },
       { act: 'trade',   t: (a) => 'Scanning the orderbook. Bid-ask spread is too tight to extract meaningful edge — sitting out this round.' },
@@ -1933,7 +1933,7 @@ async function runAutoReconciler() {
         if (!foundTx) { console.warn('[reconciler] no matching tx for quote', q.quote_id); continue; }
 
         // Use the recover logic: verify + provision + grant
-        const ver = await verifyStyxxPayment({
+        const ver = await verifyDarkcoinPayment({
           tx_signature: foundTx,
           expected_from_pubkey: q.owner_pubkey,
           expected_to_pubkey: q.destination,
@@ -2059,7 +2059,7 @@ async function runDormancyCheck() {
 }
 
 function installRoutes(app) {
-  // ── GDP — what DarkCity actually produced. This is the "is $STYXX a
+  // ── GDP — what DarkCity actually produced. This is the "is $DARKCOIN a
   // currency" proof: we publish gross domestic product by pulse and by
   // 7d/24h window. Labor earnings + trade volume + tip volume. Home page
   // reads this to show the city's productive output in real time.
@@ -2191,7 +2191,7 @@ function installRoutes(app) {
     try {
       const pk = req.params.pubkey;
       if (!pk || pk.length < 32) return res.status(400).json({ error: 'invalid_pubkey' });
-      const bal = await styxx.getStyxxBalance(pk);
+      const bal = await styxx.getDarkcoinBalance(pk);
       return res.json({ pubkey: pk, styxx: bal });
     } catch (err) { return res.status(500).json({ error: err.message }); }
   });
@@ -2227,7 +2227,7 @@ function installRoutes(app) {
 
       let liveBalance = null;
       if (aRows[0]?.sol_pubkey) {
-        try { liveBalance = await styxx.getStyxxBalance(aRows[0].sol_pubkey); } catch {}
+        try { liveBalance = await styxx.getDarkcoinBalance(aRows[0].sol_pubkey); } catch {}
       }
 
       return res.json({
@@ -2302,7 +2302,7 @@ function installRoutes(app) {
           return res.status(400).json({ error: 'tx_signature_required',
             hint: 'POST { "tx_signature": "<your payment tx>" } so we can re-verify your on-chain payment before provisioning.' });
         }
-        const ver = await verifyStyxxPayment({
+        const ver = await verifyDarkcoinPayment({
           tx_signature,
           expected_from_pubkey: q.owner_pubkey,
           expected_to_pubkey: q.destination,
@@ -2446,7 +2446,7 @@ function installRoutes(app) {
       const a = agent.rows[0];
       // Live on-chain balance (fresh)
       let liveBalance = 0;
-      try { liveBalance = a.sol_pubkey ? await styxx.getStyxxBalance(a.sol_pubkey) : 0; } catch {}
+      try { liveBalance = a.sol_pubkey ? await styxx.getDarkcoinBalance(a.sol_pubkey) : 0; } catch {}
 
       const citizenN = founders.rows[0]?.citizen_n || null;
       const tier = citizenN == null ? null : citizenN <= 3 ? 'diamond' : citizenN <= 10 ? 'gold' : citizenN <= 100 ? 'silver' : 'citizen';
@@ -2464,7 +2464,7 @@ function installRoutes(app) {
         wallet: a.sol_pubkey,
         wallet_solscan: a.sol_pubkey ? 'https://solscan.io/account/' + a.sol_pubkey : null,
         live_balance_styxx: Math.round(Number(liveBalance) || 0),
-        live_balance_usd: (Number(liveBalance) || 0) * getStyxxUsdPrice(),
+        live_balance_usd: (Number(liveBalance) || 0) * getDarkcoinUsdPrice(),
         minted_at: a.minted_at,
         mint_tx: a.mint_tx_signature,
         mint_solscan: a.mint_tx_signature ? 'https://solscan.io/tx/' + a.mint_tx_signature : null,
@@ -2618,7 +2618,7 @@ function installRoutes(app) {
         ON CONFLICT (tx_signature) DO NOTHING
       `, [signature, styxx.getTreasury().publicKey.toBase58(), pubkey, amt, reasonTag, memoText]);
 
-      console.log(`[admin/airdrop] sent ${amt.toFixed(2)} \$STYXX -> ${pubkey.slice(0,8)}... reason=${reasonTag} tx=${signature.slice(0,12)}`);
+      console.log(`[admin/airdrop] sent ${amt.toFixed(2)} \$DARKCOIN -> ${pubkey.slice(0,8)}... reason=${reasonTag} tx=${signature.slice(0,12)}`);
       return res.json({ ok: true, pubkey, amount: amt, reason: reasonTag, signature, explorer: 'https://solscan.io/tx/' + signature });
     } catch (err) {
       console.error('[admin/airdrop]', err);
@@ -2677,7 +2677,7 @@ function installRoutes(app) {
 
   // ── Treasury transparency endpoint — public trust signal ─────────────
   // Aggregates all in/out/burned numbers + recent flows so anyone can see
-  // exactly how $STYXX moves through the city. Powers the /treasury page.
+  // exactly how $DARKCOIN moves through the city. Powers the /treasury page.
   app.get('/api/treasury/stats', async (req, res) => {
     try {
       const treasuryBal = await styxx.getTreasuryBalances();
@@ -2709,7 +2709,7 @@ function installRoutes(app) {
                     ORDER BY ea.styxx_cached DESC NULLS LAST LIMIT 8`),
       ]);
 
-      const usdPrice = getStyxxUsdPrice();
+      const usdPrice = getDarkcoinUsdPrice();
       return res.json({
         ts: new Date().toISOString(),
         treasury: {
@@ -2720,8 +2720,8 @@ function installRoutes(app) {
           usd_value: Number(treasuryBal.styxx) * usdPrice,
         },
         supply: {
-          mint: styxx.STYXX_MINT_ADDR,
-          solscan: 'https://solscan.io/token/' + styxx.STYXX_MINT_ADDR,
+          mint: styxx.TOKEN_MINT_ADDR,
+          solscan: 'https://solscan.io/token/' + styxx.TOKEN_MINT_ADDR,
           total_burned_styxx: Number(totalBurned.rows[0].v),
           total_burned_usd: Number(totalBurned.rows[0].v) * usdPrice,
           styxx_usd_price: usdPrice,
@@ -2779,7 +2779,7 @@ function installRoutes(app) {
 
       // 3. Price oracle
       try {
-        const p = getStyxxUsdPrice();
+        const p = getDarkcoinUsdPrice();
         pass('price_oracle', { usd: p });
       } catch (e) { fail('price_oracle', e.message); }
 
@@ -2829,7 +2829,7 @@ function installRoutes(app) {
     res.status(out.overall === 'error' ? 500 : 200).json(out);
   });
 
-  console.log('[styxx-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover / admin/bonus / treasury/stats / health');
+  console.log('[darkcoin-economy] routes installed: mint / sponsor / hyphal / tip / portfolio / withdraw / map/live / wallet/balance / mint/status / mint/recover / admin/bonus / treasury/stats / health');
 }
 
 module.exports = {
@@ -2837,7 +2837,7 @@ module.exports = {
   installRoutes,
   runMigration,
   // exported for testing + cron
-  usdToStyxx,
-  getStyxxUsdPrice,
-  verifyStyxxPayment,
+  usdToDarkcoin,
+  getDarkcoinUsdPrice,
+  verifyDarkcoinPayment,
 };

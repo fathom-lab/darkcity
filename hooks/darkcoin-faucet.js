@@ -1,7 +1,7 @@
 // ============================================================================
-// hooks/styxx-faucet.js — onboarding faucet
+// hooks/darkcoin-faucet.js — onboarding faucet
 //
-// New wallets get a one-time airdrop of $STYXX so zero-to-first-bet doesn't
+// New wallets get a one-time airdrop of $DARKCOIN so zero-to-first-bet doesn't
 // require going to pump.fun, buying SOL, swapping, bridging, etc. The biggest
 // friction in any crypto product is the "go to a DEX and buy the token" wall.
 // This removes it for the first try.
@@ -67,7 +67,7 @@ async function ensureFaucetTable(pool) {
 }
 
 function installFaucetRoutes(app, pool) {
-  const styxx = require('../lib/solana-styxx');
+  const styxx = require('../lib/solana-darkcoin');
 
   ensureFaucetTable(pool).catch(e => console.warn('[faucet] table init:', e.message));
 
@@ -172,7 +172,7 @@ function installFaucetRoutes(app, pool) {
       }
 
       // Treasury floor — don't dip the house below operating reserve.
-      const treasuryBal = await styxx.getStyxxBalance(styxx.getTreasury().publicKey.toBase58());
+      const treasuryBal = await styxx.getDarkcoinBalance(styxx.getTreasury().publicKey.toBase58());
       if (treasuryBal - amount < treasuryFloor) {
         return res.status(503).json({ error: 'treasury_below_floor' });
       }

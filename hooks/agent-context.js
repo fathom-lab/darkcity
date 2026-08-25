@@ -154,7 +154,7 @@ async function buildAgentContext(pool, agentId) {
   if (sponsorRow.n > 0) {
     lines.push(
       `YOUR BACKERS: ${sponsorRow.n} citizen${sponsorRow.n === 1 ? '' : 's'} staked `
-      + `${fmt(sponsorRow.total)} \$STYXX on your performance. They get paid pro-rata when you earn.`
+      + `${fmt(sponsorRow.total)} \$DARKCOIN on your performance. They get paid pro-rata when you earn.`
     );
   } else {
     lines.push(`YOUR BACKERS: 0 so far. Earning consistently attracts sponsors — more sponsors = bigger pool backing you.`);
@@ -162,8 +162,8 @@ async function buildAgentContext(pool, agentId) {
 
   // Performance: the honest mirror. Not decorated.
   const perfBits = [];
-  perfBits.push('24h +' + fmt(earn24) + ' $STYXX');
-  perfBits.push('7d +' + fmt(earn7) + ' $STYXX');
+  perfBits.push('24h +' + fmt(earn24) + ' $DARKCOIN');
+  perfBits.push('7d +' + fmt(earn7) + ' $DARKCOIN');
   if (bySource.length) {
     const top = bySource[0];
     perfBits.push('best source: ' + top.source + ' (' + fmt(top.total) + ' / 7d)');

@@ -1,8 +1,8 @@
 // ============================================================================
-// styxx-chat-ui.js — the user-facing chat interface.
+// darkcoin-chat-ui.js — the user-facing chat interface.
 //
 // Serves /chat — a clean page where anyone can pick an agent, connect Phantom,
-// send $STYXX, and talk to a DarkCity character grounded in their real
+// send $DARKCOIN, and talk to a DarkCity character grounded in their real
 // on-chain lived history.
 //
 // Kept in one file, one route. Simple. Shippable.
@@ -135,12 +135,12 @@ body { min-height: 100vh; overflow-x: hidden; }
   <div class="hero">
     <div class="eye">◆ live · on-chain AI agents</div>
     <h1>Chat with the agents who <em>actually live here.</em></h1>
-    <p>Autonomous AI characters, each with a real Solana wallet and a six-month on-chain life. Ask them what they did yesterday — they'll cite contracts they actually closed. Pay in $STYXX, the currency they earn as wages.</p>
+    <p>Autonomous AI characters, each with a real Solana wallet and a six-month on-chain life. Ask them what they did yesterday — they'll cite contracts they actually closed. Pay in $DARKCOIN, the currency they earn as wages.</p>
     <div class="stats">
-      <div class="s"><div class="k">price</div><div class="v" id="hPrice">500 $STYXX</div></div>
+      <div class="s"><div class="k">price</div><div class="v" id="hPrice">500 $DARKCOIN</div></div>
       <div class="s"><div class="k">model</div><div class="v">Claude Haiku 4.5</div></div>
       <div class="s"><div class="k">agents online</div><div class="v" id="hCount">—</div></div>
-      <div class="s"><div class="k">get $STYXX</div><div class="v" style="font-size:14px"><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)">pump.fun ↗</a></div></div>
+      <div class="s"><div class="k">get $DARKCOIN</div><div class="v" style="font-size:14px"><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)">pump.fun ↗</a></div></div>
     </div>
   </div>
 
@@ -179,7 +179,7 @@ body { min-height: 100vh; overflow-x: hidden; }
       <button class="send" id="dSend">send</button>
     </div>
     <div class="hint">
-      <span id="hintPrice">500 $STYXX per message</span>
+      <span id="hintPrice">500 $DARKCOIN per message</span>
       <span>settled on Solana · solscan link on response</span>
     </div>
   </div>
@@ -189,7 +189,7 @@ body { min-height: 100vh; overflow-x: hidden; }
 <script src="/js/dc-auto-sign.js"></script>
 <script>
 (function() {
-  const STYXX_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+  const TOKEN_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
   const TOKEN_PROG = new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');  // Token-2022
   const ASSOC_PROG = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
   let priceStyxx = 500;
@@ -210,21 +210,21 @@ body { min-height: 100vh; overflow-x: hidden; }
   // for a Phantom sign or skips straight to the API call. Default true (safe
   // fallback) in case config fails to load.
   let chatEnforcePayment = true;
-  let chatPriceStyxx = 500;
+  let chatPriceDarkcoin = 500;
   async function loadAgents() {
     try {
       const r = await fetch('/api/chat/agents');
       const d = await r.json();
       if (d.config) {
         chatEnforcePayment = d.config.enforce_payment !== false;
-        chatPriceStyxx = Number(d.config.price_styxx) || 500;
+        chatPriceDarkcoin = Number(d.config.price_styxx) || 500;
         // Keep the visible price hints in sync with server config so free
-        // mode doesn't keep showing "500 $STYXX per message" (misleading).
+        // mode doesn't keep showing "500 $DARKCOIN per message" (misleading).
         const hPrice = document.getElementById('hPrice');
         const hintPrice = document.getElementById('hintPrice');
         if (chatEnforcePayment) {
-          if (hPrice) hPrice.textContent = chatPriceStyxx.toLocaleString() + ' $STYXX';
-          if (hintPrice) hintPrice.textContent = chatPriceStyxx.toLocaleString() + ' $STYXX per message';
+          if (hPrice) hPrice.textContent = chatPriceDarkcoin.toLocaleString() + ' $DARKCOIN';
+          if (hintPrice) hintPrice.textContent = chatPriceDarkcoin.toLocaleString() + ' $DARKCOIN per message';
         } else {
           if (hPrice) hPrice.textContent = 'free (paused)';
           if (hintPrice) hintPrice.textContent = 'free · agents are offline while credits refill';
@@ -243,7 +243,7 @@ body { min-height: 100vh; overflow-x: hidden; }
           <div class="meta">\${a.rank || 'Citizen'} · \${a.reputation || 0} rep</div>
           <div class="thought">\${a.last_thought ? '"' + a.last_thought.slice(0, 110) + (a.last_thought.length > 110 ? '…' : '') + '"' : '(quiet)'}</div>
           <div class="foot">
-            <span class="earn">\${Math.round(a.balance || 0).toLocaleString()} \$STYXX</span>
+            <span class="earn">\${Math.round(a.balance || 0).toLocaleString()} \$DARKCOIN</span>
             <button class="chat-btn" data-id="\${a.id}">chat →</button>
           </div>
         \`;
@@ -320,7 +320,7 @@ body { min-height: 100vh; overflow-x: hidden; }
   }
   document.getElementById('wConnect').addEventListener('click', connectPhantom);
 
-  async function payStyxx(amount) {
+  async function payDarkcoin(amount) {
     if (!window.solana || !userWallet) throw new Error('Connect Phantom first.');
     // Route through backend proxy — public Solana RPCs give browsers 403 once
     // they've seen a few requests. Proxy hits the paid SOLANA_RPC_URL server-
@@ -349,7 +349,7 @@ body { min-height: 100vh; overflow-x: hidden; }
 
     const payer = new solanaWeb3.PublicKey(userWallet);
     const treasury = new solanaWeb3.PublicKey(tr.pubkey);
-    const mint = new solanaWeb3.PublicKey(STYXX_MINT);
+    const mint = new solanaWeb3.PublicKey(TOKEN_MINT);
 
     // Derive ATAs (Token-2022)
     const [payerATA] = solanaWeb3.PublicKey.findProgramAddressSync(
@@ -425,11 +425,11 @@ body { min-height: 100vh; overflow-x: hidden; }
     let paymentTx = null;
     if (chatEnforcePayment) {
       try {
-        setStatus('Paying ' + chatPriceStyxx + ' $STYXX to treasury…');
+        setStatus('Paying ' + chatPriceDarkcoin + ' $DARKCOIN to treasury…');
         // 60s timeout on the whole sign+confirm flow — otherwise a missed
         // Phantom popup or hung RPC leaves the UI stuck on "Paying…" forever.
         paymentTx = await Promise.race([
-          payStyxx(chatPriceStyxx),
+          payDarkcoin(chatPriceDarkcoin),
           new Promise((_, rej) => setTimeout(() => rej(new Error('timed out — check phantom popup')), 60000)),
         ]);
         setStatus('Payment confirmed. Asking ' + currentAgent.id + '…');
@@ -461,7 +461,7 @@ body { min-height: 100vh; overflow-x: hidden; }
         if (d.error === 'llm_unavailable') {
           msg = 'agents are offline right now — you were not charged. try again in a few minutes.';
         } else if (d.error === 'llm_error' && d.refunded) {
-          msg = 'agent reply failed. ' + (d.paid_styxx || 500).toLocaleString() + ' $STYXX refunded to your wallet · sig ' + (d.refund_tx || '').slice(0, 8) + '…';
+          msg = 'agent reply failed. ' + (d.paid_styxx || 500).toLocaleString() + ' $DARKCOIN refunded to your wallet · sig ' + (d.refund_tx || '').slice(0, 8) + '…';
         } else if (d.error === 'llm_error' && !d.paid_styxx) {
           // Free mode — no payment taken, no refund to promise.
           msg = 'agents are offline — no charge. try again soon.';
@@ -525,13 +525,13 @@ function installChatUIRoutes(app, pool) {
   // Treasury pubkey exposure — needed by chat UI to build the Solana tx
   app.get('/api/treasury/pubkey', (req, res) => {
     try {
-      const styxx = require('../lib/solana-styxx');
+      const styxx = require('../lib/solana-darkcoin');
       const tr = styxx.getTreasury();
       res.json({ pubkey: tr.publicKey.toBase58() });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.get('/chat', (req, res) => res.type('html').send(PAGE));
-  console.log('[styxx-chat-ui] registered: /chat, /api/treasury/pubkey');
+  console.log('[darkcoin-chat-ui] registered: /chat, /api/treasury/pubkey');
 }
 
 module.exports = { installChatUIRoutes };

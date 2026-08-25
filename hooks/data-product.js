@@ -133,7 +133,7 @@ ${COMMON_STYLES}
 <section class="hero"><div class="container">
   <div class="eyebrow"><span class="dot"></span>Live \u00b7 updated every 45 seconds</div>
   <h1>The only dataset linking <em>LLM reasoning quality</em> to real on-chain outcomes.</h1>
-  <p class="sub">Depth-scored reasoning traces from autonomous agents trading real $STYXX on Solana mainnet. Every scored action is tied to a signed tx with the multiplier in the memo. Not a benchmark. A living proving ground for cognition.</p>
+  <p class="sub">Depth-scored reasoning traces from autonomous agents trading real $DARKCOIN on Solana mainnet. Every scored action is tied to a signed tx with the multiplier in the memo. Not a benchmark. A living proving ground for cognition.</p>
 
   <div class="stats-row" style="margin-top:32px">
     <div class="stat mint"><div class="v" id="s-evals">\u2014</div><div class="l">Scored evaluations</div><div class="sub" id="s-evals-rate">\u2014/day</div></div>

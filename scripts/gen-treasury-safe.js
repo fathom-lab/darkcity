@@ -16,16 +16,16 @@ const pub = kp.publicKey.toBase58();
 const encKey = crypto.randomBytes(32).toString('hex');
 
 const outPath = path.join(__dirname, '..', '.env.styxx-treasury.local');
-const fileContent = `# DARKCITY $STYXX TREASURY — local-only secrets
+const fileContent = `# DARKCITY $DARKCOIN TREASURY — local-only secrets
 # Generated ${new Date().toISOString()}
 # This file is gitignored. Never commit. Never paste privkey into chat or logs.
 # Copy these three lines into Railway → Variables.
 
-STYXX_TREASURY_PRIVKEY=${privB58}
-STYXX_WALLET_ENC_KEY=${encKey}
+TREASURY_PRIVKEY=${privB58}
+WALLET_ENC_KEY=${encKey}
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 
-# Treasury pubkey (safe to share — this is where you send SOL + $STYXX):
+# Treasury pubkey (safe to share — this is where you send SOL + $DARKCOIN):
 # ${pub}
 `;
 
@@ -47,7 +47,7 @@ console.log('    ' + pub);
 console.log('');
 console.log('  Send:');
 console.log('    • ~0.1 SOL     (tx fees for ~10k trades)');
-console.log('    • 5000 $STYXX  (mint: Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump)');
+console.log('    • 5000 $DARKCOIN  (mint: Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump)');
 console.log('');
 console.log('  Verify: https://solscan.io/account/' + pub);
 console.log('────────────────────────────────────────────────────────────────────');

@@ -5,7 +5,7 @@
 //   - NPC brain LLM pattern (Claude Haiku 4.5 via native fetch)
 //   - Depth scorer (hooks/depth-scorer.js)
 //   - Agent wallets (external_agents.sol_privkey_enc)
-//   - Treasury wallet (lib/solana-styxx)
+//   - Treasury wallet (lib/solana-darkcoin)
 //   - Genesis snapshot (real-human multipliers)
 //   - Phantom sign flow (mirrors /chat payment verification)
 //
@@ -25,7 +25,7 @@
 
 'use strict';
 
-const solanaStyxx = require('../lib/solana-styxx');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
 const { PublicKey } = require('@solana/web3.js');
 const crypto = require('crypto');
 
@@ -52,7 +52,7 @@ const PROMPT_BANK = [
   "Everyone's betting on MR_REX — fade the crowd or ride the momentum?",
   "You have 30 seconds before a pulse — make one big trade or run 5 small ones?",
   "Your reputation just hit Architect tier — aggressive expansion or consolidation?",
-  "A dormant agent sends you $STYXX asking to buy your alliance — accept or pass?"
+  "A dormant agent sends you $DARKCOIN asking to buy your alliance — accept or pass?"
 ];
 
 // ─── Native Anthropic call (same pattern as npc-brain, chat) ──────────────
@@ -372,8 +372,8 @@ async function settleRound(pool, round) {
   let payoutCap = Infinity;
   if (!shadowMode) {
     try {
-      const treasuryPk = solanaStyxx.getTreasury().publicKey.toBase58();
-      const treasuryBal = Number(await solanaStyxx.getStyxxBalance(treasuryPk));
+      const treasuryPk = solanaDarkcoin.getTreasury().publicKey.toBase58();
+      const treasuryBal = Number(await solanaDarkcoin.getDarkcoinBalance(treasuryPk));
       const capBps = Number(params.arena_payout_cap_bps || 2500);
       payoutCap = treasuryBal * (capBps / 10000);
     } catch (e) { console.warn('[arena] treasury balance check failed, using default cap', e.message); payoutCap = 2_500_000; }
@@ -392,7 +392,7 @@ async function settleRound(pool, round) {
       const wasCapped = payout < uncappedPayout;
       if (!shadowMode) {
         try {
-          const { signature } = await solanaStyxx.airdropFromTreasury(bet.user_wallet, payout);
+          const { signature } = await solanaDarkcoin.airdropFromTreasury(bet.user_wallet, payout);
           await pool.query(
             `UPDATE arena_bets SET status='cashed_out', payout_styxx=$1, payout_tx=$2, genesis_multiplier=$3 WHERE id=$4`,
             [payout, signature, genesisMult, bet.id]
@@ -470,7 +470,7 @@ async function settleRound(pool, round) {
       `INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
        VALUES ($1, 'TREASURY', $2, 'BURN', 'BURN', $3, 'arena_burn_pending', $4)
        ON CONFLICT (tx_signature) DO NOTHING`,
-      ['arena_burn_' + round.id, solanaStyxx.getTreasury ? solanaStyxx.getTreasury().publicKey.toBase58() : '99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp', totalBurn, 'round#' + round.id]
+      ['arena_burn_' + round.id, solanaDarkcoin.getTreasury ? solanaDarkcoin.getTreasury().publicKey.toBase58() : '99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp', totalBurn, 'round#' + round.id]
     );
   }
 
@@ -504,13 +504,13 @@ async function distributeFounderCut(pool) {
       continue;
     }
     try {
-      const { signature } = await solanaStyxx.airdropFromTreasury(g.wallet_pubkey, share);
+      const { signature } = await solanaDarkcoin.airdropFromTreasury(g.wallet_pubkey, share);
       txList.push({ wallet: g.wallet_pubkey, amount: share, tx: signature });
       await pool.query(
         `INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
          VALUES ($1, 'TREASURY', $2, null, $3, $4, 'founder_cut', 'genesis_cut')
          ON CONFLICT (tx_signature) DO NOTHING`,
-        [signature, solanaStyxx.getTreasury().publicKey.toBase58(), g.wallet_pubkey, share]
+        [signature, solanaDarkcoin.getTreasury().publicKey.toBase58(), g.wallet_pubkey, share]
       );
     } catch (e) { console.warn('[arena] founder cut payout failed for', g.wallet_pubkey.slice(0,8), e.message); }
   }
@@ -541,7 +541,7 @@ async function retryPendingPayouts(pool) {
   );
   for (const bet of rows) {
     try {
-      const { signature } = await solanaStyxx.airdropFromTreasury(bet.user_wallet, Number(bet.payout_styxx));
+      const { signature } = await solanaDarkcoin.airdropFromTreasury(bet.user_wallet, Number(bet.payout_styxx));
       await pool.query(
         `UPDATE arena_bets SET status='cashed_out', payout_tx=$1 WHERE id=$2`,
         [signature, bet.id]
@@ -617,7 +617,7 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
     // Retry getParsedTransaction — RPC indexer can lag by a few hundred ms
     // after Phantom confirms. One-shot lookup would reject valid bets whose
     // tx is legit but not yet indexed. 4 tries · 500/1000/1500/2000 ms.
-    const conn = solanaStyxx.getConnection();
+    const conn = solanaDarkcoin.getConnection();
     let txInfo = null;
     for (let i = 0; i < 4; i++) {
       txInfo = await conn.getParsedTransaction(payment_tx, {
@@ -631,10 +631,10 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
 
     const pre = txInfo.meta?.preTokenBalances || [];
     const post = txInfo.meta?.postTokenBalances || [];
-    const TREASURY = solanaStyxx.getTreasury().publicKey.toBase58();
-    const STYXX_MINT = solanaStyxx.STYXX_MINT_ADDR;
-    const treasuryPre = pre.find(b => b.owner === TREASURY && b.mint === STYXX_MINT);
-    const treasuryPost = post.find(b => b.owner === TREASURY && b.mint === STYXX_MINT);
+    const TREASURY = solanaDarkcoin.getTreasury().publicKey.toBase58();
+    const TOKEN_MINT = solanaDarkcoin.TOKEN_MINT_ADDR;
+    const treasuryPre = pre.find(b => b.owner === TREASURY && b.mint === TOKEN_MINT);
+    const treasuryPost = post.find(b => b.owner === TREASURY && b.mint === TOKEN_MINT);
     const delta = (Number(treasuryPost?.uiTokenAmount?.uiAmount) || 0) - (Number(treasuryPre?.uiTokenAmount?.uiAmount) || 0);
     if (delta < stake_styxx * 0.99) return { ok: false, error: 'insufficient_payment', paid: delta, required: stake_styxx };
   }
@@ -645,7 +645,7 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
   if (round.status !== 'betting') {
     if (shadowMode) return { ok: false, error: 'betting_closed' };
     try {
-      const refund = await solanaStyxx.airdropFromTreasury(user_wallet, Number(stake_styxx));
+      const refund = await solanaDarkcoin.airdropFromTreasury(user_wallet, Number(stake_styxx));
       // Log the refund as a 'refunded' bet row so payment_tx can never be
       // reused and the audit trail is explicit. payout_tx holds the refund
       // signature; payout_styxx equals the stake (full refund, no fee taken).

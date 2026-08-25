@@ -104,7 +104,7 @@ async function main() {
   for (const a of inner.agents) {
     try {
       if (inner.decrypted) {
-        console.warn('SKIPPING ' + a.agent_id + ' — inner was decrypted; plaintext-key restore not yet wired (would need re-encryption with new STYXX_WALLET_ENC_KEY)');
+        console.warn('SKIPPING ' + a.agent_id + ' — inner was decrypted; plaintext-key restore not yet wired (would need re-encryption with new WALLET_ENC_KEY)');
         continue;
       }
       if (!a.sol_privkey_server_encrypted) {
@@ -132,7 +132,7 @@ async function main() {
   console.log('  restored: ' + restored);
   console.log('  errors:   ' + errors);
   console.log('');
-  console.log('VERIFY: run selftest-styxx.js to confirm signing works with the restored keys.');
+  console.log('VERIFY: run selftest-darkcoin.js to confirm signing works with the restored keys.');
 }
 
 main().catch(e => { console.error('\nFAILED:', e.message); process.exit(1); });

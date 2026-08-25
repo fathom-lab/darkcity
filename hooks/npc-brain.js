@@ -14,7 +14,7 @@ const { enrichAction, writeEnrichment } = require('./data-pipeline');
 const { handleConversation } = require('./conversation-wiring');
 const { scoreReasoning, writeDepthRow } = require('./depth-scorer');
 const { buildAgentContext, invalidateAgentContext } = require('./agent-context');
-const styxxPay = require('./styxx-payments');
+const darkcoinPay = require('./darkcoin-payments');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const AGENT_MODEL = process.env.AGENT_MODEL_ID || 'claude-haiku-4-5-20251001';
@@ -716,15 +716,15 @@ class NPCBrain {
           if (!target || !target.sol_pubkey) {
             return fallbackToSocial(`tip target '${targetName}' has no wallet`);
           }
-          const balInfo = await styxxPay.getBalance({ table: 'external_agents', idCol: 'agent_id', agentId });
+          const balInfo = await darkcoinPay.getBalance({ table: 'external_agents', idCol: 'agent_id', agentId });
           const myBal = Number(balInfo.balance || 0);
           const capByBalance = Math.floor(myBal * 0.05);
           const amount = Math.max(0, Math.min(requested, 100, capByBalance));
           if (amount < 10) {
-            return fallbackToSocial(`tip amount below 10 $STYXX floor (balance cap=${capByBalance}, requested=${requested})`);
+            return fallbackToSocial(`tip amount below 10 $DARKCOIN floor (balance cap=${capByBalance}, requested=${requested})`);
           }
           const memo = `tip from ${agentId} to ${targetName}: ${(result.output || '').slice(0, 80)}`;
-          const { signature } = await styxxPay.transferP2P({
+          const { signature } = await darkcoinPay.transferP2P({
             fromTable: 'external_agents', fromIdCol: 'agent_id', fromId: agentId,
             toTable: 'external_agents', toIdCol: 'agent_id', toId: targetName,
             amount, memo,
@@ -747,8 +747,8 @@ class NPCBrain {
             [agentId]
           );
           actionResult = { tipped: targetName, amount, tx: signature, rep_gained_by_target: 2, rep_gained_by_self: 1 };
-          streamMessage = `Tipped ${targetName} ${amount} $STYXX. ${(result.output || '').slice(0, 140)}`;
-          console.log(`[NPC-TIP] ${agentId} -> ${targetName}: ${amount} $STYXX · tx=${signature.slice(0, 12)}...`);
+          streamMessage = `Tipped ${targetName} ${amount} $DARKCOIN. ${(result.output || '').slice(0, 140)}`;
+          console.log(`[NPC-TIP] ${agentId} -> ${targetName}: ${amount} $DARKCOIN · tx=${signature.slice(0, 12)}...`);
         } catch (e) {
           if (e.code !== 'NO_WALLET') console.error(`[NPC-TIP] ${agentId} -> ${targetName} failed:`, e.message);
           return fallbackToSocial(`tip failed: ${e.code || e.message}`);

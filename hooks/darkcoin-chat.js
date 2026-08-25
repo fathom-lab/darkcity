@@ -1,13 +1,13 @@
 // ============================================================================
-// styxx-chat.js — the obvious use case
+// darkcoin-chat.js — the obvious use case
 //
-// Anyone can chat with any DarkCity agent. Pay $STYXX. Agent responds in
+// Anyone can chat with any DarkCity agent. Pay $DARKCOIN. Agent responds in
 // character, referencing their real on-chain lived history. Normal people
 // already pay for AI characters (Character.ai, Replika). Ours are the only
 // ones with verifiable lives.
 //
 // Sustainable economics:
-//   500 $STYXX per message (~$0.033 at current price)
+//   500 $DARKCOIN per message (~$0.033 at current price)
 //     → 60% agent wage (300) — agent's custodial wallet
 //     → 20% treasury fee (100) — funds buyback pool
 //     → 20% LLM reserve (100) — covers Haiku-4.5 API cost (~$0.004/msg)
@@ -21,7 +21,7 @@
 
 'use strict';
 
-const solanaStyxx = require('../lib/solana-styxx');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
 const { PublicKey } = require('@solana/web3.js');
 
 const CHAT_MODEL = process.env.CHAT_MODEL_ID || 'claude-haiku-4-5-20251001';
@@ -65,7 +65,7 @@ function asyncLog(label, fn) {
 }
 
 // ─── Payment verification ──────────────────────────────────────────────────
-// Confirm the user paid >= price $STYXX to treasury in a real on-chain tx.
+// Confirm the user paid >= price $DARKCOIN to treasury in a real on-chain tx.
 // Caches by tx_signature in chat_messages so the same payment can't be
 // double-spent across messages.
 async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }) {
@@ -77,8 +77,8 @@ async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }
   );
   if (prev.length) return { ok: false, reason: 'tx_already_used' };
 
-  const conn = solanaStyxx.getConnection();
-  const treasury = solanaStyxx.getTreasury();
+  const conn = solanaDarkcoin.getConnection();
+  const treasury = solanaDarkcoin.getTreasury();
   const treasuryPubkey = treasury.publicKey.toBase58();
 
   const txInfo = await conn.getParsedTransaction(tx_signature, {
@@ -90,8 +90,8 @@ async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }
 
   // Find a transferChecked instruction on the STYXX mint from user → treasury
   // of at least required_styxx.
-  const STYXX_MINT = solanaStyxx.STYXX_MINT_ADDR;
-  const DECIMALS = solanaStyxx.STYXX_DECIMALS || 6;
+  const TOKEN_MINT = solanaDarkcoin.TOKEN_MINT_ADDR;
+  const DECIMALS = solanaDarkcoin.TOKEN_DECIMALS || 6;
   const instructions = [
     ...(txInfo.transaction.message.instructions || []),
     ...((txInfo.meta?.innerInstructions || []).flatMap(i => i.instructions || [])),
@@ -106,7 +106,7 @@ async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }
     if (t !== 'transferChecked' && t !== 'transfer') continue;
     const info = parsed.info || {};
     // For transferChecked, mint is present. For transfer, we rely on authority.
-    if (info.mint && info.mint !== STYXX_MINT) continue;
+    if (info.mint && info.mint !== TOKEN_MINT) continue;
     const authority = info.authority || info.multisigAuthority;
     if (authority && authority === user_wallet) payerMatched = true;
     // destination can be an ATA — resolve owner if the parsed info gives it
@@ -122,14 +122,14 @@ async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }
   if (paidAmount < required_styxx) {
     const pre = txInfo.meta?.preTokenBalances || [];
     const post = txInfo.meta?.postTokenBalances || [];
-    const treasuryPre = pre.find(b => b.owner === treasuryPubkey && b.mint === STYXX_MINT);
-    const treasuryPost = post.find(b => b.owner === treasuryPubkey && b.mint === STYXX_MINT);
+    const treasuryPre = pre.find(b => b.owner === treasuryPubkey && b.mint === TOKEN_MINT);
+    const treasuryPost = post.find(b => b.owner === treasuryPubkey && b.mint === TOKEN_MINT);
     if (treasuryPre && treasuryPost) {
       const delta = Number(treasuryPost.uiTokenAmount.uiAmount) - Number(treasuryPre.uiTokenAmount.uiAmount);
       if (delta > paidAmount) paidAmount = delta;
     }
     // Payer also visible in pre/post
-    const userPre = pre.find(b => b.owner === user_wallet && b.mint === STYXX_MINT);
+    const userPre = pre.find(b => b.owner === user_wallet && b.mint === TOKEN_MINT);
     if (userPre) payerMatched = true;
   }
 
@@ -218,8 +218,8 @@ function buildSystemPrompt(ctx) {
   lines.push(`  rank: ${a.rank || 'Citizen'}`);
   lines.push(`  reputation: ${a.reputation || 0}`);
   lines.push(`  builds: ${a.builds || 0} · trades: ${a.trades || 0}`);
-  lines.push(`  current $STYXX balance: ${Math.round(Number(a.balance))}`);
-  lines.push(`  7-day earnings: ${Math.round(ctx.earned7d)} $STYXX`);
+  lines.push(`  current $DARKCOIN balance: ${Math.round(Number(a.balance))}`);
+  lines.push(`  7-day earnings: ${Math.round(ctx.earned7d)} $DARKCOIN`);
   if (ageDays != null) lines.push(`  living in DarkCity for: ${ageDays} days`);
   if (a.dormant) lines.push('  STATUS: DORMANT (below reserve minimum — your on-chain life paused until recapitalized)');
   lines.push('');
@@ -246,7 +246,7 @@ function buildSystemPrompt(ctx) {
   lines.push('  When asked about your recent activity, refer to the actual actions listed above. Do not invent — those are your receipts.');
   lines.push('  When the user asks about crypto/markets/strategy, respond with your rank and district\'s character in mind. Traders (Silicon Docks) are different from builders (Industrial Zone) are different from deep thinkers (Undercity).');
   lines.push('  Brief unless they ask for depth. 1-5 sentences usually. You can ask them questions back.');
-  lines.push('  Every DarkCity reference you make (contract IDs, agent names, districts, $STYXX amounts) should be grounded in the context above.');
+  lines.push('  Every DarkCity reference you make (contract IDs, agent names, districts, $DARKCOIN amounts) should be grounded in the context above.');
   return lines.join('\n');
 }
 
@@ -321,7 +321,7 @@ function installChatRoutes(app, pool) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // Core: send a message, pay $STYXX, get response
+  // Core: send a message, pay $DARKCOIN, get response
   app.post('/api/chat/:agent_id', async (req, res) => {
     try {
       const agentId = req.params.agent_id;
@@ -424,7 +424,7 @@ function installChatRoutes(app, pool) {
         let refundErr = null;
         if (paidAmount > 0 && user_wallet) {
           try {
-            const out = await solanaStyxx.airdropFromTreasury(user_wallet, paidAmount);
+            const out = await solanaDarkcoin.airdropFromTreasury(user_wallet, paidAmount);
             refundSig = out.signature;
           } catch (re) {
             refundErr = re.message;
@@ -467,13 +467,13 @@ function installChatRoutes(app, pool) {
         const wage = paidAmount * (AGENT_BPS / 10000);
         if (wage >= 1) {
           asyncLog('pay-agent-' + agentId, async () => {
-            const { signature } = await solanaStyxx.airdropFromTreasury(ctx.agent.sol_pubkey, wage);
+            const { signature } = await solanaDarkcoin.airdropFromTreasury(ctx.agent.sol_pubkey, wage);
             await pool.query(
               `INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey,
                                             to_agent_id, to_pubkey, amount, reason, memo)
                  VALUES ($1, 'TREASURY', $2, $3, $4, $5, 'chat_wage', $6)
                  ON CONFLICT (tx_signature) DO NOTHING`,
-              [signature, solanaStyxx.getTreasury().publicKey.toBase58(),
+              [signature, solanaDarkcoin.getTreasury().publicKey.toBase58(),
                agentId, ctx.agent.sol_pubkey, wage, 'chat#' + msgRow.id]
             );
           });
@@ -495,7 +495,7 @@ function installChatRoutes(app, pool) {
     }
   });
 
-  console.log('[styxx-chat] routes registered: /api/chat/agents, /api/chat/:agent_id, /api/chat/:agent_id/history');
+  console.log('[darkcoin-chat] routes registered: /api/chat/agents, /api/chat/:agent_id, /api/chat/:agent_id/history');
 }
 
 module.exports = { installChatRoutes };

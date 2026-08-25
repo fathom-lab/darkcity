@@ -3,8 +3,8 @@
 // ============================================================================
 // Served as a static module at /js/dc-auto-sign.js so every page can pull it
 // with `<script type="module" src="/js/dc-auto-sign.js"></script>`. Before
-// this existed, the helper was inlined in styxx-public.js's COMMON_HEAD, which
-// meant pages served from other modules (styxx-flow.js's /flow and /agent/:id,
+// this existed, the helper was inlined in darkcoin-public.js's COMMON_HEAD, which
+// meant pages served from other modules (darkcoin-flow.js's /flow and /agent/:id,
 // for example) didn't get it — they'd call window.dcAutoSign and crash with
 // "Auto-sign helper not loaded." This endpoint gives every page the same
 // one-click Phantom signing path.
@@ -18,7 +18,7 @@ const AUTO_SIGN_SOURCE = `
 import { Connection, PublicKey, Transaction, TransactionInstruction } from 'https://esm.sh/@solana/web3.js@1.95.8';
 import { createTransferCheckedInstruction, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_2022_PROGRAM_ID } from 'https://esm.sh/@solana/spl-token@0.4.8?deps=@solana/web3.js@1.95.8';
 
-const STYXX_MINT = new PublicKey('Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump');
+const TOKEN_MINT = new PublicKey('Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump');
 const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 const RPC_URL = 'https://api.mainnet-beta.solana.com';
 
@@ -29,18 +29,18 @@ window.dcAutoSign = async function({ destination, amount, memo, decimals = 6 }) 
   const to = new PublicKey(destination);
   const conn = new Connection(RPC_URL, 'confirmed');
 
-  const fromAta = await getAssociatedTokenAddress(STYXX_MINT, from, false, TOKEN_2022_PROGRAM_ID);
-  const toAta   = await getAssociatedTokenAddress(STYXX_MINT, to,   false, TOKEN_2022_PROGRAM_ID);
+  const fromAta = await getAssociatedTokenAddress(TOKEN_MINT, from, false, TOKEN_2022_PROGRAM_ID);
+  const toAta   = await getAssociatedTokenAddress(TOKEN_MINT, to,   false, TOKEN_2022_PROGRAM_ID);
 
   const tx = new Transaction();
   const toAtaInfo = await conn.getAccountInfo(toAta);
   if (!toAtaInfo) {
-    tx.add(createAssociatedTokenAccountInstruction(from, toAta, to, STYXX_MINT, TOKEN_2022_PROGRAM_ID));
+    tx.add(createAssociatedTokenAccountInstruction(from, toAta, to, TOKEN_MINT, TOKEN_2022_PROGRAM_ID));
   }
 
   const amt = BigInt(Math.round(Number(amount) * (10 ** decimals)));
   tx.add(createTransferCheckedInstruction(
-    fromAta, STYXX_MINT, toAta, from, amt, decimals, [], TOKEN_2022_PROGRAM_ID
+    fromAta, TOKEN_MINT, toAta, from, amt, decimals, [], TOKEN_2022_PROGRAM_ID
   ));
 
   tx.add(new TransactionInstruction({

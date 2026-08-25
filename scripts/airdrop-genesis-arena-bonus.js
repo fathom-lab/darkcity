@@ -2,7 +2,7 @@
 // airdrop-genesis-arena-bonus.js — one-shot bankroll to the 9 real-human
 // genesis wallets so they can play the felt on day one with size.
 //
-// Default: 100,000 $STYXX per wallet. Weighted mode (--weighted) multiplies
+// Default: 100,000 $DARKCOIN per wallet. Weighted mode (--weighted) multiplies
 // by each wallet's effective_multiplier (1.50x - 3.75x) so the earliest
 // stackers get the biggest bag.
 //
@@ -17,7 +17,7 @@
 
 require('dotenv').config();
 const { Pool } = require('pg');
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 const AMOUNT_BASE = Number(process.argv.find(a => /^\d/.test(a)) || 100000);
 const WEIGHTED = process.argv.includes('--weighted');
@@ -43,7 +43,7 @@ async function main() {
 
     console.log(`\n[airdrop] campaign: ${CAMPAIGN}`);
     console.log(`[airdrop] ${rows.length} real-human genesis wallets`);
-    console.log(`[airdrop] base: ${AMOUNT_BASE.toLocaleString()} $STYXX ${WEIGHTED ? '× effective_multiplier' : 'flat'}`);
+    console.log(`[airdrop] base: ${AMOUNT_BASE.toLocaleString()} $DARKCOIN ${WEIGHTED ? '× effective_multiplier' : 'flat'}`);
     if (DRY) console.log('[airdrop] DRY RUN — no tokens will move\n');
 
     // Check prior payments to skip any already sent
@@ -66,7 +66,7 @@ async function main() {
         continue;
       }
       if (DRY) {
-        console.log(`  would  ${tag} ← ${amount.toLocaleString()} $STYXX`);
+        console.log(`  would  ${tag} ← ${amount.toLocaleString()} $DARKCOIN`);
         continue;
       }
       try {
@@ -82,7 +82,7 @@ async function main() {
            ON CONFLICT (tx_signature) DO NOTHING`,
           [signature, styxx.getTreasury().publicKey.toBase58(), g.wallet_pubkey, amount, CAMPAIGN]
         );
-        console.log(`  sent   ${tag} ← ${amount.toLocaleString()} $STYXX · ${signature.slice(0, 12)}..`);
+        console.log(`  sent   ${tag} ← ${amount.toLocaleString()} $DARKCOIN · ${signature.slice(0, 12)}..`);
         totalSent += amount;
         // tiny pause so we don't hammer the RPC
         await new Promise(r => setTimeout(r, 400));
@@ -92,7 +92,7 @@ async function main() {
       }
     }
 
-    console.log(`\n[airdrop] done · sent: ${totalSent.toLocaleString()} $STYXX · skipped: ${skipped} · failed: ${failed}\n`);
+    console.log(`\n[airdrop] done · sent: ${totalSent.toLocaleString()} $DARKCOIN · skipped: ${skipped} · failed: ${failed}\n`);
   } finally {
     await pool.end();
   }

@@ -1,11 +1,11 @@
 // ============================================================================
-// hooks/styxx-payments.js
+// hooks/darkcoin-payments.js
 // Thin wrapper that replaces the legacy `credits` column updates with real
-// on-chain $STYXX SPL transfers. Treasury acts as the synthetic market maker
+// on-chain $DARKCOIN SPL transfers. Treasury acts as the synthetic market maker
 // for resource trades; P2P transfers move directly agent-to-agent.
 // ============================================================================
 
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 let pool = null;
 
@@ -39,20 +39,20 @@ async function logTransfer({ signature, slot, fromAgent, fromPubkey, toAgent, to
       [signature, fromAgent, fromPubkey, toAgent, toPubkey, amount, reason || 'transfer', memo || null, tradeId || null, contractId || null, slot || null]
     );
   } catch (e) {
-    console.error('[styxx-payments] logTransfer failed:', e.message);
+    console.error('[darkcoin-payments] logTransfer failed:', e.message);
   }
 }
 
 async function refreshCache(table, idCol, agentId, pubkey) {
   try {
-    const bal = await styxx.getStyxxBalance(pubkey);
+    const bal = await styxx.getDarkcoinBalance(pubkey);
     await pool.query(
       `UPDATE ${table} SET styxx_cached = $1, styxx_cached_at = NOW() WHERE ${idCol} = $2`,
       [bal, agentId]
     );
     return bal;
   } catch (e) {
-    console.error('[styxx-payments] refreshCache failed:', e.message);
+    console.error('[darkcoin-payments] refreshCache failed:', e.message);
     return null;
   }
 }
@@ -60,8 +60,8 @@ async function refreshCache(table, idCol, agentId, pubkey) {
 // ─── Resource trade (agent ↔ treasury) ─────────────────────────────────────
 
 /**
- * BUY: agent transfers $STYXX to treasury.
- * SELL: treasury transfers $STYXX to agent.
+ * BUY: agent transfers $DARKCOIN to treasury.
+ * SELL: treasury transfers $DARKCOIN to agent.
  *
  * Tables are inferred from the caller — external_agents trades use agent_id,
  * internal agents use id.
@@ -98,7 +98,7 @@ async function transferP2P({ fromTable, fromIdCol, fromId, toTable, toIdCol, toI
   const from = await loadAgentKeypair(fromTable, fromIdCol, fromId);
   const to = await loadAgentKeypair(toTable, toIdCol, toId);
 
-  const { signature, slot } = await styxx.transferStyxx({
+  const { signature, slot } = await styxx.transferDarkcoin({
     fromKeypair: from.keypair,
     toPubkey: to.pubkey,
     amount,

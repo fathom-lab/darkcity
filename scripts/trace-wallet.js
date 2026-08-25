@@ -9,7 +9,7 @@ const { PublicKey } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } = require('@solana/spl-token');
 
 const TREASURY = '99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp';
-const STYXX_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+const TOKEN_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
 const LIMIT = 25;
 const DELAY_MS = 2000;
 
@@ -44,7 +44,7 @@ async function rpcCall(method, params) {
   const p = new Pool({ connectionString: process.env.DATABASE_URL });
 
   const ata = (await getAssociatedTokenAddress(
-    new PublicKey(STYXX_MINT),
+    new PublicKey(TOKEN_MINT),
     new PublicKey(wallet),
     false,
     TOKEN_2022_PROGRAM_ID
@@ -81,8 +81,8 @@ async function rpcCall(method, params) {
     if (!tx) { buckets.errored++; continue; }
     const pre = tx.meta?.preTokenBalances || [];
     const post = tx.meta?.postTokenBalances || [];
-    const userPre = pre.find(b => b.owner === wallet && b.mint === STYXX_MINT);
-    const userPost = post.find(b => b.owner === wallet && b.mint === STYXX_MINT);
+    const userPre = pre.find(b => b.owner === wallet && b.mint === TOKEN_MINT);
+    const userPost = post.find(b => b.owner === wallet && b.mint === TOKEN_MINT);
     const userDelta = (Number(userPost?.uiTokenAmount?.uiAmount) || 0) - (Number(userPre?.uiTokenAmount?.uiAmount) || 0);
     if (Math.abs(userDelta) < 0.5) continue;
     const treasuryInvolved = pre.some(b => b.owner === TREASURY) || post.some(b => b.owner === TREASURY);

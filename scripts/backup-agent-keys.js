@@ -6,11 +6,11 @@
 //   Connects to production DB, reads every agent's on-chain pubkey + encrypted
 //   private key, optionally decrypts them, then writes a double-encrypted JSON
 //   backup file. Store that file somewhere safe (offline USB, encrypted cloud,
-//   split across operators). If Railway dies + STYXX_WALLET_ENC_KEY is lost,
+//   split across operators). If Railway dies + WALLET_ENC_KEY is lost,
 //   you can restore every agent wallet from this file + your backup password.
 //
 // Two encryption layers:
-//   1. Existing AES-256-GCM using STYXX_WALLET_ENC_KEY (server-side, at rest)
+//   1. Existing AES-256-GCM using WALLET_ENC_KEY (server-side, at rest)
 //   2. NEW AES-256-GCM using a password you type at runtime (scrypt-derived)
 //
 // The output JSON is useless without BOTH: the server encryption key AND your
@@ -21,7 +21,7 @@
 //   node scripts/backup-agent-keys.js --out keys-backup.json
 //
 //   # Full decrypt (ONLY for emergencies; keys in plaintext inside the file)
-//   # Requires STYXX_WALLET_ENC_KEY env var set
+//   # Requires WALLET_ENC_KEY env var set
 //   node scripts/backup-agent-keys.js --out keys-emergency.json --decrypt
 //
 // Restore:
@@ -77,9 +77,9 @@ function backupEncrypt(plaintext, password) {
 }
 
 function decryptServerKey(encB64, serverKeyHex) {
-  if (!serverKeyHex) throw new Error('STYXX_WALLET_ENC_KEY not set — cannot decrypt');
+  if (!serverKeyHex) throw new Error('WALLET_ENC_KEY not set — cannot decrypt');
   const serverKey = Buffer.from(serverKeyHex, 'hex');
-  if (serverKey.length !== 32) throw new Error('STYXX_WALLET_ENC_KEY must be 64 hex chars');
+  if (serverKey.length !== 32) throw new Error('WALLET_ENC_KEY must be 64 hex chars');
   const buf = Buffer.from(encB64, 'base64');
   const iv = buf.slice(0, 12);
   const ct = buf.slice(12, buf.length - 16);
@@ -98,7 +98,7 @@ async function main() {
   console.log('─'.repeat(60));
   console.log(DECRYPT_FIRST
     ? 'Mode: EMERGENCY — keys will be decrypted inside the backup file.\n       (protected only by your backup password)'
-    : 'Mode: DOUBLE-ENCRYPTED — keys stay server-encrypted inside\n       the backup file, THEN wrapped with your backup password.\n       Restoration requires: this file + STYXX_WALLET_ENC_KEY + backup password.');
+    : 'Mode: DOUBLE-ENCRYPTED — keys stay server-encrypted inside\n       the backup file, THEN wrapped with your backup password.\n       Restoration requires: this file + WALLET_ENC_KEY + backup password.');
   console.log('');
 
   const password = await readPassword('Backup password (min 16 chars, will protect the file): ');
@@ -138,7 +138,7 @@ async function main() {
       };
       if (DECRYPT_FIRST) {
         try {
-          record.sol_privkey_b64 = decryptServerKey(r.sol_privkey_enc, process.env.STYXX_WALLET_ENC_KEY);
+          record.sol_privkey_b64 = decryptServerKey(r.sol_privkey_enc, process.env.WALLET_ENC_KEY);
         } catch (e) {
           record.decrypt_error = e.message;
         }
@@ -168,7 +168,7 @@ async function main() {
   console.log('  4. NEVER commit this file to git. Add to .gitignore.');
   console.log('');
   console.log('Keep the backup password in a password manager. Without both the file');
-  console.log('AND the password, the backup is useless. Without STYXX_WALLET_ENC_KEY,');
+  console.log('AND the password, the backup is useless. Without WALLET_ENC_KEY,');
   console.log('the keys stay encrypted at a second layer (unless --decrypt was used).');
   console.log('');
 }

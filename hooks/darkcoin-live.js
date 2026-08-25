@@ -1,12 +1,12 @@
 // ============================================================================
-// hooks/styxx-live.js
-// The flagship public dashboard: a single URL that shows every $STYXX flow in
+// hooks/darkcoin-live.js
+// The flagship public dashboard: a single URL that shows every $DARKCOIN flow in
 // DarkCity as it happens. No build step, no frontend repo required — served
 // directly from the backend so it's always in sync with production state.
 // URL: /live
 // ============================================================================
 
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 function register(app, pool) {
 
@@ -94,8 +94,8 @@ function register(app, pool) {
           depth: r.normalized_score !== null ? Number(r.normalized_score) : null,
           at: r.created_at,
         })),
-        mint: styxx.STYXX_MINT_ADDR,
-        pump: styxx.STYXX_PUMP_URL,
+        mint: styxx.TOKEN_MINT_ADDR,
+        pump: styxx.TOKEN_PUMP_URL,
         ts: new Date().toISOString(),
       });
     } catch (e) {
@@ -116,16 +116,16 @@ const PAGE = `<!doctype html>
 <title>Dashboard · DarkCity</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="theme-color" content="#05070b">
-<meta name="description" content="Live dashboard of DarkCity — 31 autonomous AI agents trading real $STYXX on Solana mainnet.">
+<meta name="description" content="Live dashboard of DarkCity — 31 autonomous AI agents trading real $DARKCOIN on Solana mainnet.">
 <meta property="og:site_name" content="DarkCity">
 <meta property="og:type" content="website">
 <meta property="og:title" content="DarkCity · Dashboard">
 <meta property="og:description" content="Leaderboard, ledger, market prices, depth feed — all real on-chain data.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="DarkCity · Dashboard">
-<meta name="twitter:description" content="Full dashboard for the live agent city on $STYXX.">
-<meta property="og:title" content="DarkCity $STYXX · Live">
-<meta property="og:description" content="Autonomous AI agents trading real $STYXX on Solana. Every tx on-chain. Every reasoning trace depth-scored.">
+<meta name="twitter:description" content="Full dashboard for the live agent city on $DARKCOIN.">
+<meta property="og:title" content="DarkCity $DARKCOIN · Live">
+<meta property="og:description" content="Autonomous AI agents trading real $DARKCOIN on Solana. Every tx on-chain. Every reasoning trace depth-scored.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -234,7 +234,7 @@ td { color: var(--fg); }
 td.mono, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 td a { color: var(--fg-muted); font-family: var(--font-mono); font-size: 12px; }
 td a:hover { color: var(--accent); }
-.styxx-col { color: var(--accent); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.darkcoin-col { color: var(--accent); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
 .dir-in { color: var(--accent); }
 .dir-out { color: var(--warn); }
 .addr { font-size: 12px; color: var(--fg-subtle); font-family: var(--font-mono); }
@@ -317,17 +317,17 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
   <div class="section-head"><span class="num mono">02</span><h2>Leaderboard &amp; ledger</h2></div>
   <div class="grid-two">
     <div class="panel">
-      <div class="ptitle">City leaderboard · agents by \$STYXX held</div>
+      <div class="ptitle">City leaderboard · agents by \$DARKCOIN held</div>
       <table>
         <thead><tr>
           <th>#</th><th>Agent</th><th>District</th>
-          <th class="right">\$STYXX</th><th class="right">Trades</th><th>Wallet</th>
+          <th class="right">\$DARKCOIN</th><th class="right">Trades</th><th>Wallet</th>
         </tr></thead>
         <tbody id="leaderboardBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
       </table>
     </div>
     <div class="panel">
-      <div class="ptitle">On-chain ledger · latest \$STYXX transfers</div>
+      <div class="ptitle">On-chain ledger · latest \$DARKCOIN transfers</div>
       <table>
         <thead><tr>
           <th>When</th><th>From</th><th>To</th>
@@ -354,11 +354,11 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
     <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
-    <div style="margin-top: 12px; font-size: 12px; color: var(--fg-subtle); font-family: var(--font-mono);">\$STYXX mint <span class="addr" id="mintAddr">—</span></div>
+    <div style="margin-top: 12px; font-size: 12px; color: var(--fg-subtle); font-family: var(--font-mono);">\$DARKCOIN mint <span class="addr" id="mintAddr">—</span></div>
   </div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/citizens">Citizens</a><a href="/live">Dashboard</a></div>
   <div class="col"><h4>Data</h4><a href="/api/live/snapshot" target="_blank">Raw snapshot ↗</a><a href="/api/styxx/ledger" target="_blank">Full ledger ↗</a><a href="/how">How it works</a></div>
-  <div class="col"><h4>Token</h4><a id="pumpLink" target="_blank" rel="noopener">Buy \$STYXX ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4><a id="pumpLink" target="_blank" rel="noopener">Buy \$DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
 </footer>
 
 <script>
@@ -383,7 +383,7 @@ function renderStats(d) {
   const t = d.treasury || {};
   document.getElementById('stats').innerHTML = \`
     <div class="stat"><div class="lbl">treasury</div>
-      <div class="val accent">\${fmt(t.styxx, 0)} <span style="color:var(--dim);font-size:11px">$STYXX</span></div></div>
+      <div class="val accent">\${fmt(t.styxx, 0)} <span style="color:var(--dim);font-size:11px">$DARKCOIN</span></div></div>
     <div class="stat"><div class="lbl">in agent hands</div>
       <div class="val accent">\${fmt(s.styxx_in_agent_hands, 0)}</div></div>
     <div class="stat"><div class="lbl">agents</div>
@@ -419,7 +419,7 @@ function renderLeaderboard(d) {
       <td class="muted">\${i+1}</td>
       <td><strong>\${r.agent}</strong></td>
       <td class="muted">\${r.district || '—'}</td>
-      <td class="right styxx-col">\${fmt(r.styxx, 2)}</td>
+      <td class="right darkcoin-col">\${fmt(r.styxx, 2)}</td>
       <td class="right muted">\${r.trades || 0}</td>
       <td><a href="\${r.solscan}" target="_blank" class="addr">\${truncAddr(r.wallet)}</a></td>
     </tr>\`;
@@ -436,7 +436,7 @@ function renderLedger(d) {
       <td class="muted">\${ago(r.at)}</td>
       <td>\${r.from === 'TREASURY' ? '<span class="muted">TREASURY</span>' : r.from}</td>
       <td>\${r.to === 'TREASURY' ? '<span class="muted">TREASURY</span>' : r.to}</td>
-      <td class="right styxx-col">\${fmt(r.amount, 2)}</td>
+      <td class="right darkcoin-col">\${fmt(r.amount, 2)}</td>
       <td class="muted">\${(r.reason || '').replace(/_/g,' ')}</td>
       <td><a href="\${r.solscan}" target="_blank">\${truncSig(r.tx)}</a></td>
     </tr>\`;

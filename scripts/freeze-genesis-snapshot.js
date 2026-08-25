@@ -9,7 +9,7 @@
 //                         → 1.50× forever.
 //   2. genesis_sponsor  — every wallet in sponsorships with status='active'.
 //                         → 1.25× forever.
-//   3. snapshot_holder  — every wallet holding ≥ 1,000 $STYXX. Sourced from
+//   3. snapshot_holder  — every wallet holding ≥ 1,000 $DARKCOIN. Sourced from
 //                         ledger (sum of inflow − outflow in styxx_transfers)
 //                         unioned with known_wallets (on-chain lookup).
 //                         Excludes treasury + burn address.
@@ -76,7 +76,7 @@ async function main() {
   }
   console.log('  subtotal: ' + sponsors.length + ' sponsorships\n');
 
-  // ─── 3. SNAPSHOT HOLDERS ≥ 1,000 $STYXX ────────────────────────────────
+  // ─── 3. SNAPSHOT HOLDERS ≥ 1,000 $DARKCOIN ────────────────────────────────
   // Source A: ledger-derived (inflow − outflow from styxx_transfers)
   const { rows: ledgerHolders } = await pool.query(`
     WITH flows AS (
@@ -104,22 +104,22 @@ async function main() {
   });
 
   // Source B: known_wallets with on-chain lookup (covers pump.fun buyers)
-  // Skip if solana-styxx isn't initialized (for dry-run safety — we can
+  // Skip if solana-darkcoin isn't initialized (for dry-run safety — we can
   // add this in --commit mode when the env has STYXX keys)
   let onChainHolders = [];
   try {
     const { rows: known } = await pool.query('SELECT pubkey FROM known_wallets');
-    if (known.length && process.env.STYXX_TREASURY_PRIVKEY) {
-      const solanaStyxx = require('../lib/solana-styxx');
-      solanaStyxx.init();
+    if (known.length && process.env.TREASURY_PRIVKEY) {
+      const solanaDarkcoin = require('../lib/solana-darkcoin');
+      solanaDarkcoin.init();
       for (const k of known) {
         try {
-          const bal = await solanaStyxx.getStyxxBalance(k.pubkey);
+          const bal = await solanaDarkcoin.getDarkcoinBalance(k.pubkey);
           if (bal >= HOLDER_THRESHOLD) onChainHolders.push({ pubkey: k.pubkey, holding: bal });
         } catch {}
       }
     } else if (known.length) {
-      console.log('  [note] skipping on-chain known_wallets balance check (STYXX_TREASURY_PRIVKEY not set for this run)');
+      console.log('  [note] skipping on-chain known_wallets balance check (TREASURY_PRIVKEY not set for this run)');
       console.log('  [note] ' + known.length + ' known_wallets would be checked in --commit mode');
     }
   } catch (e) {
@@ -136,9 +136,9 @@ async function main() {
   }
   const allHolders = [...holderMap.entries()].map(([pubkey, holding]) => ({ pubkey, holding }));
 
-  console.log('SNAPSHOT HOLDERS ≥ ' + HOLDER_THRESHOLD + ' $STYXX (2.00× for ' + HOLDER_EXPIRY_DAYS + ' days):');
+  console.log('SNAPSHOT HOLDERS ≥ ' + HOLDER_THRESHOLD + ' $DARKCOIN (2.00× for ' + HOLDER_EXPIRY_DAYS + ' days):');
   for (const h of allHolders.sort((a,b) => b.holding - a.holding).slice(0, 20)) {
-    console.log('  ' + h.pubkey.slice(0, 16) + '… holds ' + Math.round(h.holding) + ' $STYXX');
+    console.log('  ' + h.pubkey.slice(0, 16) + '… holds ' + Math.round(h.holding) + ' $DARKCOIN');
   }
   if (allHolders.length > 20) console.log('  …and ' + (allHolders.length - 20) + ' more');
   console.log('  subtotal: ' + allHolders.length + ' qualifying holders\n');

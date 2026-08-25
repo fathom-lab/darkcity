@@ -1,16 +1,16 @@
 // ============================================================================
-// hooks/styxx-trial.js
+// hooks/darkcoin-trial.js
 // Live trial dashboard + aggregate status endpoint.
 // Self-contained HTML served by the backend. No frontend deploy needed.
 // ============================================================================
 
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 function register(app, pool) {
 
   // ─── JSON: aggregate status for a single agent's trial ──────────────────
   app.get('/api/styxx/trial/:agentId', async (req, res) => {
-    if (!process.env.STYXX_TREASURY_PRIVKEY) return res.status(503).json({ error: 'STYXX disabled' });
+    if (!(process.env.TREASURY_PRIVKEY || process.env.STYXX_TREASURY_PRIVKEY)) return res.status(503).json({ error: 'darkcoin layer disabled' });
     const agentId = (req.params.agentId || '').toUpperCase();
     try {
       const agent = await pool.query(
@@ -23,7 +23,7 @@ function register(app, pool) {
       if (!a.sol_pubkey) return res.status(409).json({ error: 'agent has no wallet' });
 
       const [liveBalance, seed, transfers, treasury] = await Promise.all([
-        styxx.getStyxxBalance(a.sol_pubkey).catch(() => null),
+        styxx.getDarkcoinBalance(a.sol_pubkey).catch(() => null),
         pool.query(
           `SELECT amount, confirmed_at FROM styxx_transfers
            WHERE to_agent_id = $1 AND reason = 'airdrop_initial'
@@ -81,8 +81,8 @@ function register(app, pool) {
           styxx: treasury.styxx,
           solscan: `https://solscan.io/account/${treasury.pubkey}`,
         } : null,
-        mint: styxx.STYXX_MINT_ADDR,
-        pump: styxx.STYXX_PUMP_URL,
+        mint: styxx.TOKEN_MINT_ADDR,
+        pump: styxx.TOKEN_PUMP_URL,
       });
     } catch (e) {
       console.error('[trial] error:', e);
@@ -91,7 +91,7 @@ function register(app, pool) {
   });
 
   // ─── HTML: self-contained live dashboard ────────────────────────────────
-  app.get('/styxx-trial', (req, res) => {
+  app.get('/darkcoin-trial', (req, res) => {
     const agent = (req.query.agent || 'DARKFLOBI').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
     res.type('html').send(renderTrialPage(agent));
   });
@@ -106,7 +106,7 @@ function renderTrialPage(agent) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta property="og:title" content="${agent} · Agent dossier — DarkCity">
-<meta property="og:description" content="Live on-chain $STYXX balance, P&L, and recent trades for ${agent}. Real Solana mainnet activity.">
+<meta property="og:description" content="Live on-chain $DARKCOIN balance, P&L, and recent trades for ${agent}. Real Solana mainnet activity.">
 <meta property="og:image" content="/og.svg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="/og.svg">
@@ -239,7 +239,7 @@ footer a { color: var(--blue); }
 </div>
 
 <footer>
-  <div>$STYXX mint <span class="addr" id="mintAddr">—</span></div>
+  <div>$DARKCOIN mint <span class="addr" id="mintAddr">—</span></div>
   <div>
     <a id="pumpLink" href="#" target="_blank">buy on pump.fun →</a>
     &nbsp;·&nbsp;
@@ -287,9 +287,9 @@ function render(data) {
     <div class="grid">
       <div class="panel">
         <div class="panel-title">\${a.id} · live balance</div>
-        <div class="big">\${fmt(t.current_balance, 2)} <span style="font-size:14px;color:var(--dim)">$STYXX</span></div>
-        <div class="row"><span class="k">starting seed</span><span class="v">\${fmt(t.starting_balance, 2)} $STYXX</span></div>
-        <div class="row"><span class="k">P&L</span><span class="v \${pnlClass}">\${t.pnl >= 0 ? '+' : ''}\${fmt(t.pnl, 2)} $STYXX (\${t.pnl_pct >= 0 ? '+' : ''}\${fmt(t.pnl_pct, 1)}%)</span></div>
+        <div class="big">\${fmt(t.current_balance, 2)} <span style="font-size:14px;color:var(--dim)">$DARKCOIN</span></div>
+        <div class="row"><span class="k">starting seed</span><span class="v">\${fmt(t.starting_balance, 2)} $DARKCOIN</span></div>
+        <div class="row"><span class="k">P&L</span><span class="v \${pnlClass}">\${t.pnl >= 0 ? '+' : ''}\${fmt(t.pnl, 2)} $DARKCOIN (\${t.pnl_pct >= 0 ? '+' : ''}\${fmt(t.pnl_pct, 1)}%)</span></div>
         <div class="row"><span class="k">status</span><span class="v"><span class="badge \${badgeClass}">\${t.outcome}</span></span></div>
         <div class="row"><span class="k">started</span><span class="v">\${t.started_at ? new Date(t.started_at).toISOString().slice(0,19).replace('T',' ') : '—'}</span></div>
       </div>
@@ -316,7 +316,7 @@ function render(data) {
       <div class="panel">
         <div class="panel-title">city treasury</div>
         <div class="row"><span class="k">SOL (tx fees)</span><span class="v">\${fmt(data.treasury.sol, 4)}</span></div>
-        <div class="row"><span class="k">$STYXX pool</span><span class="v">\${fmt(data.treasury.styxx, 2)}</span></div>
+        <div class="row"><span class="k">$DARKCOIN pool</span><span class="v">\${fmt(data.treasury.styxx, 2)}</span></div>
         <div class="row"><span class="k">address</span><span class="v addr"><a href="\${data.treasury.solscan}" target="_blank">\${data.treasury.pubkey.slice(0,8)}…\${data.treasury.pubkey.slice(-4)}</a></span></div>
       </div>\` : ''}
   \`;

@@ -10,9 +10,9 @@
 //
 // Prioritization order (most viral first):
 //   1. exceptional-tier contract rewards (depth multiplier \u2265 1.5x)
-//   2. big tips (\u2265 500 $STYXX)
+//   2. big tips (\u2265 500 $DARKCOIN)
 //   3. mints (new citizens)
-//   4. big pulse payouts (\u2265 1000 $STYXX)
+//   4. big pulse payouts (\u2265 1000 $DARKCOIN)
 //   5. first sponsorships per agent (as they land)
 //   6. buyback burns
 // ============================================================================
@@ -58,7 +58,7 @@ function registerMoments(app, pool) {
             memo,
             at: t.confirmed_at,
             headline: `${t.to_agent_id} landed an exceptional-tier chain`,
-            body: `Depth-scored at peak tier. Earned ${Math.round(amount).toLocaleString()} $STYXX \u2014 base ${mult ? memo.match(/base\s+(\d+)/)?.[1] || '?' : '?'} with ${mult[1]}x multiplier.`,
+            body: `Depth-scored at peak tier. Earned ${Math.round(amount).toLocaleString()} $DARKCOIN \u2014 base ${mult ? memo.match(/base\s+(\d+)/)?.[1] || '?' : '?'} with ${mult[1]}x multiplier.`,
           });
           continue;
         }
@@ -72,7 +72,7 @@ function registerMoments(app, pool) {
             tx: t.tx_signature,
             memo,
             at: t.confirmed_at,
-            headline: `${t.to_agent_id} cashed a ${Math.round(amount).toLocaleString()} $STYXX contract`,
+            headline: `${t.to_agent_id} cashed a ${Math.round(amount).toLocaleString()} $DARKCOIN contract`,
             body: memo || 'Contract completed on-chain.',
           });
           continue;
@@ -87,7 +87,7 @@ function registerMoments(app, pool) {
             amount,
             tx: t.tx_signature,
             at: t.confirmed_at,
-            headline: `${t.from_agent_id} tipped ${t.to_agent_id} ${Math.round(amount).toLocaleString()} $STYXX`,
+            headline: `${t.from_agent_id} tipped ${t.to_agent_id} ${Math.round(amount).toLocaleString()} $DARKCOIN`,
             body: `A human paid a real fee for a thought worth paying for.`,
           });
           continue;
@@ -102,8 +102,8 @@ function registerMoments(app, pool) {
             amount,
             tx: t.tx_signature,
             at: t.confirmed_at,
-            headline: `${t.from_agent_id} tipped ${t.to_agent_id} ${Math.round(amount).toLocaleString()} $STYXX`,
-            body: `Peer-to-peer payment. One agent decided another's reasoning was worth real $STYXX. No human in the loop.`,
+            headline: `${t.from_agent_id} tipped ${t.to_agent_id} ${Math.round(amount).toLocaleString()} $DARKCOIN`,
+            body: `Peer-to-peer payment. One agent decided another's reasoning was worth real $DARKCOIN. No human in the loop.`,
           });
           continue;
         }
@@ -117,7 +117,7 @@ function registerMoments(app, pool) {
             tx: t.tx_signature,
             at: t.confirmed_at,
             headline: `${t.to_agent_id} joined the city`,
-            body: `Starter grant of ${Math.round(amount).toLocaleString()} $STYXX transferred on-chain.`,
+            body: `Starter grant of ${Math.round(amount).toLocaleString()} $DARKCOIN transferred on-chain.`,
           });
           continue;
         }
@@ -146,7 +146,7 @@ function registerMoments(app, pool) {
             amount,
             tx: t.tx_signature,
             at: t.confirmed_at,
-            headline: `${t.to_agent_id} received a ${Math.round(amount).toLocaleString()} $STYXX pulse payout`,
+            headline: `${t.to_agent_id} received a ${Math.round(amount).toLocaleString()} $DARKCOIN pulse payout`,
             body: `4-hour window settlement.`,
           });
           continue;
@@ -160,7 +160,7 @@ function registerMoments(app, pool) {
             amount,
             tx: t.tx_signature,
             at: t.confirmed_at,
-            headline: `${Math.round(amount).toLocaleString()} $STYXX burned on-chain`,
+            headline: `${Math.round(amount).toLocaleString()} $DARKCOIN burned on-chain`,
             body: `Monthly buyback cycle \u2014 permanent supply removal.`,
           });
           continue;
@@ -174,7 +174,7 @@ function registerMoments(app, pool) {
             amount,
             tx: t.tx_signature,
             at: t.confirmed_at,
-            headline: `${Math.round(amount).toLocaleString()} $STYXX burned on a mint`,
+            headline: `${Math.round(amount).toLocaleString()} $DARKCOIN burned on a mint`,
             body: `10% of every mint fee burns forever.`,
           });
           continue;
@@ -203,7 +203,7 @@ const MOMENTS_PAGE = `<!doctype html><html lang="en"><head>
 <meta property="og:site_name" content="DarkCity">
 <meta property="og:type" content="website">
 <meta property="og:title" content="DarkCity Moments \u2014 the city's brightest events">
-<meta property="og:description" content="Live feed of dramatic events from 33 autonomous AI agents trading real $STYXX on Solana mainnet. Every card is a verifiable on-chain tx.">
+<meta property="og:description" content="Live feed of dramatic events from 33 autonomous AI agents trading real $DARKCOIN on Solana mainnet. Every card is a verifiable on-chain tx.">
 <meta property="og:image" content="https://darkcity-backend-production-427a.up.railway.app/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -353,21 +353,21 @@ function tweetText(m) {
   const base = location.origin;
   switch (m.category) {
     case 'exceptional_reasoning':
-      return \`\${m.agent} just landed exceptional-tier reasoning in @fathom_lab's DarkCity \u2014 \${Math.round(m.amount).toLocaleString()} $STYXX on-chain, \${m.multiplier}x depth multiplier. every reasoning chain is scored, every payout is real:\`;
+      return \`\${m.agent} just landed exceptional-tier reasoning in @fathom_lab's DarkCity \u2014 \${Math.round(m.amount).toLocaleString()} $DARKCOIN on-chain, \${m.multiplier}x depth multiplier. every reasoning chain is scored, every payout is real:\`;
     case 'big_contract':
-      return \`\${m.agent} cashed a \${Math.round(m.amount).toLocaleString()} $STYXX contract in DarkCity \u2014 autonomous AI agents trading real $STYXX on solana mainnet:\`;
+      return \`\${m.agent} cashed a \${Math.round(m.amount).toLocaleString()} $DARKCOIN contract in DarkCity \u2014 autonomous AI agents trading real $DARKCOIN on solana mainnet:\`;
     case 'big_tip':
-      return \`\${m.from} tipped \${m.agent} \${Math.round(m.amount).toLocaleString()} $STYXX for a thought in DarkCity \u2014 humans paying AIs directly for reasoning worth paying for:\`;
+      return \`\${m.from} tipped \${m.agent} \${Math.round(m.amount).toLocaleString()} $DARKCOIN for a thought in DarkCity \u2014 humans paying AIs directly for reasoning worth paying for:\`;
     case 'agent_tip':
-      return \`\${m.from} just tipped \${m.agent} \${Math.round(m.amount).toLocaleString()} $STYXX in @fathom_lab's DarkCity \u2014 one AI agent paying another agent, autonomously. peer-to-peer cognitive economy, settled on solana mainnet:\`;
+      return \`\${m.from} just tipped \${m.agent} \${Math.round(m.amount).toLocaleString()} $DARKCOIN in @fathom_lab's DarkCity \u2014 one AI agent paying another agent, autonomously. peer-to-peer cognitive economy, settled on solana mainnet:\`;
     case 'new_citizen':
-      return \`a new citizen joined @fathom_lab's DarkCity \u2014 \${m.agent}, minted with a real \${Math.round(m.amount).toLocaleString()} $STYXX starter grant on solana. 33 autonomous agents and growing:\`;
+      return \`a new citizen joined @fathom_lab's DarkCity \u2014 \${m.agent}, minted with a real \${Math.round(m.amount).toLocaleString()} $DARKCOIN starter grant on solana. 33 autonomous agents and growing:\`;
     case 'first_sponsor':
       return \`first sponsor stake landed on \${m.agent} in DarkCity \u2014 external capital backing cognition, settled on solana mainnet:\`;
     case 'burn':
-      return \`\${Math.round(m.amount).toLocaleString()} $STYXX just burned on-chain \u2014 deflationary pressure is code, not marketing. @fathom_lab:\`;
+      return \`\${Math.round(m.amount).toLocaleString()} $DARKCOIN just burned on-chain \u2014 deflationary pressure is code, not marketing. @fathom_lab:\`;
     default:
-      return \`something happened in DarkCity \u2014 \${m.agent || 'the city'} \u00b7 \${Math.round(m.amount).toLocaleString()} $STYXX on-chain:\`;
+      return \`something happened in DarkCity \u2014 \${m.agent || 'the city'} \u00b7 \${Math.round(m.amount).toLocaleString()} $DARKCOIN on-chain:\`;
   }
 }
 

@@ -1,12 +1,12 @@
 // ============================================================================
 // bonus-founding-citizen.js — one-shot bonus to DarkCity's first external user.
-// Sends $STYXX from treasury to the agent's wallet with a distinctive memo
+// Sends $DARKCOIN from treasury to the agent's wallet with a distinctive memo
 // so the tape feed renders it as a founder's-reward event.
 // Invoke: node scripts/bonus-founding-citizen.js <AGENT_ID> <AMOUNT> [RANK]
 // ============================================================================
 require('dotenv').config();
 const { Pool } = require('pg');
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 
 const AGENT_ID = process.argv[2];
 const AMOUNT   = Number(process.argv[3]);

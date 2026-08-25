@@ -542,7 +542,7 @@ body::after {
 }
 .burn .l { font-size: 11px; letter-spacing: .25em; text-transform: uppercase; margin-bottom: 4px; color: var(--red-glow); }
 .burn .v { font-size: 26px; font-weight: 800; color: var(--fg); font-variant-numeric: tabular-nums; }
-.burn .v::after { content: ' $STYXX'; color: var(--red); font-size: 14px; font-weight: 400; margin-left: 4px; }
+.burn .v::after { content: ' $DARKCOIN'; color: var(--red); font-size: 14px; font-weight: 400; margin-left: 4px; }
 
 .foot {
   margin-top: 28px;
@@ -594,7 +594,7 @@ body::after {
 </pre>
 
 <div class="tagline">
-  ai agents reason live · you <span>cash out before they crash</span> · $STYXX is the chip, nothing else plays
+  ai agents reason live · you <span>cash out before they crash</span> · $DARKCOIN is the chip, nothing else plays
 </div>
 
 <div class="ticker">
@@ -675,7 +675,7 @@ body::after {
   <div class="wallet">
     <span>wallet:</span>
     <span class="addr" id="wChip">not connected</span>
-    <span class="bal" id="wBal" style="display:none">bal: <b>—</b> $STYXX</span>
+    <span class="bal" id="wBal" style="display:none">bal: <b>—</b> $DARKCOIN</span>
     <button id="wConnect">connect phantom</button>
     <button id="faucetBtn" style="display:none;background:var(--green);color:#000;border:1px solid var(--green);padding:8px 14px;border-radius:4px;font-family:inherit;font-weight:700;letter-spacing:0.04em;cursor:pointer;font-size:12px;"></button>
   </div>
@@ -696,7 +696,7 @@ body::after {
   <div class="msg" id="statusMsg"></div>
 
   <div class="hint">
-    <span>min 100k · max 500k $STYXX · payouts capped at 25% of treasury</span>
+    <span>min 100k · max 500k $DARKCOIN · payouts capped at 25% of treasury</span>
     <span>94% loss burn · 4% kitty · 1% founders · 1% founder jackpot</span>
   </div>
 </div>
@@ -705,7 +705,7 @@ body::after {
   <div class="pane">
     <h3>the kitty · winner takes all</h3>
     <div class="jp-big" id="jpBig">—</div>
-    <div class="jp-sub">one wallet wins it all · weekly draw · hold ≥500k $STYXX to enter</div>
+    <div class="jp-sub">one wallet wins it all · weekly draw · hold ≥500k $DARKCOIN to enter</div>
     <div class="jp-foot">
       9 real-human genesis wallets share a separate <b style="color:var(--gold)">founder pool</b> — 1% of every loss, forever, weighted by their stacked multiplier (2.00×–3.75×). snapshot closed. you had to be early.
     </div>
@@ -724,7 +724,7 @@ body::after {
 
 <div class="foot">
   the house never lies · every bet on-chain · every burn verifiable on solscan<br>
-  mint: <span class="pump">Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump</span> · <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">buy $STYXX on pump.fun ↗</a>
+  mint: <span class="pump">Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump</span> · <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">buy $DARKCOIN on pump.fun ↗</a>
 </div>
 
 </div>
@@ -732,7 +732,7 @@ body::after {
 <script src="https://unpkg.com/@solana/web3.js@1.95.0/lib/index.iife.min.js"></script>
 <script>
 (function(){
-  const STYXX_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+  const TOKEN_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
   const TOKEN_PROG = new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
   const ASSOC_PROG = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
   let wallet = null, conn = null, treasuryPk = null;
@@ -761,12 +761,12 @@ body::after {
     try {
       const c = await getConn();
       const owner = new solanaWeb3.PublicKey(wallet);
-      const mint = new solanaWeb3.PublicKey(STYXX_MINT);
+      const mint = new solanaWeb3.PublicKey(TOKEN_MINT);
       const [ata] = solanaWeb3.PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
       const info = await c.getTokenAccountBalance(ata).catch(() => null);
       const bal = info?.value?.uiAmount || 0;
       const el = document.getElementById('wBal');
-      el.innerHTML = 'bal: <b>' + fmt(bal) + '</b> $STYXX';
+      el.innerHTML = 'bal: <b>' + fmt(bal) + '</b> $DARKCOIN';
       el.style.display = 'inline';
     } catch {}
   }
@@ -800,7 +800,7 @@ body::after {
     b.addEventListener('click', () => { document.getElementById('stakeInput').value = b.dataset.amt; });
   });
 
-  // Faucet — first-time wallets can claim free $STYXX to try the felt without
+  // Faucet — first-time wallets can claim free $DARKCOIN to try the felt without
   // going to pump.fun. Button only renders when the server says the faucet is
   // enabled AND this wallet hasn't claimed yet. Harmless no-op otherwise.
   async function checkFaucet() {
@@ -812,7 +812,7 @@ body::after {
       if (!btn) return;
       if (d.enabled && !d.already_claimed && d.message_to_sign) {
         btn.style.display = 'inline-block';
-        btn.textContent = 'claim ' + Number(d.amount_styxx).toLocaleString() + ' free $STYXX';
+        btn.textContent = 'claim ' + Number(d.amount_styxx).toLocaleString() + ' free $DARKCOIN';
         btn.onclick = async () => {
           btn.disabled = true;
           try {
@@ -837,7 +837,7 @@ body::after {
               body: JSON.stringify({ wallet, signature_b58: sigB58, nonce: d.nonce }),
             }).then(r => r.json());
             if (claim.ok) {
-              btn.textContent = '+ ' + Number(claim.amount).toLocaleString() + ' $STYXX claimed';
+              btn.textContent = '+ ' + Number(claim.amount).toLocaleString() + ' $DARKCOIN claimed';
               btn.classList.add('ok');
               setTimeout(() => { btn.style.display = 'none'; loadWalletBalance(); }, 2500);
             } else {
@@ -911,7 +911,7 @@ body::after {
       if (e.message && e.message.startsWith('need ~0.00001 SOL')) throw e;
     }
     const treasury = new solanaWeb3.PublicKey(treasuryPk);
-    const mint = new solanaWeb3.PublicKey(STYXX_MINT);
+    const mint = new solanaWeb3.PublicKey(TOKEN_MINT);
     const [payerATA] = solanaWeb3.PublicKey.findProgramAddressSync([payer.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
     const [treasuryATA] = solanaWeb3.PublicKey.findProgramAddressSync([treasury.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
     const decimals = 6;
@@ -957,9 +957,9 @@ body::after {
     if (!wallet) { setMsg('connect wallet first.', 'err'); return; }
     if (!currentRound || currentRound.status !== 'betting') { setMsg('window closed. wait for next round.', 'err'); return; }
     const amt = Number(document.getElementById('stakeInput').value || 0);
-    if (amt < 100000) { setMsg('min buy-in: 100,000 $STYXX.', 'err'); return; }
-    if (amt > 500000) { setMsg('max bet: 500,000 $STYXX. (safety cap while treasury builds)', 'err'); return; }
-    setMsg('signing... sending ' + fmt(amt) + ' $STYXX to the house', 'ok');
+    if (amt < 100000) { setMsg('min buy-in: 100,000 $DARKCOIN.', 'err'); return; }
+    if (amt > 500000) { setMsg('max bet: 500,000 $DARKCOIN. (safety cap while treasury builds)', 'err'); return; }
+    setMsg('signing... sending ' + fmt(amt) + ' $DARKCOIN to the house', 'ok');
     // 60s wall-clock timeout — if Phantom popup is missed or RPC hangs, the
     // message used to stay at 'signing...' forever. Now the user gets a clear
     // out.
@@ -1003,8 +1003,8 @@ body::after {
     myBetLocked = true;
     const b = document.getElementById('cashoutBtn');
     b.disabled = true;
-    b.innerHTML = '<span class="big">LOCKED @ ' + Number(d.multiplier).toFixed(2) + '×</span><span class="sub">+ ' + fmt(myBetStake * d.multiplier) + ' $STYXX pending</span>';
-    setMsg('locked ' + Number(d.multiplier).toFixed(2) + '× · payout ' + fmt(myBetStake * d.multiplier) + ' $STYXX', 'ok');
+    b.innerHTML = '<span class="big">LOCKED @ ' + Number(d.multiplier).toFixed(2) + '×</span><span class="sub">+ ' + fmt(myBetStake * d.multiplier) + ' $DARKCOIN pending</span>';
+    setMsg('locked ' + Number(d.multiplier).toFixed(2) + '× · payout ' + fmt(myBetStake * d.multiplier) + ' $DARKCOIN', 'ok');
   });
 
   // ─── GRAPH ──────────────────────────────────────────────────────────
@@ -1113,7 +1113,7 @@ body::after {
         if (myBetId && !myBetLocked && myBetStake > 0) {
           const b = document.getElementById('cashoutBtn');
           b.disabled = false;
-          b.innerHTML = '<span class="big">CASH OUT @ ' + currMult.toFixed(2) + '×</span><span class="sub">+' + fmt(myBetStake * currMult) + ' $STYXX if you lock now</span>';
+          b.innerHTML = '<span class="big">CASH OUT @ ' + currMult.toFixed(2) + '×</span><span class="sub">+' + fmt(myBetStake * currMult) + ' $DARKCOIN if you lock now</span>';
         }
       }
     } else if (currentRound && currentRound.status === 'betting' && currentRound.betting_window_ends_at) {
@@ -1222,7 +1222,7 @@ body::after {
     document.getElementById('sBurn').textContent = fmt(jp.burn_24h);
     document.getElementById('sVol').textContent = fmt(jp.volume_24h);
     document.getElementById('sPlayers').textContent = jp.players_24h || 0;
-    document.getElementById('jpBig').textContent = fmt(jp.public_jackpot_styxx) + ' $STYXX';
+    document.getElementById('jpBig').textContent = fmt(jp.public_jackpot_styxx) + ' $DARKCOIN';
     document.getElementById('burnNum').textContent = fmt(jp.burn_24h);
   }
 
@@ -1230,14 +1230,14 @@ body::after {
     const box = document.getElementById('bigWinBox');
     if (!big || !big.user_wallet) { box.style.display = 'none'; return; }
     box.style.display = 'flex';
-    document.getElementById('bigWinBody').innerHTML = short(big.user_wallet) + ' cashed <span class="mx">' + Number(big.cashout_multiplier||0).toFixed(2) + '×</span> on <b>' + big.agent_id + '</b> for <span class="mx">+' + fmt(big.payout_styxx) + ' $STYXX</span>';
+    document.getElementById('bigWinBody').innerHTML = short(big.user_wallet) + ' cashed <span class="mx">' + Number(big.cashout_multiplier||0).toFixed(2) + '×</span> on <b>' + big.agent_id + '</b> for <span class="mx">+' + fmt(big.payout_styxx) + ' $DARKCOIN</span>';
   }
 
   let _lastTickerSig = '';
   function renderTicker(recent, big, historyRounds) {
     const items = [];
     if (big && big.user_wallet) {
-      items.push('<span class="item big">★ BIGGEST 24H · ' + short(big.user_wallet) + ' cashed ' + Number(big.cashout_multiplier||0).toFixed(2) + '× · +' + fmt(big.payout_styxx) + ' $STYXX</span>');
+      items.push('<span class="item big">★ BIGGEST 24H · ' + short(big.user_wallet) + ' cashed ' + Number(big.cashout_multiplier||0).toFixed(2) + '× · +' + fmt(big.payout_styxx) + ' $DARKCOIN</span>');
     }
     for (const r of recent) {
       const won = r.status === 'cashed_out';
@@ -1360,7 +1360,7 @@ body::after {
         if (r.multiplier_curve) redrawGraph(r.multiplier_curve, 1e9, m, true);
         cashBtn.disabled = true;
         if (myBetId && !myBetLocked) {
-          cashBtn.innerHTML = '<span class="big">RUGGED</span><span class="sub">lost ' + fmt(myBetStake) + ' $STYXX · 94% burns</span>';
+          cashBtn.innerHTML = '<span class="big">RUGGED</span><span class="sub">lost ' + fmt(myBetStake) + ' $DARKCOIN · 94% burns</span>';
         } else if (!myBetLocked) {
           cashBtn.innerHTML = '<span class="big">CRASHED</span><span class="sub">next round loading...</span>';
         }
@@ -1392,17 +1392,17 @@ function installArenaUI(app, pool) {
     try {
       const [params, treasury, recentChatFails] = await Promise.all([
         pool.query("SELECT key, value FROM economy_params WHERE key IN ('arena_enabled','arena_shadow_mode','chat_enforce_payment')"),
-        (async () => { try { return await require('../lib/solana-styxx').getTreasuryBalances(); } catch { return null; } })(),
+        (async () => { try { return await require('../lib/solana-darkcoin').getTreasuryBalances(); } catch { return null; } })(),
         pool.query("SELECT COUNT(*)::int n FROM chat_messages WHERE status = 'failed' AND created_at > NOW() - INTERVAL '2 minutes'").catch(() => ({ rows: [{ n: 0 }] })),
       ]);
       const p = Object.fromEntries(params.rows.map(r => [r.key, r.value]));
-      const treasuryStyxx = treasury ? Math.floor(treasury.styxx) : null;
+      const treasuryDarkcoin = treasury ? Math.floor(treasury.styxx) : null;
       const arenaRunning = String(p.arena_enabled || 'false').toLowerCase() === 'true';
       const chatFree = String(p.chat_enforce_payment || 'true').toLowerCase() !== 'true';
       const llmDown = (recentChatFails.rows[0]?.n || 0) >= 3;
       res.json({
         ts: new Date().toISOString(),
-        treasury_styxx: treasuryStyxx,
+        treasury_styxx: treasuryDarkcoin,
         treasury_solscan: 'https://solscan.io/account/' + (treasury?.pubkey || '99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp'),
         arena: {
           live: arenaRunning,
@@ -1568,7 +1568,7 @@ function installArenaUI(app, pool) {
         pool.query("SELECT key, value FROM economy_params WHERE key LIKE 'arena_%' OR key LIKE 'chat_%' ORDER BY key"),
         pool.query("SELECT status, COUNT(*)::int AS n FROM arena_bets WHERE placed_at > NOW() - INTERVAL '1 hour' GROUP BY status"),
         pool.query("SELECT status, COUNT(*)::int AS n FROM chat_messages WHERE created_at > NOW() - INTERVAL '1 hour' GROUP BY status"),
-        (async () => { try { return await require('../lib/solana-styxx').getTreasuryBalances(); } catch { return null; } })(),
+        (async () => { try { return await require('../lib/solana-darkcoin').getTreasuryBalances(); } catch { return null; } })(),
       ]);
       res.json({
         params: Object.fromEntries(params.rows.map(r => [r.key, r.value])),

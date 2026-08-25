@@ -25,7 +25,7 @@
 
 const { PublicKey } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } = require('@solana/spl-token');
-const solanaStyxx = require('../lib/solana-styxx');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
 
 const SWEEP_INTERVAL_MS = 60_000;
 const SIG_LIMIT = 100;                     // wider lookback to catch orphans from busy periods
@@ -37,8 +37,8 @@ let treasuryATAStr = null;
 
 async function ensureTreasuryATA() {
   if (treasuryATAStr) return treasuryATAStr;
-  const treasuryPk = solanaStyxx.getTreasury().publicKey;
-  const mint = new PublicKey(solanaStyxx.STYXX_MINT_ADDR);
+  const treasuryPk = solanaDarkcoin.getTreasury().publicKey;
+  const mint = new PublicKey(solanaDarkcoin.TOKEN_MINT_ADDR);
   const ata = await getAssociatedTokenAddress(mint, treasuryPk, false, TOKEN_2022_PROGRAM_ID);
   treasuryATAStr = ata.toBase58();
   return treasuryATAStr;
@@ -48,14 +48,14 @@ async function reconcileOrphans(pool) {
   if (sweepRunning) return { skipped: 'already_running' };
   sweepRunning = true;
   try {
-    const treasuryStr = solanaStyxx.getTreasury().publicKey.toBase58();
-    const mintStr = solanaStyxx.STYXX_MINT_ADDR;
-    const conn = solanaStyxx.getConnection();
+    const treasuryStr = solanaDarkcoin.getTreasury().publicKey.toBase58();
+    const mintStr = solanaDarkcoin.TOKEN_MINT_ADDR;
+    const conn = solanaDarkcoin.getConnection();
     const treasuryATA = new PublicKey(await ensureTreasuryATA());
 
     // Floor check — never drain the house. The caller (start) logs this at
     // INFO level with rate limiting; silent here to avoid duplicate lines.
-    const floorBal = await solanaStyxx.getStyxxBalance(treasuryStr);
+    const floorBal = await solanaDarkcoin.getDarkcoinBalance(treasuryStr);
     if (floorBal < MIN_TREASURY_FLOOR_STYXX) {
       return { skipped: 'treasury_floor', treasuryBal: floorBal };
     }
@@ -159,7 +159,7 @@ async function reconcileOrphans(pool) {
 
       // Execute refund.
       try {
-        const out = await solanaStyxx.airdropFromTreasury(senderBalance.owner, delta);
+        const out = await solanaDarkcoin.airdropFromTreasury(senderBalance.owner, delta);
         await pool.query(
           `UPDATE arena_bets SET status = 'refunded', payout_styxx = $2, payout_tx = $3
             WHERE payment_tx = $1`,

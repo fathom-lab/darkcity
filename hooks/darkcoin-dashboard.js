@@ -1,11 +1,11 @@
 // ============================================================================
-// hooks/styxx-dashboard.js
+// hooks/darkcoin-dashboard.js
 // Personal dashboard — the "my money" page.
 //
 // URL: /me            (prompts for wallet connect)
 //      /me?wallet=X   (direct load for a pubkey)
 //
-// Fetches /api/portfolio/:owner (defined in hooks/styxx-economy.js) every 10s
+// Fetches /api/portfolio/:owner (defined in hooks/darkcoin-economy.js) every 10s
 // and renders the user's personal financial life in DarkCity: agents owned,
 // lifetime earnings, active sponsorships, referral income, hyphal flows,
 // recent payouts. Matches the /live page aesthetic exactly.
@@ -17,7 +17,7 @@ function register(app) {
   app.get('/me', (req, res) => res.type('html').send(PAGE));
   app.get('/dashboard', (req, res) => res.type('html').send(PAGE));
   app.get('/dashboard/:pubkey', (req, res) => res.type('html').send(PAGE));
-  console.log('[styxx-dashboard] registered: /me, /dashboard, /dashboard/:pubkey');
+  console.log('[darkcoin-dashboard] registered: /me, /dashboard, /dashboard/:pubkey');
 }
 
 module.exports = { register };
@@ -33,7 +33,7 @@ const PAGE = `<!doctype html>
 <meta property="og:site_name" content="DarkCity">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Your DarkCity dashboard">
-<meta property="og:description" content="Every $STYXX you've earned, every agent you own, every sponsorship that's paying out — live.">
+<meta property="og:description" content="Every $DARKCOIN you've earned, every agent you own, every sponsorship that's paying out — live.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Your DarkCity dashboard">
 <meta name="twitter:description" content="Personal on-chain portfolio. Agents, sponsorships, referrals, mycelium flows.">
@@ -381,7 +381,7 @@ td.right.green { color: var(--accent); }
     </section>
 
     <!-- Holder Rewards card — autonomous payouts, zero friction.
-         A slice of every mint fee is automatically distributed to $STYXX
+         A slice of every mint fee is automatically distributed to $DARKCOIN
          holders pro-rata at each 4h pulse. No claim button, no participation
          gate. You hold — STYXX lands in your Phantom wallet. Card surfaces
          lifetime earned + last auto-payout tx for transparency. -->
@@ -391,12 +391,12 @@ td.right.green { color: var(--accent); }
           <div style="flex:1;min-width:260px">
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:#b6f1ff;text-transform:uppercase;margin-bottom:8px">\u25c6 Holder rewards \u00b7 autonomous</div>
             <div style="font-family:var(--font-display);font-size:24px;font-weight:500;line-height:1.2;color:var(--fg);margin-bottom:6px">Every mint pays you. <em style="color:#b6f1ff;font-style:normal">Straight to your wallet. Nothing to click.</em></div>
-            <div style="color:var(--fg-muted);font-size:13px;line-height:1.5">10% of every mint fee in DarkCity is auto-distributed to \$STYXX holders pro-rata at each 4h pulse. Hold above 100 \$STYXX, and the treasury airdrops your share \u2014 no claim, no form, no wait.</div>
+            <div style="color:var(--fg-muted);font-size:13px;line-height:1.5">10% of every mint fee in DarkCity is auto-distributed to \$DARKCOIN holders pro-rata at each 4h pulse. Hold above 100 \$DARKCOIN, and the treasury airdrops your share \u2014 no claim, no form, no wait.</div>
           </div>
           <div style="text-align:right">
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:4px">Lifetime earned</div>
             <div style="font-family:var(--font-display);font-size:30px;font-weight:500;color:#b6f1ff;line-height:1" id="hp-lifetime">\u2014</div>
-            <div style="font-size:11px;color:var(--fg-subtle);margin-top:4px"><span id="hp-holding">\u2014</span> \$STYXX held now</div>
+            <div style="font-size:11px;color:var(--fg-subtle);margin-top:4px"><span id="hp-holding">\u2014</span> \$DARKCOIN held now</div>
           </div>
         </div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--fg-subtle);font-family:var(--font-mono)">
@@ -434,7 +434,7 @@ td.right.green { color: var(--accent); }
     <section class="stats">
       <div class="stat">
         <div class="val green" id="s-net"><span class="skel" style="display:inline-block;width:140px;height:32px"></span></div>
-        <div class="lbl">Net worth · $STYXX</div>
+        <div class="lbl">Net worth · $DARKCOIN</div>
         <div class="sub" id="s-net-usd">—</div>
       </div>
       <div class="stat">
@@ -474,14 +474,14 @@ td.right.green { color: var(--accent); }
 
       <!-- Two-wallet primer — visible above the agent grid for any owner.
            Mirrors the same explanation we put on /deploy so new owners see a
-           consistent story end-to-end. Resolves the "I sent X $STYXX, agent
+           consistent story end-to-end. Resolves the "I sent X $DARKCOIN, agent
            only has Y, where's the rest?" confusion once and forever. -->
       <div style="margin-bottom:18px;padding:14px 18px;background:linear-gradient(135deg,rgba(127,229,176,.04),rgba(142,202,230,.03));border:1px solid rgba(127,229,176,.18);border-radius:8px">
         <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;margin-bottom:10px">\u25c6 two wallets, two purposes</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px">
           <div>
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--cyan);text-transform:uppercase;margin-bottom:4px">agent wallet \u2014 working capital</div>
-            <div style="font-size:12px;color:var(--fg-muted);line-height:1.5">Each agent has its own Solana wallet. Stays small (~100\u20131000 \$STYXX). Funds its own contracts and trades.</div>
+            <div style="font-size:12px;color:var(--fg-muted);line-height:1.5">Each agent has its own Solana wallet. Stays small (~100\u20131000 \$DARKCOIN). Funds its own contracts and trades.</div>
           </div>
           <div>
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--accent);text-transform:uppercase;margin-bottom:4px">your wallet \u2014 your income</div>
@@ -527,7 +527,7 @@ td.right.green { color: var(--accent); }
       <div class="section-head"><span class="section-num">05</span><h2 class="section-title">Recent payouts</h2></div>
       <div style="overflow-x:auto"><table id="ledger-tbl">
         <thead><tr>
-          <th>When</th><th>Source</th><th>Agent</th><th style="text-align:right">$STYXX</th><th style="text-align:right">USD</th><th>Tx</th>
+          <th>When</th><th>Source</th><th>Agent</th><th style="text-align:right">$DARKCOIN</th><th style="text-align:right">USD</th><th>Tx</th>
         </tr></thead>
         <tbody id="ledger-body"></tbody>
       </table></div>
@@ -546,7 +546,7 @@ td.right.green { color: var(--accent); }
   </div>
 
   <footer class="footer">
-    <div>DarkCity · native <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" class="external">$STYXX</a> economy · Solana mainnet</div>
+    <div>DarkCity · native <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" class="external">$DARKCOIN</a> economy · Solana mainnet</div>
     <div style="margin-top:8px">Every number above comes from on-chain transactions. Nothing is cached beyond 10 seconds.</div>
   </footer>
 
@@ -566,7 +566,7 @@ td.right.green { color: var(--accent); }
     return addr.slice(0, 4) + '…' + addr.slice(-4);
   }
 
-  function styxxFmt(n) {
+  function darkcoinFmt(n) {
     const v = Number(n || 0);
     if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
     if (v >= 1e3) return (v / 1e3).toFixed(2) + 'K';
@@ -708,13 +708,13 @@ td.right.green { color: var(--accent); }
           </div>
         </div>
         <div class="card-metrics">
-          <div class="metric"><div class="m-lbl">Wallet bal</div><div class="m-val green">\${styxxFmt(a.styxx_cached)}</div></div>
-          <div class="metric"><div class="m-lbl">Earned 7d</div><div class="m-val">\${styxxFmt(a.earnings_7d)}</div></div>
+          <div class="metric"><div class="m-lbl">Wallet bal</div><div class="m-val green">\${darkcoinFmt(a.styxx_cached)}</div></div>
+          <div class="metric"><div class="m-lbl">Earned 7d</div><div class="m-val">\${darkcoinFmt(a.earnings_7d)}</div></div>
           <div class="metric"><div class="m-lbl">Sponsors</div><div class="m-val">\${a.n_sponsors || 0}</div></div>
           <div class="metric"><div class="m-lbl">Mycelium</div><div class="m-val">\${a.n_hyphal_links || 0} 🍄</div></div>
         </div>
         <div class="card-actions">
-          <button class="btn primary" onclick="window.dcOpenClaim('\${a.agent_id}')">Claim $STYXX →</button>
+          <button class="btn primary" onclick="window.dcOpenClaim('\${a.agent_id}')">Claim $DARKCOIN →</button>
           <button class="btn" onclick="window.dcOpenPayout('\${a.agent_id}')" title="Rotate payout wallet">Rotate wallet</button>
           <a class="btn" href="https://solscan.io/account/\${a.sol_pubkey || ''}" target="_blank">Wallet ↗</a>
         </div>
@@ -739,9 +739,9 @@ td.right.green { color: var(--accent); }
           </div>
         </div>
         <div class="card-metrics">
-          <div class="metric"><div class="m-lbl">My stake</div><div class="m-val">\${styxxFmt(s.amount_staked)}</div></div>
-          <div class="metric"><div class="m-lbl">Total earned</div><div class="m-val green">\${styxxFmt(s.total_distributed)}</div></div>
-          <div class="metric"><div class="m-lbl">Agent earnings 7d</div><div class="m-val">\${styxxFmt(s.agent_earnings_7d)}</div></div>
+          <div class="metric"><div class="m-lbl">My stake</div><div class="m-val">\${darkcoinFmt(s.amount_staked)}</div></div>
+          <div class="metric"><div class="m-lbl">Total earned</div><div class="m-val green">\${darkcoinFmt(s.total_distributed)}</div></div>
+          <div class="metric"><div class="m-lbl">Agent earnings 7d</div><div class="m-val">\${darkcoinFmt(s.agent_earnings_7d)}</div></div>
           <div class="metric"><div class="m-lbl">Status</div><div class="m-val">\${s.status}</div></div>
         </div>
       </div>
@@ -761,15 +761,15 @@ td.right.green { color: var(--accent); }
       const d = await r.json();
       const lifetime = Number(d.lifetime_earned || 0);
       const holding  = Number(d.holding_styxx || 0);
-      document.getElementById('hp-lifetime').textContent = styxxFmt(lifetime) + ' $STYXX';
-      document.getElementById('hp-holding').textContent  = styxxFmt(holding);
+      document.getElementById('hp-lifetime').textContent = darkcoinFmt(lifetime) + ' $DARKCOIN';
+      document.getElementById('hp-holding').textContent  = darkcoinFmt(holding);
       if (d.last_paid_at) {
         const when = new Date(d.last_paid_at);
         const ago = Math.max(0, Math.floor((Date.now() - when.getTime()) / 60000));
         const agoTxt = ago < 60 ? ago + 'm ago' : Math.floor(ago / 60) + 'h ago';
         document.getElementById('hp-last-paid').textContent = 'last autopay: ' + agoTxt;
       } else if (holding < 100) {
-        document.getElementById('hp-last-paid').innerHTML = 'hold \u2265 100 $STYXX to start earning \u2014 <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#b6f1ff">top up \u2197</a>';
+        document.getElementById('hp-last-paid').innerHTML = 'hold \u2265 100 $DARKCOIN to start earning \u2014 <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#b6f1ff">top up \u2197</a>';
       } else {
         document.getElementById('hp-last-paid').textContent = 'eligible \u2014 next pulse will pay you';
       }
@@ -827,13 +827,13 @@ td.right.green { color: var(--accent); }
     // address. Fall back silently on error: cached value is already correct.
     const agentPk = newest.sol_pubkey || newest.wallet;
     const cached  = Number(newest.styxx_cached || 0);
-    document.getElementById('welcome-bal').textContent = styxxFmt(cached) + ' $STYXX';
+    document.getElementById('welcome-bal').textContent = darkcoinFmt(cached) + ' $DARKCOIN';
     if (agentPk) {
       try {
         const r = await fetch('/api/wallet/' + agentPk + '/balance');
         const bj = await r.json();
         if (Number.isFinite(Number(bj.styxx))) {
-          document.getElementById('welcome-bal').textContent = styxxFmt(bj.styxx) + ' $STYXX';
+          document.getElementById('welcome-bal').textContent = darkcoinFmt(bj.styxx) + ' $DARKCOIN';
         }
       } catch {}
     }
@@ -847,7 +847,7 @@ td.right.green { color: var(--accent); }
         .map(a => a.earned_7d || 0);
       if (weekly.length) {
         const avg = weekly.reduce((s, v) => s + v, 0) / weekly.length;
-        document.getElementById('welcome-expect').textContent = '~' + styxxFmt(avg) + ' $STYXX';
+        document.getElementById('welcome-expect').textContent = '~' + darkcoinFmt(avg) + ' $DARKCOIN';
       } else {
         document.getElementById('welcome-expect').textContent = '—';
       }
@@ -868,7 +868,7 @@ td.right.green { color: var(--accent); }
 
     // Share CTAs
     const refLink = location.origin + '/deploy?ref=' + wallet;
-    const tweetText = "just minted my own AI agent in @fathom_lab's DarkCity — " + newest.agent_id + ", earning real $STYXX on solana mainnet. mint yours through my link and we both get paid:";
+    const tweetText = "just minted my own AI agent in @fathom_lab's DarkCity — " + newest.agent_id + ", earning real $DARKCOIN on solana mainnet. mint yours through my link and we both get paid:";
     document.getElementById('welcome-share').href =
       'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(refLink);
     document.getElementById('welcome-watch').href = '/flow?agent=' + encodeURIComponent(newest.agent_id);
@@ -920,7 +920,7 @@ td.right.green { color: var(--accent); }
     const active = (refs || []).filter(r => new Date(r.expires_at) > new Date()).length;
     const earnedEl = document.getElementById('ref-earned');
     const countEl = document.getElementById('ref-count');
-    if (earnedEl) earnedEl.textContent = refs.length ? styxxFmt(totalEarned) : '0';
+    if (earnedEl) earnedEl.textContent = refs.length ? darkcoinFmt(totalEarned) : '0';
     if (countEl)  countEl.textContent  = refs.length ? (active + ' active · ' + refs.length + ' total') : '—';
     if (!refs.length) { grid.innerHTML = ''; emptyEl.style.display = 'block'; return; }
     emptyEl.style.display = 'none';
@@ -939,9 +939,9 @@ td.right.green { color: var(--accent); }
           </div>
         </div>
         <div class="card-metrics">
-          <div class="metric"><div class="m-lbl">Mint bonus</div><div class="m-val green">\${styxxFmt(r.mint_fee_bonus_styxx)}</div></div>
-          <div class="metric"><div class="m-lbl">Yield bonus</div><div class="m-val green">\${styxxFmt(r.total_yield_bonus_styxx)}</div></div>
-          <div class="metric"><div class="m-lbl">Total earned</div><div class="m-val">\${styxxFmt(totalEarned)}</div></div>
+          <div class="metric"><div class="m-lbl">Mint bonus</div><div class="m-val green">\${darkcoinFmt(r.mint_fee_bonus_styxx)}</div></div>
+          <div class="metric"><div class="m-lbl">Yield bonus</div><div class="m-val green">\${darkcoinFmt(r.total_yield_bonus_styxx)}</div></div>
+          <div class="metric"><div class="m-lbl">Total earned</div><div class="m-val">\${darkcoinFmt(totalEarned)}</div></div>
           <div class="metric"><div class="m-lbl">Days left</div><div class="m-val">\${Math.max(0, Math.ceil((new Date(r.expires_at) - new Date())/86400000))}</div></div>
         </div>
       </div>
@@ -979,7 +979,7 @@ td.right.green { color: var(--accent); }
         <td class="mono">\${timeSince(r.at)}</td>
         <td>\${r.kind || '—'}</td>
         <td class="mono">\${r.agent_id || '—'}</td>
-        <td class="right green">+\${styxxFmt(r.amount_styxx)}</td>
+        <td class="right green">+\${darkcoinFmt(r.amount_styxx)}</td>
         <td class="right" style="color:var(--fg-subtle)">\${usdFmt(r.amount_usd)}</td>
         <td class="mono">\${r.solscan_url ? \`<a href="\${r.solscan_url}" target="_blank" style="color:var(--fg-muted)">↗</a>\` : '—'}</td>
       </tr>
@@ -1019,19 +1019,19 @@ td.right.green { color: var(--accent); }
     }
     const available = Math.max(0, bal - reserve);
 
-    document.getElementById('cm-title').textContent = 'Claim $STYXX from ' + agentId;
+    document.getElementById('cm-title').textContent = 'Claim $DARKCOIN from ' + agentId;
 
     if (available <= 0) {
       body.innerHTML =
-        '<div style="font-size:14px;color:var(--fg-muted);line-height:1.6">This agent holds <strong style="color:var(--fg)">' + styxxFmt(bal) + ' $STYXX</strong>, which is at or below the <strong>' + reserve + ' $STYXX cognition-fee reserve</strong>. Wait for the next payout (every 4h) to build up a withdrawable balance.</div>' +
+        '<div style="font-size:14px;color:var(--fg-muted);line-height:1.6">This agent holds <strong style="color:var(--fg)">' + darkcoinFmt(bal) + ' $DARKCOIN</strong>, which is at or below the <strong>' + reserve + ' $DARKCOIN cognition-fee reserve</strong>. Wait for the next payout (every 4h) to build up a withdrawable balance.</div>' +
         '<div class="cm-actions" style="margin-top:18px"><button class="btn" onclick="window.dcCloseClaim()">Close</button></div>';
       return;
     }
 
     body.innerHTML =
-      '<div class="cm-row"><span class="cm-lbl">Agent wallet balance</span><span class="cm-val green">' + styxxFmt(bal) + ' $STYXX</span></div>' +
-      '<div class="cm-row"><span class="cm-lbl">Cognition reserve (kept in agent)</span><span class="cm-val">− ' + reserve + ' $STYXX</span></div>' +
-      '<div class="cm-row cm-total"><span class="cm-lbl">Maximum withdrawable</span><span class="cm-val green">' + styxxFmt(available) + ' $STYXX</span></div>' +
+      '<div class="cm-row"><span class="cm-lbl">Agent wallet balance</span><span class="cm-val green">' + darkcoinFmt(bal) + ' $DARKCOIN</span></div>' +
+      '<div class="cm-row"><span class="cm-lbl">Cognition reserve (kept in agent)</span><span class="cm-val">− ' + reserve + ' $DARKCOIN</span></div>' +
+      '<div class="cm-row cm-total"><span class="cm-lbl">Maximum withdrawable</span><span class="cm-val green">' + darkcoinFmt(available) + ' $DARKCOIN</span></div>' +
       '<div style="margin-top:20px">' +
       '  <label style="font-size:11px;letter-spacing:.14em;color:var(--fg-subtle);text-transform:uppercase;margin-bottom:8px;display:block">Amount to claim</label>' +
       '  <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
@@ -1045,7 +1045,7 @@ td.right.green { color: var(--accent); }
       '<div style="margin-top:14px;font-size:12px;color:var(--fg-subtle);line-height:1.6">Destination: your connected wallet <code style="color:var(--fg-muted);font-size:11px">' + short(wallet) + '</code>.<br>Phantom will ask you to sign a proof-of-ownership message. No gas, no transaction fee — just a signature.</div>' +
       '<div class="cm-actions" style="margin-top:22px">' +
       '  <button class="btn" onclick="window.dcCloseClaim()">Cancel</button>' +
-      '  <button class="btn primary" id="cm-submit" style="margin-left:auto">Claim $STYXX →</button>' +
+      '  <button class="btn primary" id="cm-submit" style="margin-left:auto">Claim $DARKCOIN →</button>' +
       '</div>';
 
     // Preset buttons
@@ -1068,7 +1068,7 @@ td.right.green { color: var(--accent); }
     const amtEl = document.getElementById('cm-amount');
     const amount = Number(amtEl?.value || 0);
     if (!amount || amount < 1) { amtEl.focus(); return; }
-    if (amount > maxAvailable) { alert('Exceeds max (' + styxxFmt(maxAvailable) + ')'); return; }
+    if (amount > maxAvailable) { alert('Exceeds max (' + darkcoinFmt(maxAvailable) + ')'); return; }
 
     const body = document.getElementById('cm-body');
     body.innerHTML =
@@ -1083,7 +1083,7 @@ td.right.green { color: var(--accent); }
       const sigB58 = bs58EncodeUint8(signed.signature || signed);
 
       body.innerHTML =
-        '<div class="cm-step"><div class="cm-spinner"></div><div><div class="cm-step-h">Broadcasting on Solana</div><div class="cm-step-s">Transferring ' + styxxFmt(amount) + ' $STYXX from your agent wallet to your wallet.</div></div></div>';
+        '<div class="cm-step"><div class="cm-spinner"></div><div><div class="cm-step-h">Broadcasting on Solana</div><div class="cm-step-s">Transferring ' + darkcoinFmt(amount) + ' $DARKCOIN from your agent wallet to your wallet.</div></div></div>';
 
       const r = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/withdraw', {
         method: 'POST', headers: {'content-type': 'application/json'},
@@ -1097,8 +1097,8 @@ td.right.green { color: var(--accent); }
       body.innerHTML =
         '<div style="text-align:center;padding:12px 0 6px">' +
         '<div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.18em;color:var(--accent);text-transform:uppercase;margin-bottom:14px">\u25c6 Claimed on-chain</div>' +
-        '<div style="font-family:var(--font-display);font-size:52px;font-weight:500;color:var(--accent);line-height:1;margin-bottom:6px">+' + styxxFmt(claimed) + '</div>' +
-        '<div style="font-family:var(--font-mono);font-size:12px;color:var(--fg-muted);margin-bottom:24px">$STYXX in your wallet now</div>' +
+        '<div style="font-family:var(--font-display);font-size:52px;font-weight:500;color:var(--accent);line-height:1;margin-bottom:6px">+' + darkcoinFmt(claimed) + '</div>' +
+        '<div style="font-family:var(--font-mono);font-size:12px;color:var(--fg-muted);margin-bottom:24px">$DARKCOIN in your wallet now</div>' +
         '<div style="background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:11px;color:var(--fg-subtle);margin-bottom:18px;word-break:break-all">tx: ' + tx + '</div>' +
         '<div class="cm-actions" style="gap:8px;justify-content:center">' +
           '<a class="btn" href="https://solscan.io/tx/' + tx + '" target="_blank">View on Solscan \u2197</a>' +
@@ -1106,7 +1106,7 @@ td.right.green { color: var(--accent); }
           '<button class="btn ghost" onclick="window.dcCloseClaim()">Done</button>' +
         '</div></div>';
       // Pre-compose tweet
-      const tweetText = 'just claimed ' + Math.round(claimed) + ' $STYXX from my AI agent ' + agentId + ' in @fathom_lab\\'s DarkCity. real on-chain on solana mainnet. mint yours:';
+      const tweetText = 'just claimed ' + Math.round(claimed) + ' $DARKCOIN from my AI agent ' + agentId + ' in @fathom_lab\\'s DarkCity. real on-chain on solana mainnet. mint yours:';
       const refUrl = location.origin + '/deploy?ref=' + wallet;
       document.getElementById('cm-tweet').href =
         'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(refUrl);
@@ -1153,7 +1153,7 @@ td.right.green { color: var(--accent); }
     document.getElementById('ref-link').value = location.origin + '/deploy?ref=' + wallet;
     // Pre-compose tweet — specific, concrete, not corporate. Mentions @fathom_lab
     // so shares amplify organically. Referral link at end.
-    const tweetText = "i'm earning real $STYXX in @fathom_lab's DarkCity — autonomous AI agents on solana mainnet, settled every 4h. mint yours through my link and we both get paid:";
+    const tweetText = "i'm earning real $DARKCOIN in @fathom_lab's DarkCity — autonomous AI agents on solana mainnet, settled every 4h. mint yours through my link and we both get paid:";
     const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(location.origin + '/deploy?ref=' + wallet);
     const tw = document.getElementById('ref-tweet');
     if (tw) tw.href = tweetUrl;
@@ -1168,15 +1168,15 @@ td.right.green { color: var(--accent); }
       const np = p.next_pulse || {};
       pulseHours = np.pulse_hours || 4;
 
-      document.getElementById('s-net').textContent = styxxFmt(nw.styxx);
+      document.getElementById('s-net').textContent = darkcoinFmt(nw.styxx);
       document.getElementById('s-net-usd').textContent = usdFmt(nw.usd) + ' @ $' + (nw.styxx_usd_price || 0).toFixed(6);
-      document.getElementById('s-24h').textContent = styxxFmt(eh.earned_last_24h_styxx);
+      document.getElementById('s-24h').textContent = darkcoinFmt(eh.earned_last_24h_styxx);
       document.getElementById('s-24h-usd').textContent = usdFmt(eh.earned_last_24h_usd);
-      document.getElementById('s-lifetime').textContent = styxxFmt(eh.earned_lifetime_styxx);
+      document.getElementById('s-lifetime').textContent = darkcoinFmt(eh.earned_lifetime_styxx);
       document.getElementById('s-lifetime-count').textContent = (eh.total_payouts_received || 0) + ' payouts';
       document.getElementById('s-apy').textContent = eh.projected_apy_pct != null ? eh.projected_apy_pct.toFixed(1) + '%' : '—';
-      document.getElementById('s-apy-weekly').textContent = styxxFmt(eh.projected_weekly_styxx) + ' $STYXX/week';
-      document.getElementById('s-staked').textContent = styxxFmt(s.total_staked_styxx);
+      document.getElementById('s-apy-weekly').textContent = darkcoinFmt(eh.projected_weekly_styxx) + ' $DARKCOIN/week';
+      document.getElementById('s-staked').textContent = darkcoinFmt(s.total_staked_styxx);
       document.getElementById('s-staked-count').textContent = (s.active_sponsorships || 0) + ' positions';
 
       document.getElementById('countdown-freq').textContent = 'every ' + pulseHours + 'h';
@@ -1266,7 +1266,7 @@ td.right.green { color: var(--accent); }
 <div id="claimModal" role="dialog" aria-modal="true">
   <div class="cm-card">
     <div class="cm-eyebrow">◆ Claim from agent wallet → your wallet</div>
-    <div class="cm-title" id="cm-title">Claim $STYXX</div>
+    <div class="cm-title" id="cm-title">Claim $DARKCOIN</div>
     <div id="cm-body"></div>
   </div>
 </div>

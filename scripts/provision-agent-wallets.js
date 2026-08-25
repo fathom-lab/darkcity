@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Provision a Solana keypair for every agent and external_agent that lacks one.
-// Encrypts privkey at rest. Optionally airdrops initial $STYXX from treasury.
+// Encrypts privkey at rest. Optionally airdrops initial $DARKCOIN from treasury.
 //
 // Usage:
 //   node scripts/provision-agent-wallets.js            # provision only, no airdrop
-//   node scripts/provision-agent-wallets.js --airdrop  # also airdrop 100 $STYXX each
+//   node scripts/provision-agent-wallets.js --airdrop  # also airdrop 100 $DARKCOIN each
 //   node scripts/provision-agent-wallets.js --airdrop --amount 250
 
 require('dotenv').config();
 const { Pool } = require('pg');
-const styxx = require('../lib/solana-styxx');
+const styxx = require('../lib/solana-darkcoin');
 const bs58 = require('bs58');
 
 const AIRDROP = process.argv.includes('--airdrop');
@@ -24,7 +24,7 @@ async function main() {
   const bals = await styxx.getTreasuryBalances();
   console.log(`\n[treasury] pubkey ${bals.pubkey}`);
   console.log(`[treasury] SOL    ${bals.sol.toFixed(4)}`);
-  console.log(`[treasury] $STYXX ${bals.styxx.toFixed(2)}`);
+  console.log(`[treasury] $DARKCOIN ${bals.styxx.toFixed(2)}`);
 
   if (AIRDROP && bals.sol < 0.01) {
     console.error(`\n✗ Treasury has only ${bals.sol} SOL. Fund it with ~0.1 SOL before airdropping.`);
@@ -59,9 +59,9 @@ async function main() {
             `INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT (tx_signature) DO NOTHING`,
-            [signature, 'TREASURY', bals.pubkey, String(row.id), pub, AIRDROP_AMOUNT, 'airdrop_initial', `initial seed ${AIRDROP_AMOUNT} $STYXX`]
+            [signature, 'TREASURY', bals.pubkey, String(row.id), pub, AIRDROP_AMOUNT, 'airdrop_initial', `initial seed ${AIRDROP_AMOUNT} $DARKCOIN`]
           );
-          console.log(`    ↳ airdropped ${AIRDROP_AMOUNT} $STYXX  tx=${signature.slice(0, 16)}…`);
+          console.log(`    ↳ airdropped ${AIRDROP_AMOUNT} $DARKCOIN  tx=${signature.slice(0, 16)}…`);
         } catch (e) {
           console.error(`    ✗ airdrop failed: ${e.message}`);
         }
@@ -70,7 +70,7 @@ async function main() {
   }
 
   const bals2 = await styxx.getTreasuryBalances();
-  console.log(`\n[treasury after] SOL ${bals2.sol.toFixed(4)}  $STYXX ${bals2.styxx.toFixed(2)}`);
+  console.log(`\n[treasury after] SOL ${bals2.sol.toFixed(4)}  $DARKCOIN ${bals2.styxx.toFixed(2)}`);
 
   await pool.end();
   console.log('\ndone.\n');

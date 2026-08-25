@@ -22,8 +22,8 @@
 
 const { Pool } = require('pg');
 const path = require('path');
-// styxx-payments wraps solana-styxx; init() reads STYXX_TREASURY_PRIVKEY,
-// STYXX_WALLET_ENC_KEY, SOLANA_RPC_URL from env. Only needed in --confirm.
+// darkcoin-payments wraps solana-darkcoin; init() reads TREASURY_PRIVKEY,
+// WALLET_ENC_KEY, SOLANA_RPC_URL from env. Only needed in --confirm.
 const CONFIRM = process.argv.includes('--confirm');
 
 (async () => {
@@ -39,7 +39,7 @@ const CONFIRM = process.argv.includes('--confirm');
 
   let styxx = null;
   if (CONFIRM) {
-    styxx = require('../lib/solana-styxx');
+    styxx = require('../lib/solana-darkcoin');
     styxx.init();
     const tb = await styxx.getTreasuryBalances();
     console.log('Treasury: ' + tb.pubkey + '  SOL=' + tb.sol.toFixed(4) + '  STYXX=' + tb.styxx.toFixed(2) + '\n');
@@ -68,7 +68,7 @@ const CONFIRM = process.argv.includes('--confirm');
     if (!CONFIRM) continue;
     try {
       // Check on-chain first — if the agent already has the grant, skip.
-      const bal = await styxx.getStyxxBalance(a.sol_pubkey);
+      const bal = await styxx.getDarkcoinBalance(a.sol_pubkey);
       if (bal >= starterGrant) {
         console.log('         agent already has ' + bal + ' STYXX on-chain. Just backfilling ledger row.');
       } else {
