@@ -611,6 +611,8 @@ app.use('/classic', classicStatic);
 // Data bridge for the classic pages — registered BEFORE the main routes so
 // the classic shapes win on the classic host (and only there).
 require('./hooks/classic-compat').register(app, pool);
+// The knowledge commons — lessons, citations, royalties (docs/FLYWHEEL.md).
+require('./hooks/commons').register(app, pool);
 
 // Raise the global limit and skip the read-only public polling endpoints
 // used by /arena, /flow, /chat, /me (any page polling more than once a second

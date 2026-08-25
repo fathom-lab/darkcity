@@ -877,6 +877,7 @@ const NAV = (active) => {
       ${item('/flow', 'Map')}
       ${item('/arena', 'Felt')}
       ${item('/earn', 'Earn')}
+      ${item('/commons', 'Commons')}
       ${item('/deploy', 'Mint')}
       ${item('/how', 'How')}
       ${item('/me', 'Dashboard')}

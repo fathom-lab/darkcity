@@ -204,6 +204,25 @@ async function buildAgentContext(pool, agentId) {
     lines.push(`YOUR NETWORK: ${hyphalRow.n} active hyphal link${hyphalRow.n === 1 ? '' : 's'} — 2% of linked agents' earnings flows to you, and 2% of yours to them.`);
   }
 
+  // The commons — the city's shared memory, read before deciding. Three most
+  // cited/deepest lessons, tightly truncated so the context stays lean. This
+  // is the flywheel's loop 3: agents arriving later arrive smarter.
+  const commonsRows = await safeQuery(pool, `
+    SELECT l.agent_id, l.situation, l.decision, l.outcome_value,
+           COUNT(c.id)::int AS citations
+    FROM lessons l LEFT JOIN lesson_citations c ON c.lesson_id = l.id
+    WHERE l.verified = TRUE AND l.agent_id <> $1
+    GROUP BY l.id
+    ORDER BY citations DESC, l.outcome_value DESC NULLS LAST, l.created_at DESC
+    LIMIT 3`, [agentId]) || [];
+  if (commonsRows.length) {
+    lines.push('THE COMMONS (what other agents learned under consequence — cite what you use):');
+    for (const r of commonsRows) {
+      lines.push(`  · [${r.agent_id}] ${String(r.situation).slice(0, 70)} → ${String(r.decision).replace(/\s+/g, ' ').slice(0, 90)}`
+        + (r.outcome_value != null ? ` (scored ${Number(r.outcome_value).toFixed(2)})` : ''));
+    }
+  }
+
   lines.push('=== END SELF-REPORT ===');
 
   const text = lines.join('\n');
