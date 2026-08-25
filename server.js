@@ -3216,7 +3216,7 @@ app.get('/api/hall-of-depth', async (req, res) => {
 // over two tower slabs. Same glyph as the coin image (classic/darkcoin.svg),
 // so the token, the tab icon and the site read as one identity.
 app.get('/favicon.svg', (req, res) => {
-  res.type('image/svg+xml').send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#000"/><rect x="2.5" y="2.5" width="59" height="59" rx="10" fill="none" stroke="#00ff88" stroke-width="3"/><path d="M 32 12 L 39 20 L 32 28 L 25 20 Z" fill="#00ff88"/><rect x="23" y="32" width="18" height="8" fill="#00ff88"/><rect x="18" y="43" width="28" height="8" fill="#00ff88"/></svg>`);
+  res.type('image/svg+xml').send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#000"/><rect x="2.5" y="2.5" width="59" height="59" rx="10" fill="none" stroke="#43ffb4" stroke-width="3"/><path d="M 32 12 L 39 20 L 32 28 L 25 20 Z" fill="#43ffb4"/><rect x="23" y="32" width="18" height="8" fill="#43ffb4"/><rect x="18" y="43" width="28" height="8" fill="#43ffb4"/></svg>`);
 });
 app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
 

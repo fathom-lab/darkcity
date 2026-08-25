@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const OUT = path.join(process.cwd(), 'classic');
-const GREEN = '#00ff88';
+const GREEN = '#43ffb4';
 
 // Stepped tower: three tiers, narrowing upward. Each tier is a slab with a
 // row of windows; lit windows carry the glow. Simple, symmetric, readable.
