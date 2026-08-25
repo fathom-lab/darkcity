@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+  <defs><filter id="g" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <circle cx="500" cy="500" r="492" fill="#0a0a0b"/>
+  <circle cx="500" cy="500" r="492" fill="none" stroke="#43ffb4" stroke-width="7"/>
+  
+  <path d="M500 232 L556 300 L500 368 L444 300 Z" fill="#43ffb4" filter="url(#g)"/>
+  <path d="M440 400 L560 400 L590 720 L410 720 Z" fill="none" stroke="#43ffb4" stroke-width="22" stroke-linejoin="round"/>
+  <line x1="500" y1="400" x2="500" y2="720" stroke="#43ffb4" stroke-width="10" opacity="0.5"/>
+</svg>

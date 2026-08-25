@@ -78,10 +78,11 @@ function register(app, pool) {
               AND length(COALESCE(details->>'choice_reason', details->'agent_state'->>'opportunity')) > 20
             ORDER BY created_at DESC LIMIT 1
           ) last_thought ON TRUE
-          WHERE ea.sol_pubkey IS NOT NULL
+          WHERE ea.euthanized_at IS NULL
+            ${TOKEN_LIVE ? 'AND ea.sol_pubkey IS NOT NULL' : ''}
           ORDER BY ea.agent_id
         `),
-        solanaDarkcoin.getTreasuryBalances().catch(() => null),
+        (solanaDarkcoin.isChainReady() ? solanaDarkcoin.getTreasuryBalances() : Promise.resolve(null)).catch(() => null),
         // Pull narratives from the LIVE agent_actions.details JSON.
         // depth_evaluations stopped writing weeks ago — agent_actions is fresh every tick.
         pool.query(`

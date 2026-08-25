@@ -613,6 +613,13 @@ app.use((req, res, next) => {
   return classicStatic(req, res, next);
 });
 app.use('/classic', classicStatic);
+// ONE map, the good one, everywhere. The beautiful mycelium map (classic/
+// map.html) is THE map of DarkCity — served at /map on every host, with the
+// old animated /flow redirecting to it so there is never a second, lesser map.
+// Its data (rest/v1 + depth) is bridged host-agnostically, so it renders the
+// live city on darkcity.wtf and app.darkcity.wtf alike.
+app.get('/map', (req, res) => res.sendFile(require('path').join(CLASSIC_DIR, 'map.html')));
+app.get('/flow', (req, res) => res.redirect(302, '/map'));
 // Data bridge for the classic pages — registered BEFORE the main routes so
 // the classic shapes win on the classic host (and only there).
 require('./hooks/classic-compat').register(app, pool);

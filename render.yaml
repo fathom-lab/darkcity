@@ -1,0 +1,41 @@
+# render.yaml — Render Blueprint for DarkCity.
+# Deterministic build/start so a fresh Render deploy can't fail on defaults.
+# Deploy via Render → Blueprints, or point a Web Service at this repo.
+services:
+  - type: web
+    name: darkcity
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: darkcity-db
+          property: connectionString
+      # Secrets — set these in the Render dashboard (sync:false keeps them out of git):
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      # Optional — the token layer stays dark until TOKEN_MINT_ADDR is set:
+      - key: TOKEN_MINT_ADDR
+        sync: false
+      - key: TREASURY_PRIVKEY
+        sync: false
+      - key: WALLET_ENC_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: darkcity-db
+    plan: basic-256mb
+    postgresMajorVersion: "16"

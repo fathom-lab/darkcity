@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+  <defs><filter id="g" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <circle cx="500" cy="500" r="492" fill="#0a0a0b"/>
+  <circle cx="500" cy="500" r="492" fill="none" stroke="#43ffb4" stroke-width="7"/>
+  
+  <path d="M500 250 L548 312 L500 374 L452 312 Z" fill="#43ffb4" filter="url(#g)"/>
+  <g fill="none" stroke="#43ffb4" stroke-width="22" stroke-linejoin="round">
+    <path d="M330 700 L330 560 L410 560 L410 700"/>
+    <path d="M450 700 L450 470 L560 470 L560 700"/>
+    <path d="M600 700 L600 590 L680 590 L680 700"/>
+  </g>
+  <line x1="300" y1="712" x2="700" y2="712" stroke="#43ffb4" stroke-width="12"/>
+</svg>

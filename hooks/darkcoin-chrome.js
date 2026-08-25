@@ -58,7 +58,7 @@ a:hover{color:var(--accent)}
 .foot a{color:var(--fg-muted)}`;
 
 const NAV_ITEMS = [
-  ['/flow', 'Map'], ['/arena', 'Felt'], ['/earn', 'Earn'],
+  ['/map', 'Map'], ['/arena', 'Felt'], ['/earn', 'Earn'],
   ['/commons', 'Commons'], ['/economy', 'Economy'],
   ['/deploy', 'Mint'], ['/how', 'How'], ['/me', 'Dashboard'],
 ];

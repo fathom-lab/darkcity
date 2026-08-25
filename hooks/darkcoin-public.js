@@ -879,7 +879,7 @@ const NAV = (active) => {
   return `<header class="nav"><div class="nav-inner">
     <a href="/" class="nav-brand"><span class="mark">◆</span>DarkCity</a>
     <nav class="nav-links">
-      ${item('/flow', 'Map')}
+      ${item('/map', 'Map')}
       ${item('/arena', 'Felt')}
       ${item('/earn', 'Earn')}
       ${item('/commons', 'Commons')}
