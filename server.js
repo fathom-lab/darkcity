@@ -602,8 +602,15 @@ app.set('trust proxy', 1);
 const CLASSIC_DIR = require('path').join(__dirname, 'classic');
 const classicStatic = express.static(CLASSIC_DIR, { extensions: ['html'] });
 app.use((req, res, next) => {
-  if (req.hostname === 'app.darkcity.wtf') return classicStatic(req, res, next);
-  return next();
+  if (req.hostname !== 'app.darkcity.wtf') return next();
+  // app.darkcity.wtf IS the live mycelium map. Root and any retired classic
+  // path (scanner, token, landing, the old map experiments — all archived)
+  // land on the map, so an old link gets the real thing, never slop or a 404.
+  if (req.path === '/') return res.redirect(302, '/map');
+  if (/^\/(scanner|token|landing|join|leaderboard|contracts|map-[\w-]+|agent-pov|brand-preview|citizen-showcase|darkcity-[\w-]+)(\.html)?$/.test(req.path)) {
+    return res.redirect(302, '/map');
+  }
+  return classicStatic(req, res, next);
 });
 app.use('/classic', classicStatic);
 // Data bridge for the classic pages — registered BEFORE the main routes so
