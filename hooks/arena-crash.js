@@ -26,8 +26,16 @@
 'use strict';
 
 const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_LIVE } = require('../lib/token-config');
 const { PublicKey } = require('@solana/web3.js');
 const crypto = require('crypto');
+
+// Until darkcoin is minted (TOKEN_LIVE false) every on-chain path stays dark:
+// shadow mode is forced regardless of the arena_shadow_mode flag. No mint =
+// nothing real can move, in either direction.
+function isShadow(params) {
+  return !TOKEN_LIVE || String(params.arena_shadow_mode || 'true').toLowerCase() === 'true';
+}
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -353,7 +361,7 @@ async function resolveRunningRounds(pool) {
 
 async function settleRound(pool, round) {
   const params = await loadParams(pool);
-  const shadowMode = String(params.arena_shadow_mode || 'true').toLowerCase() === 'true';
+  const shadowMode = isShadow(params);
   const crashMult = Number(round.crash_multiplier);
 
   const { rows: bets } = await pool.query(
@@ -493,7 +501,7 @@ async function distributeFounderCut(pool) {
   if (totalMultWeight <= 0) return;
 
   const params = await loadParams(pool);
-  const shadowMode = String(params.arena_shadow_mode || 'true').toLowerCase() === 'true';
+  const shadowMode = isShadow(params);
   const txList = [];
 
   for (const g of genesis) {
@@ -534,8 +542,7 @@ async function loadParams(pool) {
 // retried here. Bounded retries: 8 attempts then we give up and flag it.
 async function retryPendingPayouts(pool) {
   const params = await loadParams(pool);
-  const shadowMode = String(params.arena_shadow_mode || 'true').toLowerCase() === 'true';
-  if (shadowMode) return;
+  if (isShadow(params)) return;
   const { rows } = await pool.query(
     "SELECT id, user_wallet, payout_styxx FROM arena_bets WHERE status = 'payout_pending' AND payout_styxx > 0 LIMIT 10"
   );
@@ -578,7 +585,7 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
   const params = await loadParams(pool);
   const minBet = Number(params.arena_min_bet_styxx || 100000);
   const maxBet = Number(params.arena_max_bet_styxx || 10000000);
-  const shadowMode = String(params.arena_shadow_mode || 'true').toLowerCase() === 'true';
+  const shadowMode = isShadow(params);
 
   if (stake_styxx < minBet) return { ok: false, error: 'below_min_stake', min: minBet };
   if (stake_styxx > maxBet) return { ok: false, error: 'above_max_stake', max: maxBet };
@@ -654,7 +661,7 @@ async function placeBet(pool, { round_id, user_wallet, stake_styxx, payment_tx }
          VALUES ($1, $2, $3, $4, 'refunded', $3, $5)`,
         [round_id, user_wallet, stake_styxx, payment_tx || null, refund.signature]
       );
-      console.log('[arena] auto-refund', stake_styxx, 'STYXX to', user_wallet.slice(0,8), 'sig:', refund.signature);
+      console.log('[arena] auto-refund', stake_styxx, 'DARKCOIN to', user_wallet.slice(0,8), 'sig:', refund.signature);
       return {
         ok: false,
         error: 'betting_closed_refunded',

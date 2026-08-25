@@ -4,12 +4,13 @@
 // Self-contained HTML served by the backend. No frontend deploy needed.
 // ============================================================================
 
-const styxx = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_MINT_ADDR, TOKEN_PUMP_URL, TOKEN_SOLSCAN_URL, TOKEN_LIVE } = require('../lib/token-config');
 
 function register(app, pool) {
 
   // ─── JSON: aggregate status for a single agent's trial ──────────────────
-  app.get('/api/styxx/trial/:agentId', async (req, res) => {
+  const trialHandler = async (req, res) => {
     if (!(process.env.TREASURY_PRIVKEY || process.env.STYXX_TREASURY_PRIVKEY)) return res.status(503).json({ error: 'darkcoin layer disabled' });
     const agentId = (req.params.agentId || '').toUpperCase();
     try {
@@ -23,7 +24,7 @@ function register(app, pool) {
       if (!a.sol_pubkey) return res.status(409).json({ error: 'agent has no wallet' });
 
       const [liveBalance, seed, transfers, treasury] = await Promise.all([
-        styxx.getDarkcoinBalance(a.sol_pubkey).catch(() => null),
+        solanaDarkcoin.getDarkcoinBalance(a.sol_pubkey).catch(() => null),
         pool.query(
           `SELECT amount, confirmed_at FROM styxx_transfers
            WHERE to_agent_id = $1 AND reason = 'airdrop_initial'
@@ -37,7 +38,7 @@ function register(app, pool) {
            ORDER BY confirmed_at DESC LIMIT 20`,
           [agentId]
         ),
-        styxx.getTreasuryBalances().catch(() => null),
+        solanaDarkcoin.getTreasuryBalances().catch(() => null),
       ]);
 
       const startingBalance = seed.rows[0] ? Number(seed.rows[0].amount) : 0;
@@ -81,14 +82,21 @@ function register(app, pool) {
           styxx: treasury.styxx,
           solscan: `https://solscan.io/account/${treasury.pubkey}`,
         } : null,
-        mint: styxx.TOKEN_MINT_ADDR,
-        pump: styxx.TOKEN_PUMP_URL,
+        // Empty strings until the darkcoin mint exists — client renders
+        // 'mint pending' instead of dead links.
+        mint: TOKEN_MINT_ADDR,
+        mint_live: TOKEN_LIVE,
+        pump: TOKEN_PUMP_URL,
+        mint_solscan: TOKEN_SOLSCAN_URL,
       });
     } catch (e) {
       console.error('[trial] error:', e);
       res.status(500).json({ error: e.message });
     }
-  });
+  };
+  app.get('/api/darkcoin/trial/:agentId', trialHandler);
+  // Compat alias — old integrations still hit the styxx-era path.
+  app.get('/api/styxx/trial/:agentId', trialHandler);
 
   // ─── HTML: self-contained live dashboard ────────────────────────────────
   app.get('/darkcoin-trial', (req, res) => {
@@ -241,11 +249,11 @@ footer a { color: var(--blue); }
 <footer>
   <div>$DARKCOIN mint <span class="addr" id="mintAddr">—</span></div>
   <div>
-    <a id="pumpLink" href="#" target="_blank">buy on pump.fun →</a>
+    <span id="mintLinks"><a id="pumpLink" href="#" target="_blank">buy on pump.fun →</a>
     &nbsp;·&nbsp;
     <a id="mintSolscan" href="#" target="_blank">mint on solscan →</a>
-    &nbsp;·&nbsp;
-    <a id="ledgerLink" href="/api/styxx/ledger" target="_blank">raw ledger →</a>
+    &nbsp;·&nbsp;</span>
+    <a id="ledgerLink" href="/api/darkcoin/ledger" target="_blank">raw ledger →</a>
   </div>
 </footer>
 
@@ -321,16 +329,25 @@ function render(data) {
       </div>\` : ''}
   \`;
 
-  document.getElementById('mintAddr').textContent = data.mint;
-  document.getElementById('pumpLink').href = data.pump;
-  document.getElementById('mintSolscan').href = 'https://solscan.io/token/' + data.mint;
-  document.getElementById('ledgerLink').href = '/api/styxx/ledger?agent=' + AGENT;
+  // Mint may not exist yet (pre-launch) — show 'mint pending' and hide the
+  // pump.fun / solscan links instead of rendering dead hrefs.
+  const mintLinks = document.getElementById('mintLinks');
+  if (data.mint) {
+    document.getElementById('mintAddr').textContent = data.mint;
+    mintLinks.style.display = '';
+    document.getElementById('pumpLink').href = data.pump || ('https://pump.fun/coin/' + data.mint);
+    document.getElementById('mintSolscan').href = data.mint_solscan || ('https://solscan.io/token/' + data.mint);
+  } else {
+    document.getElementById('mintAddr').textContent = 'mint pending';
+    mintLinks.style.display = 'none';
+  }
+  document.getElementById('ledgerLink').href = '/api/darkcoin/ledger?agent=' + AGENT;
   document.getElementById('ticker').textContent = 'last sync ' + new Date().toISOString().slice(11,19) + ' UTC';
 }
 
 async function poll() {
   try {
-    const r = await fetch('/api/styxx/trial/' + encodeURIComponent(AGENT) + '?_=' + Date.now());
+    const r = await fetch('/api/darkcoin/trial/' + encodeURIComponent(AGENT) + '?_=' + Date.now());
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       document.getElementById('app').innerHTML = \`<div class="panel"><div class="loading">error \${r.status}: \${err.error || 'unknown'}</div></div>\`;

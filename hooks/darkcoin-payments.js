@@ -5,7 +5,7 @@
 // for resource trades; P2P transfers move directly agent-to-agent.
 // ============================================================================
 
-const styxx = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
 
 let pool = null;
 
@@ -25,7 +25,7 @@ async function loadAgentKeypair(table, idCol, agentId) {
     err.code = 'NO_WALLET';
     throw err;
   }
-  const kp = styxx.keypairFromEncrypted(rows[0].sol_privkey_enc);
+  const kp = solanaDarkcoin.keypairFromEncrypted(rows[0].sol_privkey_enc);
   return { keypair: kp, pubkey: rows[0].sol_pubkey };
 }
 
@@ -45,7 +45,7 @@ async function logTransfer({ signature, slot, fromAgent, fromPubkey, toAgent, to
 
 async function refreshCache(table, idCol, agentId, pubkey) {
   try {
-    const bal = await styxx.getDarkcoinBalance(pubkey);
+    const bal = await solanaDarkcoin.getDarkcoinBalance(pubkey);
     await pool.query(
       `UPDATE ${table} SET styxx_cached = $1, styxx_cached_at = NOW() WHERE ${idCol} = $2`,
       [bal, agentId]
@@ -68,11 +68,11 @@ async function refreshCache(table, idCol, agentId, pubkey) {
  */
 async function buyFromMarket({ table, idCol, agentId, amount, reason, memo }) {
   const { keypair, pubkey } = await loadAgentKeypair(table, idCol, agentId);
-  const { signature, slot } = await styxx.collectToTreasury(keypair, amount);
+  const { signature, slot } = await solanaDarkcoin.collectToTreasury(keypair, amount);
   await logTransfer({
     signature, slot,
     fromAgent: String(agentId), fromPubkey: pubkey,
-    toAgent: 'TREASURY', toPubkey: styxx.getTreasury().publicKey.toBase58(),
+    toAgent: 'TREASURY', toPubkey: solanaDarkcoin.getTreasury().publicKey.toBase58(),
     amount, reason: reason || 'resource_buy', memo,
   });
   await refreshCache(table, idCol, agentId, pubkey);
@@ -81,10 +81,10 @@ async function buyFromMarket({ table, idCol, agentId, amount, reason, memo }) {
 
 async function sellToMarket({ table, idCol, agentId, amount, reason, memo }) {
   const { pubkey } = await loadAgentKeypair(table, idCol, agentId);
-  const { signature, slot } = await styxx.airdropFromTreasury(pubkey, amount);
+  const { signature, slot } = await solanaDarkcoin.airdropFromTreasury(pubkey, amount);
   await logTransfer({
     signature, slot,
-    fromAgent: 'TREASURY', fromPubkey: styxx.getTreasury().publicKey.toBase58(),
+    fromAgent: 'TREASURY', fromPubkey: solanaDarkcoin.getTreasury().publicKey.toBase58(),
     toAgent: String(agentId), toPubkey: pubkey,
     amount, reason: reason || 'resource_sell', memo,
   });
@@ -98,7 +98,7 @@ async function transferP2P({ fromTable, fromIdCol, fromId, toTable, toIdCol, toI
   const from = await loadAgentKeypair(fromTable, fromIdCol, fromId);
   const to = await loadAgentKeypair(toTable, toIdCol, toId);
 
-  const { signature, slot } = await styxx.transferDarkcoin({
+  const { signature, slot } = await solanaDarkcoin.transferDarkcoin({
     fromKeypair: from.keypair,
     toPubkey: to.pubkey,
     amount,
@@ -124,10 +124,10 @@ async function transferP2P({ fromTable, fromIdCol, fromId, toTable, toIdCol, toI
 
 async function payContractReward({ table, idCol, agentId, amount, contractId, memo }) {
   const { pubkey } = await loadAgentKeypair(table, idCol, agentId);
-  const { signature, slot } = await styxx.airdropFromTreasury(pubkey, amount);
+  const { signature, slot } = await solanaDarkcoin.airdropFromTreasury(pubkey, amount);
   await logTransfer({
     signature, slot,
-    fromAgent: 'TREASURY', fromPubkey: styxx.getTreasury().publicKey.toBase58(),
+    fromAgent: 'TREASURY', fromPubkey: solanaDarkcoin.getTreasury().publicKey.toBase58(),
     toAgent: String(agentId), toPubkey: pubkey,
     amount, reason: 'contract_reward', memo, contractId,
   });

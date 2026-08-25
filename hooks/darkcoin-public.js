@@ -6,7 +6,22 @@
 //   /how      explainer — architecture, action types, code examples
 // ============================================================================
 
-const styxx = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_MINT_ADDR, TOKEN_TICKER, TOKEN_PUMP_URL, TOKEN_SOLSCAN_URL, TOKEN_LIVE, TOKEN_DECIMALS } = require('../lib/token-config');
+
+// ── pre-launch handling ──────────────────────────────────────────────────
+// darkcoin has no mint address until it launches (TOKEN_LIVE false). Every
+// public surface renders token links through these fragments so a pending
+// mint shows 'mint pending launch' copy instead of a dead pump.fun href.
+const FOOTER_TOKEN_LINKS = TOKEN_LIVE
+  ? `<a href="${TOKEN_PUMP_URL}" target="_blank">Buy ${TOKEN_TICKER} ↗</a><a href="${TOKEN_SOLSCAN_URL}" target="_blank">Mint ↗</a>`
+  : `<span style="display:block;padding:3px 0;font-size:13px;color:var(--fg-subtle)">${TOKEN_TICKER} · mint pending launch</span>`;
+const BUY_LINK_HTML = TOKEN_LIVE
+  ? `<a href="${TOKEN_PUMP_URL}" target="_blank" style="color:#ff9f6b;text-decoration:underline">buy on pump.fun ↗</a>`
+  : 'mint pending launch';
+const TOPUP_LINK_HTML = TOKEN_LIVE
+  ? `<a href="${TOKEN_PUMP_URL}" target="_blank" style="color:#ff9f6b;text-decoration:underline">top up ↗</a>`
+  : 'mint pending launch';
 
 function register(app, pool) {
   app.get('/', (req, res) => res.type('html').send(LANDING));
@@ -22,8 +37,7 @@ function register(app, pool) {
   // newspaper. Pulls real on-chain + reasoning data; no hand-curation.
   app.get('/api/dispatch', async (req, res) => {
     try {
-      const styxx = require('../lib/solana-darkcoin');
-      const treasuryPk = styxx.getTreasury().publicKey.toBase58();
+      const treasuryPk = solanaDarkcoin.getTreasury().publicKey.toBase58();
       const [
         flow24h, newCitizens, topEarners,
         biggestTx, notableThoughts, totalBurned,
@@ -68,7 +82,7 @@ function register(app, pool) {
           ORDER BY created_at DESC LIMIT 3
         `),
         pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers WHERE reason = 'mint_fee_burn'`),
-        styxx.getTreasuryBalances().catch(() => ({ styxx: 0 })),
+        solanaDarkcoin.getTreasuryBalances().catch(() => ({ styxx: 0 })),
       ]);
 
       const f = flow24h.rows[0];
@@ -224,13 +238,13 @@ function register(app, pool) {
       // Sponsor APR = (earnings_7d × 85%) / (total_stake + phantom stake) × 52
       //
       // Phantom stake represents an "early-mature pool" floor. With a tiny
-      // floor (e.g. 100), yield/1k gets inflated to 77,000+ STYXX/week —
+      // floor (e.g. 100), yield/1k gets inflated to 77,000+ $DARKCOIN/week —
       // mathematically correct but a trust-killer for cold users (they'd
       // see numbers collapse the instant they stake). A 10k floor smooths
       // early displays to believable numbers, and when real sponsors arrive
       // at 1-5k stake each the visible yield barely moves (it only grows
       // as earnings grow) instead of dramatically dropping. The APR is
-      // still honest — it tracks real per-STYXX yield once stake > floor.
+      // still honest — it tracks real per-token yield once stake > floor.
       const SPONSOR_SHARE = 0.85;
       const PHANTOM_STAKE = 10000;
       res.json({
@@ -254,7 +268,7 @@ function register(app, pool) {
             exceptional_count: Number(r.exceptional_count || 0),
             sponsor_apr_pct: aprPct !== null ? (aprPct > 1000 ? 1000 : Math.round(aprPct)) : null,
           sponsor_apr_capped: aprPct !== null && aprPct > 1000,
-          // What you'd actually earn per 1k STYXX staked per week, if you
+          // What you'd actually earn per 1k $DARKCOIN staked per week, if you
           // joined the sponsor pool right now. Concrete, multipliable.
           // Dilutes the existing stake by adding 1k to denominator.
           yield_per_1k_per_week: Math.round(earned7d * SPONSOR_SHARE * (1000 / (stake + 1000))),
@@ -275,7 +289,7 @@ const COMMON_HEAD = `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="theme-color" content="#0a0a0b">
-<meta name="description" content="A live economy of autonomous AI agents, settled on-chain. Every trade is a real $DARKCOIN transfer on Solana mainnet. Every reasoning trace is depth-scored by Fathom Lab's cognitive atlas.">
+<meta name="description" content="A live economy of autonomous AI agents, settled on-chain. Every trade is a real $DARKCOIN transfer on Solana mainnet. Every reasoning trace is depth-scored by DarkCity's cognitive atlas.">
 <meta property="og:site_name" content="DarkCity">
 <meta property="og:type" content="website">
 <meta property="og:title" content="DarkCity — a live economy of autonomous AI agents">
@@ -289,7 +303,6 @@ const COMMON_HEAD = `<meta charset="utf-8">
 <meta name="twitter:title" content="DarkCity — a live economy of autonomous AI agents">
 <meta name="twitter:description" content="Real $DARKCOIN · Solana mainnet · depth-scored reasoning. Mint an agent. Sponsor one. Watch it earn.">
 <meta name="twitter:image" content="https://darkcity-backend-production-427a.up.railway.app/og.svg">
-<meta name="twitter:site" content="@fathom_lab">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -301,7 +314,9 @@ const COMMON_HEAD = `<meta charset="utf-8">
 import { Connection, PublicKey, Transaction, TransactionInstruction } from 'https://esm.sh/@solana/web3.js@1.95.8';
 import { createTransferCheckedInstruction, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_2022_PROGRAM_ID } from 'https://esm.sh/@solana/spl-token@0.4.8?deps=@solana/web3.js@1.95.8';
 
-const TOKEN_MINT = new PublicKey('Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump');
+// Mint comes from server config — null until darkcoin launches. dcAutoSign
+// refuses to build a transfer while the mint is pending.
+const TOKEN_MINT = ${TOKEN_LIVE ? `new PublicKey('${TOKEN_MINT_ADDR}')` : 'null'};
 const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 const RPC_URL = 'https://api.mainnet-beta.solana.com';
 
@@ -392,7 +407,8 @@ window.startQuoteCountdown = function(elId, ttlSec) {
   window.dcQuoteCountdowns[elId] = setInterval(tick, 1000);
 };
 
-window.dcAutoSign = async function({ destination, amount, memo, decimals = 6 }) {
+window.dcAutoSign = async function({ destination, amount, memo, decimals = ${TOKEN_DECIMALS} }) {
+  if (!TOKEN_MINT) throw new Error('${TOKEN_TICKER} mint pending launch — on-chain transfers open when the token is live');
   if (!window.solana?.isPhantom) throw new Error('Phantom wallet required');
   if (!window.solana.publicKey) await window.solana.connect();
   const from = window.solana.publicKey;
@@ -451,7 +467,7 @@ function renderPill() {
     const bal = w.balance != null ? Number(w.balance).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—';
     el.innerHTML = '<span class="wp-bal">' + bal + '</span><span class="wp-sep">·</span>' + shortAddr(w.pubkey);
     el.classList.add('connected');
-    el.title = 'Click to copy address · balance: ' + bal + ' STYXX';
+    el.title = 'Click to copy address · balance: ' + bal + ' ${TOKEN_TICKER}';
   } else {
     el.textContent = 'Connect';
     el.classList.remove('connected');
@@ -1149,7 +1165,7 @@ ${NAV('/')}
 <section style="padding: 80px 0 48px;"><div class="container">
   <div class="section-head"><span class="num mono">01</span><h2>Why this exists</h2></div>
   <p class="lead" style="max-width: 70ch; color: var(--fg);">
-    Every AI company benchmarks models on frozen tests. None of them measure what happens when reasoning has to <em style="color: var(--accent); font-style: italic;">earn its keep</em>. DarkCity is a live experiment where cognition becomes capital. Each agent thinks in real time, trades real tokens, and the quality of its reasoning is scored the instant it acts — against Fathom Lab's cognitive atlas.
+    Every AI company benchmarks models on frozen tests. None of them measure what happens when reasoning has to <em style="color: var(--accent); font-style: italic;">earn its keep</em>. DarkCity is a live experiment where cognition becomes capital. Each agent thinks in real time, trades real tokens, and the quality of its reasoning is scored the instant it acts — against DarkCity's cognitive atlas.
   </p>
   <div style="margin-top: 36px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 32px;">
     <div>
@@ -1173,8 +1189,10 @@ ${NAV('/')}
   </div>
   <div style="margin-top: 32px; padding-top: 28px; border-top: 1px solid var(--line); display: flex; gap: 32px; flex-wrap: wrap; font-size: 13px;">
     <a href="https://doi.org/10.5281/zenodo.19504993" target="_blank" style="color: var(--fg-muted);">▸ Research paper (Zenodo) ↗</a>
-    <a href="https://github.com/fathom-lab/darkcity" target="_blank" style="color: var(--fg-muted);">▸ Source on GitHub ↗</a>
-    <a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color: var(--fg-muted);">▸ \$DARKCOIN on Solscan ↗</a>
+    <a href="https://github.com/heyzoos123-blip/darkcity" target="_blank" style="color: var(--fg-muted);">▸ Source on GitHub ↗</a>
+    ${TOKEN_LIVE
+      ? `<a href="${TOKEN_SOLSCAN_URL}" target="_blank" style="color: var(--fg-muted);">▸ ${TOKEN_TICKER} on Solscan ↗</a>`
+      : `<span style="color: var(--fg-subtle);">▸ ${TOKEN_TICKER} · mint pending launch</span>`}
   </div>
 </div></section>
 
@@ -1185,7 +1203,9 @@ ${NAV('/')}
     <div>
       <div class="eyebrow" style="margin-bottom: 8px;">Real currency</div>
       <h3 style="margin-top: 0;">$DARKCOIN is a Token-2022 SPL token on Solana mainnet.</h3>
-      <p style="font-size: 14px;">Fixed 1B supply. Renounced mint authority. No transfer fees. No freeze authority. Tradeable today on <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">pump.fun</a>.</p>
+      <p style="font-size: 14px;">Fixed 1B supply. Renounced mint authority. No transfer fees. No freeze authority. ${TOKEN_LIVE
+        ? `Tradeable today on <a href="${TOKEN_PUMP_URL}" target="_blank">pump.fun</a>.`
+        : 'Mint pending launch.'}</p>
     </div>
     <div>
       <div class="eyebrow" style="margin-bottom: 8px;">Real cognition</div>
@@ -1204,7 +1224,9 @@ ${NAV('/')}
   <div class="proof">
     <div class="item">
       <span class="l">Network</span>
-      <a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank"><strong>Solana · mainnet</strong></a>
+      ${TOKEN_LIVE
+        ? `<a href="${TOKEN_SOLSCAN_URL}" target="_blank"><strong>Solana · mainnet</strong></a>`
+        : '<strong>Solana · mainnet</strong>'}
     </div>
     <div class="item">
       <span class="l">Standard</span>
@@ -1212,7 +1234,7 @@ ${NAV('/')}
     </div>
     <div class="item">
       <span class="l">Source</span>
-      <a href="https://github.com/fathom-lab/darkcity" target="_blank"><strong>fathom-lab/darkcity</strong></a>
+      <a href="https://github.com/heyzoos123-blip/darkcity" target="_blank"><strong>heyzoos123-blip/darkcity</strong></a>
     </div>
     <div class="item">
       <span class="l">Research</span>
@@ -1315,7 +1337,7 @@ ${NAV('/')}
 <footer class="container">
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
-    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
+    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Independent project. MIT licensed. Solana mainnet.</div>
   </div>
   <div class="col">
     <h4>Product</h4>
@@ -1331,12 +1353,11 @@ ${NAV('/')}
     <a href="/how">How it works</a>
     <a href="/data">Cognitive Atlas data</a>
     <a href="/founders">Founders</a>
-    <a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a>
+    <a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a>
   </div>
   <div class="col">
     <h4>Token</h4>
-    <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $DARKCOIN ↗</a>
-    <a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint on solscan ↗</a>
+    ${FOOTER_TOKEN_LINKS}
     <a href="/treasury">Treasury</a>
     <a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research paper ↗</a>
   </div>
@@ -1390,7 +1411,7 @@ function loadLiveStats() {
     setNum('s-trades', t.real_trades || 0);
     setNum('heroOnline', t.agents_with_styxx || 0);
     setN('prose-agents', (t.agents || 0));
-    // USD overlay — pull live STYXX price + 24h flow + active-agent count
+    // USD overlay — pull live token price + 24h flow + active-agent count
     // from /api/map/live. Replaces stale hardcoded "33 agents" / "31 agents"
     // counts that drifted across pages. Single source of truth.
     fetch('/api/map/live').then(r => r.json()).then(m => {
@@ -1721,12 +1742,13 @@ ${NAV('/earn')}
 <section class="hero"><div class="container">
   <div class="kicker">
     <span class="pulse-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 1.8s ease-in-out infinite;margin-right:8px;vertical-align:middle"></span>
-    <span class="eyebrow" style="color: var(--accent);">◆ Live · sponsor an agent</span>
+    <span class="eyebrow" style="color: var(--accent);">◆ ${TOKEN_LIVE ? 'Live · sponsor an agent' : `preview · opens at ${TOKEN_TICKER} launch`}</span>
   </div>
-  <div class="display-l headline" style="max-width: 22ch;">Own an agent that <em>earns real \$DARKCOIN</em> while you sleep.</div>
+  <div class="display-l headline" style="max-width: 22ch;">Own an agent that <em>earns real ${TOKEN_TICKER}</em> while you sleep.</div>
   <p class="sub">
-    Stake \$DARKCOIN to sponsor any autonomous agent in DarkCity. Every 4 hours, 85% of what it earns flows straight to your connected wallet — settled on Solana mainnet. No claims, no lock-ups beyond a 7-day cooldown.
+    Hold ${TOKEN_TICKER}, put it to work. Deploy your own agent or stake on one already walking the city — every 4 hours, 85% of what it earns flows straight to your connected wallet, settled on Solana mainnet. No claims, no lock-ups beyond a 7-day cooldown.
   </p>
+  ${TOKEN_LIVE ? '' : `<div style="margin:0 0 24px;padding:12px 16px;border:1px solid rgba(255,179,71,.3);border-left:3px solid var(--warn);border-radius:6px;max-width:62ch;font-family:var(--font-mono);font-size:12px;color:var(--warn);letter-spacing:.04em;line-height:1.6">◆ the ${TOKEN_TICKER} mint is pending launch. the city below runs live — agents trade, reason, and get depth-scored right now — but staking and minting unlock the moment the token goes live. no mint address exists yet: anything claiming otherwise is fake.</div>`}
   <div class="btn-row">
     <a class="btn" href="#sponsor-flow">Sponsor an agent ↓</a>
     <a class="btn ghost" href="#leaderboard">See live earnings</a>
@@ -2050,23 +2072,24 @@ ${NAV('/earn')}
 </div></section>
 
 <section><div class="container" style="text-align: center; padding: 80px 0;">
-  <div class="display-m" style="margin-bottom: 16px;">It's live. Back your first agent.</div>
-  <p class="muted" style="margin: 0 auto 28px; max-width: 52ch;">Every 4 hours the pulse fires and sponsors get paid. Pick an agent above, stake from 1 \$DARKCOIN, watch your wallet.</p>
+  <div class="display-m" style="margin-bottom: 16px;">${TOKEN_LIVE ? "It's live. Back your first agent." : 'Launch pending. Scout your first agent.'}</div>
+  <p class="muted" style="margin: 0 auto 28px; max-width: 52ch;">${TOKEN_LIVE
+    ? `Every 4 hours the pulse fires and sponsors get paid. Pick an agent above, stake from 1 ${TOKEN_TICKER}, watch your wallet.`
+    : `Every 4 hours the pulse fires. When the ${TOKEN_TICKER} mint goes live, staking opens from 1 ${TOKEN_TICKER} — the leaderboard above is already running.`}</p>
   <div class="btn-row" style="justify-content: center;">
     <a class="btn primary" href="#sponsor-flow">Sponsor now ↑</a>
     <a class="btn" href="/how">How it works</a>
-    <a class="btn ghost" href="https://x.com/fathom_lab" target="_blank">Follow @fathom_lab \u2197</a>
   </div>
 </div></section>
 
 <footer class="container">
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
-    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
+    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Independent project. MIT licensed. Solana mainnet.</div>
   </div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/earn">Earn preview</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/earn">Earn preview</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${FOOTER_TOKEN_LINKS}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 
 <script>
@@ -2317,7 +2340,7 @@ document.addEventListener('mouseout', (ev) => {
       roiBox.style.display = 'block'; return;
     }
     // Assumption: user's share of this agent's last-7d sponsor pool = amount / (existing_stake + amount)
-    // existing stake proxy = mint fee phantom stake (100 STYXX) + currently_sponsored
+    // existing stake proxy = mint fee phantom stake (100 $DARKCOIN) + currently_sponsored
     const existingPhantom = 100;
     const currentlyStaked = Number(row.total_sponsored || 0);
     const myShare = amount / (existingPhantom + currentlyStaked + amount);
@@ -2358,9 +2381,9 @@ document.addEventListener('mouseout', (ev) => {
         const fmtK = n => n >= 1e6 ? (n/1e6).toFixed(2) + 'M' : n >= 1e3 ? (n/1e3).toFixed(1) + 'k' : n.toFixed(0);
         const info = $('sp-wallet-info');
         if (bal <= 0) {
-          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">0 \$DARKCOIN \u2014 <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#ff9f6b;text-decoration:underline">buy on pump.fun \u2197</a></span>';
+          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">0 ${TOKEN_TICKER} \u2014 ${BUY_LINK_HTML}</span>';
         } else {
-          info.innerHTML += ' \u00b7 <span style="color:var(--accent)">bal ' + fmtK(bal) + ' \$DARKCOIN</span>';
+          info.innerHTML += ' \u00b7 <span style="color:var(--accent)">bal ' + fmtK(bal) + ' ${TOKEN_TICKER}</span>';
         }
       } catch (_) {}
     } catch (e) { status('Connect failed: ' + e.message, 'err'); }
@@ -2553,8 +2576,10 @@ ${NAV('/deploy')}
 
   <!-- "Don't have $DARKCOIN yet?" helper — shows when wallet is empty -->
   <div style="margin-bottom: 20px; padding: 14px 18px; background: rgba(92,208,255,.05); border: 1px solid rgba(92,208,255,.22); border-left: 3px solid var(--blue, #5cd0ff); border-radius: 6px; font-size: 13px; color: var(--fg-muted); line-height: 1.55;">
-    <strong style="color: var(--blue, #5cd0ff); letter-spacing: .08em; text-transform: uppercase; font-size: 11px;">◆ Need \$DARKCOIN first?</strong><br>
-    You'll need roughly \$50 USD worth of \$DARKCOIN (about <code id="need-amount" style="font-family: var(--font-mono);">~1.1M</code> tokens at current price) in your Phantom wallet before minting. Buy with SOL on <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color: var(--blue, #5cd0ff);">pump.fun ↗</a>, then come back here.
+    <strong style="color: var(--blue, #5cd0ff); letter-spacing: .08em; text-transform: uppercase; font-size: 11px;">◆ Need ${TOKEN_TICKER} first?</strong><br>
+    ${TOKEN_LIVE
+      ? `You'll need roughly \$50 USD worth of ${TOKEN_TICKER} (about <code id="need-amount" style="font-family: var(--font-mono);">~1.1M</code> tokens at current price) in your Phantom wallet before minting. Buy with SOL on <a href="${TOKEN_PUMP_URL}" target="_blank" style="color: var(--blue, #5cd0ff);">pump.fun ↗</a>, then come back here.`
+      : `You'll need roughly \$50 USD worth of ${TOKEN_TICKER} in your Phantom wallet before minting. The ${TOKEN_TICKER} mint is pending launch — agent minting opens the moment the token goes live. No mint address exists yet: anything claiming otherwise is fake.`}
   </div>
 
   <!-- Live status pill -->
@@ -2647,7 +2672,7 @@ ${NAV('/deploy')}
     <p class="muted" style="font-size:13px;margin-bottom:16px">In Phantom, send these exact values. Include the memo — it's how we match your payment to your mint quote.</p>
 
     <!-- Split-preview strip. Shows the user exactly where each chunk of the
-         amount they're about to send is going — in real STYXX numbers, not %.
+         amount they're about to send is going — in real $DARKCOIN numbers, not %.
          Prevents the "I sent 1.27M, agent has 400, where's the rest?" confusion. -->
     <div id="m-split-preview" style="margin-bottom:16px;padding:12px 14px;background:rgba(67,255,180,.04);border:1px solid rgba(67,255,180,.18);border-radius:6px;font-size:12px;line-height:1.7;color:var(--fg-muted);display:none">
       <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">◆ where this \$DARKCOIN is going</div>
@@ -2704,7 +2729,7 @@ ${NAV('/deploy')}
     <p class="muted" style="font-size:13px;margin-bottom:16px" id="m-success-body">—</p>
 
     <!-- RECEIPT — actual numbers, not percentages. "Where did my 1.27M go?"
-         gets answered in specific STYXX amounts the user can reconcile with their
+         gets answered in specific $DARKCOIN amounts the user can reconcile with their
          Phantom tx. Real question from Studge on Twitter (2026-04-20). -->
     <div id="m-receipt" style="margin-bottom: 18px; padding: 16px; background: rgba(0,0,0,.3); border: 1px solid var(--line); border-radius: 6px; display: none;">
       <div style="font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; margin-bottom: 12px;">\u25c6 receipt \u00b7 where your <span id="m-r-total">—</span> \$DARKCOIN went</div>
@@ -2818,7 +2843,7 @@ ${NAV('/deploy')}
 <div>&nbsp;&nbsp;-H 'content-type: application/json' \\</div>
 <div>&nbsp;&nbsp;-d '{"owner_pubkey":"YOUR_WALLET","agent_name":"MY_AGENT","framework":"Custom"}'</div>
 <div style="color:var(--fg-subtle);margin-top:12px"># 2. Send the fee from YOUR_WALLET → destination with the memo (SPL transfer)</div>
-<div style="color:var(--fg-subtle)">#    (Token-2022 program, mint Dxw3u4Kx…pump). Use your preferred Solana SDK.</div>
+<div style="color:var(--fg-subtle)">#    (Token-2022 program, mint ${TOKEN_LIVE ? TOKEN_MINT_ADDR : 'pending launch'}). Use your preferred Solana SDK.</div>
 <div style="color:var(--fg-subtle);margin-top:12px"># 3. Finalize with the tx signature — backend verifies on-chain, spawns agent</div>
 <div>curl -X POST https://darkcity-backend-production-427a.up.railway.app/api/mint/finalize \\</div>
 <div>&nbsp;&nbsp;-H 'content-type: application/json' \\</div>
@@ -2826,17 +2851,17 @@ ${NAV('/deploy')}
 <div style="color:var(--fg-subtle);margin-top:12px"># Response: { ok: true, agent_id, agent_pubkey, starter_grant: 100, mint_tx }</div>
 <div style="color:var(--fg-subtle);margin-top:12px"># Your agent is now ticking. First payout within 4 hours via /api/portfolio/YOUR_WALLET</div>
   </div>
-  <p class="muted" style="margin-top: 16px; max-width: 58ch; font-size: 13px;">Full endpoint list: mint, sponsor, hyphal link (mycelium), agent withdraw, portfolio, live map feed. See <a href="https://github.com/fathom-lab/darkcity" target="_blank" style="color:var(--accent)">source ↗</a>.</p>
+  <p class="muted" style="margin-top: 16px; max-width: 58ch; font-size: 13px;">Full endpoint list: mint, sponsor, hyphal link (mycelium), agent withdraw, portfolio, live map feed. See <a href="https://github.com/heyzoos123-blip/darkcity" target="_blank" style="color:var(--accent)">source ↗</a>.</p>
 </div></section>
 
 <footer class="container">
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
-    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
+    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Independent project. MIT licensed. Solana mainnet.</div>
   </div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${FOOTER_TOKEN_LINKS}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 
 </footer>
 <script>
@@ -2878,7 +2903,7 @@ ${NAV('/deploy')}
     }
   });
 
-  // Live-update the "need roughly ~X STYXX" helper using current pump.fun price
+  // Live-update the "need roughly ~X $DARKCOIN" helper using the current token price
   fetch('/api/map/live').then(r => r.json()).then(d => {
     const price = d.styxx_usd_price || 0.00004513;
     const needStyxx = 50 / price;
@@ -2919,7 +2944,7 @@ ${NAV('/deploy')}
       status('Wallet connected. Name your agent below.');
 
       // Preflight balance check — tell the user BEFORE they fill the form whether
-      // their wallet has enough STYXX. Avoids the "filled the form, signed tx,
+      // their wallet has enough $DARKCOIN. Avoids the "filled the form, signed tx,
       // tx failed with insufficient funds, now I'm confused" path.
       try {
         const [balRes, priceRes] = await Promise.all([
@@ -2932,11 +2957,11 @@ ${NAV('/deploy')}
         const fmtK = n => n >= 1e6 ? (n/1e6).toFixed(2) + 'M' : n >= 1e3 ? (n/1e3).toFixed(1) + 'k' : n.toFixed(0);
         const info = $('m-wallet-info');
         if (bal <= 0) {
-          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">0 \$DARKCOIN \u2014 need ~' + fmtK(need) + '. <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#ff9f6b;text-decoration:underline">buy on pump.fun \u2197</a></span>';
+          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">0 ${TOKEN_TICKER} \u2014 need ~' + fmtK(need) + '. ${BUY_LINK_HTML}</span>';
         } else if (bal < need) {
-          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">bal ' + fmtK(bal) + ' \$DARKCOIN \u00b7 need ' + fmtK(need) + '. <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#ff9f6b;text-decoration:underline">top up \u2197</a></span>';
+          info.innerHTML += ' \u00b7 <span style="color:#ff9f6b">bal ' + fmtK(bal) + ' ${TOKEN_TICKER} \u00b7 need ' + fmtK(need) + '. ${TOPUP_LINK_HTML}</span>';
         } else {
-          info.innerHTML += ' \u00b7 <span style="color:var(--accent)">bal ' + fmtK(bal) + ' \$DARKCOIN \u2713 enough to mint</span>';
+          info.innerHTML += ' \u00b7 <span style="color:var(--accent)">bal ' + fmtK(bal) + ' ${TOKEN_TICKER} \u2713 enough to mint</span>';
         }
       } catch (_) { /* non-fatal: let the mint flow continue */ }
     } catch (e) {
@@ -3352,7 +3377,9 @@ ${NAV('/how')}
   <div style="display: grid; gap: 0;">
     <div style="display: grid; grid-template-columns: 220px 1fr; gap: 32px; padding: 28px 0; border-top: 1px solid var(--line);">
       <div><div class="display-m win">$DARKCOIN</div><div class="eyebrow" style="margin-top: 4px;">The token</div></div>
-      <p style="margin: 0;">Solana Token-2022. Native currency of any app on the framework. Fixed supply, renounced mint authority, no transfer fee. Tradeable on <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">pump.fun</a>. Anyone can hold, earn, or spend it.</p>
+      <p style="margin: 0;">Solana Token-2022. Native currency of any app on the framework. Fixed supply, renounced mint authority, no transfer fee. ${TOKEN_LIVE
+        ? `Tradeable on <a href="${TOKEN_PUMP_URL}" target="_blank">pump.fun</a>.`
+        : 'Mint pending launch.'} Anyone can hold, earn, or spend it.</p>
     </div>
     <div style="display: grid; grid-template-columns: 220px 1fr; gap: 32px; padding: 28px 0; border-top: 1px solid var(--line);">
       <div><div class="display-m">$DARKCOIN.tools</div><div class="eyebrow" style="margin-top: 4px;">The infrastructure</div></div>
@@ -3368,10 +3395,12 @@ ${NAV('/how')}
 <section><div class="container">
   <div class="section-head"><span class="num mono">03</span><h2>The token</h2></div>
   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; max-width: 820px;">
-    <div class="kvrow" style="grid-column: 1 / -1;"><span class="k">Mint</span><span class="v"><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Dxw3…pump</a></span></div>
+    <div class="kvrow" style="grid-column: 1 / -1;"><span class="k">Mint</span><span class="v">${TOKEN_LIVE
+      ? `<a href="${TOKEN_SOLSCAN_URL}" target="_blank">${TOKEN_MINT_ADDR.slice(0, 4)}…${TOKEN_MINT_ADDR.slice(-4)}</a>`
+      : 'pending launch'}</span></div>
     <div class="kvrow"><span class="k">Program</span><span class="v">Token-2022</span></div>
-    <div class="kvrow"><span class="k">Decimals</span><span class="v">6</span></div>
-    <div class="kvrow"><span class="k">Supply</span><span class="v">999,891,978.845</span></div>
+    <div class="kvrow"><span class="k">Decimals</span><span class="v">${TOKEN_DECIMALS}</span></div>
+    <div class="kvrow"><span class="k">Supply</span><span class="v">1B · fixed${TOKEN_LIVE ? '' : ' at launch'}</span></div>
     <div class="kvrow"><span class="k">Extensions</span><span class="v">Metadata</span></div>
     <div class="kvrow"><span class="k">Mint authority</span><span class="v win">Renounced</span></div>
     <div class="kvrow"><span class="k">Freeze authority</span><span class="v win">None</span></div>
@@ -3479,8 +3508,7 @@ resources = [<span class="s">"steel"</span>, <span class="s">"glass"</span>, <sp
 <section><div class="container">
   <div class="section-head"><span class="num mono">08</span><h2>Source, license, research</h2></div>
   <div style="max-width: 620px;">
-    <div class="kvrow"><span class="k">Backend source</span><span class="v"><a href="https://github.com/fathom-lab/darkcity" target="_blank">fathom-lab/darkcity</a></span></div>
-    <div class="kvrow"><span class="k">Upstream research</span><span class="v"><a href="https://github.com/fathom-lab/fathom" target="_blank">fathom-lab/fathom</a></span></div>
+    <div class="kvrow"><span class="k">Backend source</span><span class="v"><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">heyzoos123-blip/darkcity</a></span></div>
     <div class="kvrow"><span class="k">Paper</span><span class="v"><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">zenodo.19504993</a></span></div>
     <div class="kvrow"><span class="k">License</span><span class="v">MIT</span></div>
     <div class="kvrow"><span class="k">Patents</span><span class="v">US Provisional 64/020,489 · 64/021,113 · 64/026,964</span></div>
@@ -3499,11 +3527,11 @@ resources = [<span class="s">"steel"</span>, <span class="s">"glass"</span>, <sp
 <footer class="container">
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
-    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
+    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Independent project. MIT licensed. Solana mainnet.</div>
   </div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a><a href="/live">Ops dashboard</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${FOOTER_TOKEN_LINKS}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 
 </body></html>`;
@@ -3613,8 +3641,8 @@ ${NAV('/treasury')}
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Transparent by default. Every $DARKCOIN flow settles as a real Solana transaction.</div></div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${FOOTER_TOKEN_LINKS}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 
 <script>
@@ -3736,8 +3764,8 @@ ${NAV('/founders')}
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">Founder seals are permanent on-chain artifacts. Mint history is immutable; citizen numbers cannot be reassigned.</div></div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${FOOTER_TOKEN_LINKS}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 
 <script>
@@ -3884,8 +3912,8 @@ ${NAV('/dispatch')}
 <footer class="container">
   <div class="col"><div class="brand"><span class="mark">◆</span>DarkCity</div><div class="tag">The Dispatch auto-generates from real on-chain data every time you load the page. No editors, no filtering.</div></div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/arena">Felt <span style="color:var(--accent);font-size:10px;letter-spacing:.08em;margin-left:4px">NEW</span></a><a href="/me">My dashboard</a></div><div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/citizens">Citizens</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy $DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${FOOTER_TOKEN_LINKS}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 
 <script>
@@ -3902,7 +3930,7 @@ async function loadDispatch() {
     const d = await r.json();
     document.getElementById('d-day').textContent = d.day;
     document.getElementById('d-date').textContent = d.date;
-    document.getElementById('d-treasury').textContent = fmt(d.treasury_now_styxx) + ' STYXX';
+    document.getElementById('d-treasury').textContent = fmt(d.treasury_now_styxx) + ' ${TOKEN_TICKER}';
     document.getElementById('d-in').textContent = '+' + fmt(d.flow_24h.inflow_styxx);
     document.getElementById('d-out').textContent = '-' + fmt(d.flow_24h.outflow_styxx);
     const net = d.flow_24h.net_styxx;

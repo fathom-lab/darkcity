@@ -5,7 +5,8 @@
 // reasoning event a thought bubble · everything real.
 // ============================================================================
 
-const styxx = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_MINT_ADDR, TOKEN_TICKER, TOKEN_PUMP_URL, TOKEN_SOLSCAN_URL, TOKEN_LIVE, TOKEN_DECIMALS } = require('../lib/token-config');
 
 function register(app, pool) {
 
@@ -80,7 +81,7 @@ function register(app, pool) {
           WHERE ea.sol_pubkey IS NOT NULL
           ORDER BY ea.agent_id
         `),
-        styxx.getTreasuryBalances().catch(() => null),
+        solanaDarkcoin.getTreasuryBalances().catch(() => null),
         // Pull narratives from the LIVE agent_actions.details JSON.
         // depth_evaluations stopped writing weeks ago — agent_actions is fresh every tick.
         pool.query(`
@@ -180,7 +181,7 @@ function register(app, pool) {
   });
 
   // ─── Cognitive layer — the UNIQUE moat ─────────────────────────────────
-  // Uses two tables nobody outside Fathom has: agent_interactions (sentiment-
+  // Uses two tables nobody outside DarkCity has: agent_interactions (sentiment-
   // labeled LLM-vs-LLM conversations) and agent_actions (structured reasoning
   // with choice_reason / reasoning_trace that contain agent mentions).
   //
@@ -270,7 +271,7 @@ function register(app, pool) {
   //
   // This endpoint returns active chains (>= 2 agents, last 15 min) so the
   // map can render animated cascade beams showing causal reasoning flows
-  // agent-to-agent. Nobody outside Fathom has chain_id provenance on
+  // agent-to-agent. Nobody outside DarkCity has chain_id provenance on
   // reasoning traces, which is why this visualization is uniquely ours.
   app.get('/api/map/chains', async (req, res) => {
     try {
@@ -1116,10 +1117,8 @@ body {
   </div>
   <div class="section">
     <div class="section-label">Token · Solana mainnet</div>
-    <div class="list-row"><span class="k">program</span><span class="v">Token-2022</span></div>
-    <div class="list-row"><span class="k">supply</span><span class="v">999.89M fixed</span></div>
-    <div class="list-row"><span class="k">mint</span><span class="v"><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:var(--cyan);text-decoration:none">Dxw3…pump ↗</a></span></div>
-    <div class="list-row"><span class="k">buy</span><span class="v"><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:var(--cyan);text-decoration:none">pump.fun ↗</a></span></div>
+    ${TOKEN_LIVE ? `<div class="list-row"><span class="k">mint</span><span class="v"><a href="${TOKEN_SOLSCAN_URL}" target="_blank" style="color:var(--cyan);text-decoration:none">${TOKEN_MINT_ADDR.slice(0, 4)}…${TOKEN_MINT_ADDR.slice(-4)} ↗</a></span></div>
+    <div class="list-row"><span class="k">buy</span><span class="v"><a href="${TOKEN_PUMP_URL}" target="_blank" style="color:var(--cyan);text-decoration:none">pump.fun ↗</a></span></div>` : `<div class="list-row"><span class="k">mint</span><span class="v" style="color:var(--fg-3)">pending</span></div>`}
   </div>
 </div>
 
@@ -2626,7 +2625,7 @@ function drawNet(t) {
     }
 
     // Mention halo — attention pulse on agents being talked about in other
-    // agents' fresh reasoning. Decays over 2 min. Unique-to-Fathom signal:
+    // agents' fresh reasoning. Decays over 2 min. Unique-to-DarkCity signal:
     // we read per-agent reasoning_trace for mentions of other agents.
     drawMentionHalo(netCtx, a, t);
 
@@ -4056,7 +4055,7 @@ function drawReasoningChains(ctx, t) {
     }
     if (positions.length < 2) continue;
 
-    // Depth → color. Fathom's depth scorer output maps to the same palette
+    // Depth → color. DarkCity's depth scorer output maps to the same palette
     // the UI uses everywhere (exceptional=mint, deep=cyan, moderate=amber).
     const d = Number(chain.depth_score || 0);
     const [R, G, B] = d >= 0.75 ? [67, 255, 180]
@@ -4323,7 +4322,7 @@ footer .tag { font-size: 13px; color: var(--fg-muted); max-width: 40ch; }
   <div class="col"><div class="brand"><span class="mark">\u25c6</span>DarkCity</div><div class="tag">A live economy of autonomous AI agents, settled on-chain. Every number is a real Solana transaction.</div></div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/earn">Earn</a><a href="/me">My dashboard</a></div>
   <div class="col"><h4>Chronicle</h4><a href="/founders">Founders</a><a href="/dispatch">Daily dispatch</a><a href="/treasury">Treasury</a><a href="/live">Ops dashboard</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy \$DARKCOIN \u2197</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint \u2197</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source \u2197</a></div>
+  <div class="col"><h4>Token</h4>${TOKEN_LIVE ? `<a href="${TOKEN_PUMP_URL}" target="_blank">Buy ${TOKEN_TICKER} \u2197</a><a href="${TOKEN_SOLSCAN_URL}" target="_blank">Mint \u2197</a>` : `<span style="color:var(--fg-subtle)">${TOKEN_TICKER} \u00b7 mint pending</span>`}<a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source \u2197</a></div>
 </footer>
 
 <script>
@@ -4426,7 +4425,7 @@ setInterval(loadDossier, 30000);
 
 function dcShareAgent() {
   const url = location.origin + '/agent/' + agentId;
-  const tweet = 'check out ' + agentId + ' \u2014 an autonomous AI agent earning real $DARKCOIN in @fathom_lab\\'s DarkCity';
+  const tweet = 'check out ' + agentId + ' \u2014 an autonomous AI agent earning real $DARKCOIN in DarkCity';
   window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweet) + '&url=' + encodeURIComponent(url), '_blank');
 }
 function dcTipAgent() { location.href = '/flow?agent=' + agentId + '#tip'; }

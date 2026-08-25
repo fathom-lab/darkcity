@@ -22,6 +22,7 @@
 'use strict';
 
 const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_MINT_ADDR, TOKEN_DECIMALS, TOKEN_LIVE } = require('../lib/token-config');
 const { PublicKey } = require('@solana/web3.js');
 
 const CHAT_MODEL = process.env.CHAT_MODEL_ID || 'claude-haiku-4-5-20251001';
@@ -88,10 +89,10 @@ async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }
   if (!txInfo) return { ok: false, reason: 'tx_not_found' };
   if (txInfo.meta?.err) return { ok: false, reason: 'tx_failed_onchain' };
 
-  // Find a transferChecked instruction on the STYXX mint from user → treasury
-  // of at least required_styxx.
-  const TOKEN_MINT = solanaDarkcoin.TOKEN_MINT_ADDR;
-  const DECIMALS = solanaDarkcoin.TOKEN_DECIMALS || 6;
+  // Find a transferChecked instruction on the $DARKCOIN mint from user →
+  // treasury of at least required_styxx.
+  const TOKEN_MINT = TOKEN_MINT_ADDR;
+  const DECIMALS = TOKEN_DECIMALS || 6;
   const instructions = [
     ...(txInfo.transaction.message.instructions || []),
     ...((txInfo.meta?.innerInstructions || []).flatMap(i => i.instructions || [])),
@@ -111,14 +112,14 @@ async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }
     if (authority && authority === user_wallet) payerMatched = true;
     // destination can be an ATA — resolve owner if the parsed info gives it
     const destOwner = info.destination; // this is ATA address, not owner
-    // We'll trust that any transferChecked on STYXX mint from user to treasury's ATA
+    // We'll trust that any transferChecked on the $DARKCOIN mint from user to treasury's ATA
     // (matched below) is valid; simplest path uses token balance diffs.
     const amtStr = info.tokenAmount?.amount || info.amount;
     if (!amtStr) continue;
     paidAmount += Number(amtStr) / Math.pow(10, DECIMALS);
   }
 
-  // Fallback: use pre/post token balances of treasury's STYXX ATA
+  // Fallback: use pre/post token balances of treasury's $DARKCOIN ATA
   if (paidAmount < required_styxx) {
     const pre = txInfo.meta?.preTokenBalances || [];
     const post = txInfo.meta?.postTokenBalances || [];
@@ -147,7 +148,7 @@ async function verifyPayment(pool, { tx_signature, user_wallet, required_styxx }
 // real on-chain events. This is what makes DarkCity agents different from
 // Character.ai — their memory is verifiable.
 async function loadAgentContext(pool, agentId, userWallet) {
-  const [agentRow, recentActions, recentConvos, priorMsgs, styxxBal] = await Promise.all([
+  const [agentRow, recentActions, recentConvos, priorMsgs, darkcoinBal] = await Promise.all([
     pool.query(
       `SELECT ea.agent_id, ea.district, ea.rank, ea.reputation, ea.builds, ea.trades,
               COALESCE(ea.styxx_cached, 0)::float AS balance, ea.minted_at,
@@ -197,7 +198,7 @@ async function loadAgentContext(pool, agentId, userWallet) {
     actions: recentActions.rows,
     conversations: recentConvos.rows,
     priorMessages: priorMsgs.rows.reverse(),   // oldest first for context
-    earned7d: Number(styxxBal.rows[0]?.earned_7d || 0),
+    earned7d: Number(darkcoinBal.rows[0]?.earned_7d || 0),
   };
 }
 
@@ -255,7 +256,7 @@ function installChatRoutes(app, pool) {
   // Public: list chat-available agents for homepage grid + current chat config.
   // The config block tells the UI whether to prompt for payment at all —
   // without it, setting chat_enforce_payment=false server-side still lets the
-  // client pay real STYXX into treasury for no service (the server then
+  // client pay real $DARKCOIN into treasury for no service (the server then
   // ignores it). Now the client reads enforce_payment and skips the sign flow
   // when chat is free.
   app.get('/api/chat/agents', async (req, res) => {
@@ -374,6 +375,14 @@ function installChatRoutes(app, pool) {
       // Payment verification (unless free-tier or disabled)
       let paidAmount = 0;
       if (ENFORCE && !usedFree) {
+        // No mint yet — there is nothing on-chain to pay with. Refuse cleanly
+        // instead of failing deep inside tx verification.
+        if (!TOKEN_LIVE) {
+          return res.status(503).json({
+            error: 'token_not_live',
+            message: 'darkcoin mint pending — paid chat is offline until the token is live.',
+          });
+        }
         if (!user_wallet) return res.status(400).json({ error: 'user_wallet required' });
         try { new PublicKey(user_wallet); } catch { return res.status(400).json({ error: 'invalid_wallet' }); }
         const v = await verifyPayment(pool, { tx_signature: payment_tx, user_wallet, required_styxx: PRICE });
@@ -418,7 +427,7 @@ function installChatRoutes(app, pool) {
         tokOut = r.output_tokens;
       } catch (e) {
         // LLM failed after user paid — refund the tokens. Otherwise the user
-        // loses their 500 STYXX for an answer they never got. Common failure
+        // loses their 500 $DARKCOIN for an answer they never got. Common failure
         // modes: Anthropic credits depleted, rate limit, network hiccup.
         let refundSig = null;
         let refundErr = null;

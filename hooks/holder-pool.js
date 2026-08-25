@@ -2,11 +2,11 @@
 // HOLDER POOL — hold $DARKCOIN, get paid. Fully autonomous.
 // ============================================================================
 // One rule, zero friction:
-//   • A slice of every real STYXX inflow to DarkCity goes to a Holder Pool.
+//   • A slice of every real $DARKCOIN inflow to DarkCity goes to a Holder Pool.
 //   • Every 4h pulse, the pool distributes pro-rata to every wallet holding
-//     STYXX on-chain above a dust floor.
+//     $DARKCOIN on-chain above a dust floor.
 //   • Payouts are AUTOMATIC on-chain transfers — holders do nothing. They
-//     wake up to new STYXX in their Phantom wallet.
+//     wake up to new $DARKCOIN in their Phantom wallet.
 //
 // This module owns two operations:
 //   1. accrueFromMint()  — called after each mint finalize to tap the fee
@@ -19,7 +19,7 @@
 //   holder_pool_paused             (operator kill-switch)
 //
 // On-chain holder discovery: getProgramAccounts on the Token-2022 program,
-// filtered by the STYXX mint. For MVP we accept best-effort — if the RPC
+// filtered by the darkcoin mint. For MVP we accept best-effort — if the RPC
 // chokes, the pulse skips distribution and the pool rolls forward to the
 // next pulse. Nothing is ever lost, just deferred.
 // ============================================================================
@@ -27,6 +27,7 @@
 'use strict';
 
 const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_MINT_ADDR, TOKEN_TICKER, TOKEN_LIVE } = require('../lib/token-config');
 const { PublicKey } = require('@solana/web3.js');
 const { TOKEN_2022_PROGRAM_ID } = require('@solana/spl-token');
 
@@ -101,12 +102,15 @@ async function accrueFromMint(pool, { quote_id, fee_styxx }) {
 }
 
 /**
- * Discover on-chain holders of the STYXX mint via getProgramAccounts.
- * Returns [{pubkey, holding}] where holding is a float STYXX amount.
+ * Discover on-chain holders of the darkcoin mint via getProgramAccounts.
+ * Returns [{pubkey, holding}] where holding is a float $DARKCOIN amount.
  * Uses Token-2022. Rejects on RPC failure so callers can fall back.
  */
 async function discoverHoldersOnChain(connection) {
-  const TOKEN_MINT = solanaDarkcoin.TOKEN_MINT_ADDR;
+  // Mint comes from token-config (env). Until darkcoin is minted there is no
+  // address — reject so callers fall back to ledger-based discovery.
+  if (!TOKEN_LIVE) throw new Error(TOKEN_TICKER + ' mint pending — no on-chain mint address configured');
+  const TOKEN_MINT = TOKEN_MINT_ADDR;
   // Token-2022 accounts have the mint at offset 0 (first 32 bytes).
   const accounts = await connection.getParsedProgramAccounts(TOKEN_2022_PROGRAM_ID, {
     commitment: 'confirmed',
@@ -131,7 +135,7 @@ async function discoverHoldersOnChain(connection) {
  * Public Solana RPC endpoints reject getProgramAccounts on Token-2022
  * ("excluded from account secondary indexes"). Rather than leaving the
  * pool stuck, derive net holdings from styxx_transfers — we signed every
- * distribution, so the ledger is a complete record of who received STYXX.
+ * distribution, so the ledger is a complete record of who received $DARKCOIN.
  * This UNDER-counts holders who bought on pump.fun and never interacted
  * with DarkCity, but those wallets can't be paid automatically anyway
  * (they aren't in any of our tables). Covers 100% of our ecosystem.
@@ -283,7 +287,7 @@ async function runDistribution(pool, { connection } = {}) {
   let totalPaid = 0;
   for (const h of qualifying) {
     const share = Math.floor(totalPool * (h.holding / totalHolding));
-    // Skip dust payouts — gas on a 1-STYXX transfer is more than the STYXX
+    // Skip dust payouts — gas on a 1-$DARKCOIN transfer is more than the $DARKCOIN
     // is worth. Rolls forward in the rollover row below; bigger share next
     // pulse. This is how sustainability actually shakes out: the token
     // compounds instead of evaporating into gas.
@@ -306,7 +310,7 @@ async function runDistribution(pool, { connection } = {}) {
               last_claim_tx   = $3
       `, [h.pubkey, share, sig]);
 
-      // On-chain ledger row so /tape shows "HOLDER reward: X STYXX -> wallet"
+      // On-chain ledger row so /tape shows "HOLDER reward: X $DARKCOIN -> wallet"
       await pool.query(`
         INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey,
                                       to_agent_id, to_pubkey, amount, reason, memo)
@@ -329,7 +333,7 @@ async function runDistribution(pool, { connection } = {}) {
             note = $4
       WHERE id = ANY($1::uuid[])`,
     [ids, qualifying.length, totalHolding,
-     undistributed > 0 ? ('dust or failed: ' + undistributed + ' STYXX rolled to next pulse') : null]
+     undistributed > 0 ? ('dust or failed: ' + undistributed + ' ' + TOKEN_TICKER + ' rolled to next pulse') : null]
   );
 
   // Re-accrue dust so the pool self-heals on any individual failure.

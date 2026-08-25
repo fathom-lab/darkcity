@@ -25,7 +25,7 @@ console.log(`SOLANA_RPC_URL=https://api.mainnet-beta.solana.com`);
 console.log('\n── Fund this address ────────────────────────────────────────────');
 console.log(`PUBKEY: ${pub}`);
 console.log(`Send:   ~0.1 SOL  (tx fees for ~10k trades)`);
-console.log(`Send:   5000 $DARKCOIN  (mint: Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump)`);
+console.log(`Send:   5000 $DARKCOIN  (mint: <mint from lib/token-config>)`);
 console.log('\n── Verify on explorer ───────────────────────────────────────────');
 console.log(`https://solscan.io/account/${pub}`);
 console.log('\nDO NOT COMMIT THE PRIVKEY. Paste it into Railway only.\n');

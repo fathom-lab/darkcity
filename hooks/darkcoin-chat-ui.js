@@ -10,6 +10,8 @@
 
 'use strict';
 
+const { TOKEN_MINT_ADDR, TOKEN_PUMP_URL, TOKEN_LIVE, TOKEN_DECIMALS } = require('../lib/token-config');
+
 const PAGE = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -140,7 +142,9 @@ body { min-height: 100vh; overflow-x: hidden; }
       <div class="s"><div class="k">price</div><div class="v" id="hPrice">500 $DARKCOIN</div></div>
       <div class="s"><div class="k">model</div><div class="v">Claude Haiku 4.5</div></div>
       <div class="s"><div class="k">agents online</div><div class="v" id="hCount">—</div></div>
-      <div class="s"><div class="k">get $DARKCOIN</div><div class="v" style="font-size:14px"><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)">pump.fun ↗</a></div></div>
+      <div class="s"><div class="k">get $DARKCOIN</div><div class="v" style="font-size:14px">${TOKEN_LIVE
+        ? `<a href="${TOKEN_PUMP_URL}" target="_blank" style="color:var(--accent);text-decoration:none;border-bottom:1px dotted var(--accent)">pump.fun ↗</a>`
+        : `<span style="color:var(--fg-subtle)">mint pending</span>`}</div></div>
     </div>
   </div>
 
@@ -189,7 +193,10 @@ body { min-height: 100vh; overflow-x: hidden; }
 <script src="/js/dc-auto-sign.js"></script>
 <script>
 (function() {
-  const TOKEN_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+  // Interpolated server-side from lib/token-config — empty string until the
+  // darkcoin mint exists. TOKEN_IS_LIVE gates every payment path below.
+  const TOKEN_MINT = '${TOKEN_MINT_ADDR}';
+  const TOKEN_IS_LIVE = ${TOKEN_LIVE ? 'true' : 'false'};
   const TOKEN_PROG = new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');  // Token-2022
   const ASSOC_PROG = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
   let priceStyxx = 500;
@@ -222,7 +229,12 @@ body { min-height: 100vh; overflow-x: hidden; }
         // mode doesn't keep showing "500 $DARKCOIN per message" (misleading).
         const hPrice = document.getElementById('hPrice');
         const hintPrice = document.getElementById('hintPrice');
-        if (chatEnforcePayment) {
+        if (chatEnforcePayment && !TOKEN_IS_LIVE) {
+          // Payments are configured on but there is no mint yet — nothing to
+          // pay with. Show honest copy instead of a price that can't be paid.
+          if (hPrice) hPrice.textContent = 'mint pending';
+          if (hintPrice) hintPrice.textContent = 'darkcoin mint pending — paid chat offline';
+        } else if (chatEnforcePayment) {
           if (hPrice) hPrice.textContent = chatPriceDarkcoin.toLocaleString() + ' $DARKCOIN';
           if (hintPrice) hintPrice.textContent = chatPriceDarkcoin.toLocaleString() + ' $DARKCOIN per message';
         } else {
@@ -321,6 +333,7 @@ body { min-height: 100vh; overflow-x: hidden; }
   document.getElementById('wConnect').addEventListener('click', connectPhantom);
 
   async function payDarkcoin(amount) {
+    if (!TOKEN_IS_LIVE || !TOKEN_MINT) throw new Error('darkcoin mint pending — payments are offline.');
     if (!window.solana || !userWallet) throw new Error('Connect Phantom first.');
     // Route through backend proxy — public Solana RPCs give browsers 403 once
     // they've seen a few requests. Proxy hits the paid SOLANA_RPC_URL server-
@@ -361,8 +374,8 @@ body { min-height: 100vh; overflow-x: hidden; }
       ASSOC_PROG
     );
 
-    // transferChecked instruction manually (6 decimals)
-    const decimals = 6;
+    // transferChecked instruction manually (decimals from server config)
+    const decimals = ${TOKEN_DECIMALS};
     const baseAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
     // SPL Token-2022 transferChecked: discriminator 12
     const data = new Uint8Array(10);
@@ -423,6 +436,12 @@ body { min-height: 100vh; overflow-x: hidden; }
     msgs.scrollTop = msgs.scrollHeight;
 
     let paymentTx = null;
+    if (chatEnforcePayment && !TOKEN_IS_LIVE) {
+      typing.remove();
+      sendBtn.disabled = false;
+      setStatus('darkcoin mint pending — paid chat is offline until the token is live.', true);
+      return;
+    }
     if (chatEnforcePayment) {
       try {
         setStatus('Paying ' + chatPriceDarkcoin + ' $DARKCOIN to treasury…');
@@ -455,7 +474,7 @@ body { min-height: 100vh; overflow-x: hidden; }
       sendBtn.disabled = false;
       if (!r.ok) {
         // LLM breaker / LLM failure responses: tell the user what happened
-        // and whether the 500 STYXX came back, so they don't think it was
+        // and whether the 500 $DARKCOIN came back, so they don't think it was
         // pocketed. server attaches refunded + refund_tx fields on 502s.
         let msg;
         if (d.error === 'llm_unavailable') {
@@ -525,8 +544,8 @@ function installChatUIRoutes(app, pool) {
   // Treasury pubkey exposure — needed by chat UI to build the Solana tx
   app.get('/api/treasury/pubkey', (req, res) => {
     try {
-      const styxx = require('../lib/solana-darkcoin');
-      const tr = styxx.getTreasury();
+      const solanaDarkcoin = require('../lib/solana-darkcoin');
+      const tr = solanaDarkcoin.getTreasury();
       res.json({ pubkey: tr.publicKey.toBase58() });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

@@ -24,6 +24,7 @@
 const nacl = require('tweetnacl');
 const bs58 = require('bs58');
 const { PublicKey } = require('@solana/web3.js');
+const { TOKEN_LIVE } = require('../lib/token-config');
 
 const FAUCET_MESSAGE = (wallet, nonce) =>
   `darkcity faucet claim\nwallet: ${wallet}\nnonce: ${nonce}`;
@@ -67,7 +68,7 @@ async function ensureFaucetTable(pool) {
 }
 
 function installFaucetRoutes(app, pool) {
-  const styxx = require('../lib/solana-darkcoin');
+  const solanaDarkcoin = require('../lib/solana-darkcoin');
 
   ensureFaucetTable(pool).catch(e => console.warn('[faucet] table init:', e.message));
 
@@ -78,7 +79,8 @@ function installFaucetRoutes(app, pool) {
         "SELECT key, value FROM economy_params WHERE key LIKE 'faucet_%'"
       );
       const p = Object.fromEntries(paramRows.map(r => [r.key, r.value]));
-      const enabled = String(p.faucet_enabled || 'false').toLowerCase() === 'true';
+      // Faucet can never be on while there is no mint to airdrop from.
+      const enabled = TOKEN_LIVE && String(p.faucet_enabled || 'false').toLowerCase() === 'true';
       const amount = Number(p.faucet_amount_styxx || 100000);
 
       let claimed = null;
@@ -99,6 +101,7 @@ function installFaucetRoutes(app, pool) {
 
       res.json({
         enabled,
+        mint_live: TOKEN_LIVE,
         amount_styxx: amount,
         already_claimed: !!claimed,
         claim: claimed,
@@ -130,6 +133,9 @@ function installFaucetRoutes(app, pool) {
       }
 
       // Load current faucet config.
+      // No mint, no faucet — regardless of what economy_params says.
+      if (!TOKEN_LIVE) return res.status(503).json({ error: 'token_not_live' });
+
       const { rows: paramRows } = await pool.query(
         "SELECT key, value FROM economy_params WHERE key LIKE 'faucet_%'"
       );
@@ -172,7 +178,7 @@ function installFaucetRoutes(app, pool) {
       }
 
       // Treasury floor — don't dip the house below operating reserve.
-      const treasuryBal = await styxx.getDarkcoinBalance(styxx.getTreasury().publicKey.toBase58());
+      const treasuryBal = await solanaDarkcoin.getDarkcoinBalance(solanaDarkcoin.getTreasury().publicKey.toBase58());
       if (treasuryBal - amount < treasuryFloor) {
         return res.status(503).json({ error: 'treasury_below_floor' });
       }
@@ -191,7 +197,7 @@ function installFaucetRoutes(app, pool) {
 
       // Execute airdrop.
       try {
-        const out = await styxx.airdropFromTreasury(wallet, amount);
+        const out = await solanaDarkcoin.airdropFromTreasury(wallet, amount);
         await pool.query(
           `UPDATE faucet_claims SET tx_sig = $2 WHERE id = $1`,
           [claimId, out.signature]

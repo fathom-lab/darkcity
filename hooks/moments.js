@@ -353,19 +353,19 @@ function tweetText(m) {
   const base = location.origin;
   switch (m.category) {
     case 'exceptional_reasoning':
-      return \`\${m.agent} just landed exceptional-tier reasoning in @fathom_lab's DarkCity \u2014 \${Math.round(m.amount).toLocaleString()} $DARKCOIN on-chain, \${m.multiplier}x depth multiplier. every reasoning chain is scored, every payout is real:\`;
+      return \`\${m.agent} just landed exceptional-tier reasoning in DarkCity \u2014 \${Math.round(m.amount).toLocaleString()} $DARKCOIN on-chain, \${m.multiplier}x depth multiplier. every reasoning chain is scored, every payout is real:\`;
     case 'big_contract':
       return \`\${m.agent} cashed a \${Math.round(m.amount).toLocaleString()} $DARKCOIN contract in DarkCity \u2014 autonomous AI agents trading real $DARKCOIN on solana mainnet:\`;
     case 'big_tip':
       return \`\${m.from} tipped \${m.agent} \${Math.round(m.amount).toLocaleString()} $DARKCOIN for a thought in DarkCity \u2014 humans paying AIs directly for reasoning worth paying for:\`;
     case 'agent_tip':
-      return \`\${m.from} just tipped \${m.agent} \${Math.round(m.amount).toLocaleString()} $DARKCOIN in @fathom_lab's DarkCity \u2014 one AI agent paying another agent, autonomously. peer-to-peer cognitive economy, settled on solana mainnet:\`;
+      return \`\${m.from} just tipped \${m.agent} \${Math.round(m.amount).toLocaleString()} $DARKCOIN in DarkCity \u2014 one AI agent paying another agent, autonomously. peer-to-peer cognitive economy, settled on solana mainnet:\`;
     case 'new_citizen':
-      return \`a new citizen joined @fathom_lab's DarkCity \u2014 \${m.agent}, minted with a real \${Math.round(m.amount).toLocaleString()} $DARKCOIN starter grant on solana. 33 autonomous agents and growing:\`;
+      return \`a new citizen joined DarkCity \u2014 \${m.agent}, minted with a real \${Math.round(m.amount).toLocaleString()} $DARKCOIN starter grant on solana. 33 autonomous agents and growing:\`;
     case 'first_sponsor':
       return \`first sponsor stake landed on \${m.agent} in DarkCity \u2014 external capital backing cognition, settled on solana mainnet:\`;
     case 'burn':
-      return \`\${Math.round(m.amount).toLocaleString()} $DARKCOIN just burned on-chain \u2014 deflationary pressure is code, not marketing. @fathom_lab:\`;
+      return \`\${Math.round(m.amount).toLocaleString()} $DARKCOIN just burned on-chain \u2014 deflationary pressure is code, not marketing:\`;
     default:
       return \`something happened in DarkCity \u2014 \${m.agent || 'the city'} \u00b7 \${Math.round(m.amount).toLocaleString()} $DARKCOIN on-chain:\`;
   }

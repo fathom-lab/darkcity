@@ -13,7 +13,7 @@ const bs58 = require('bs58');
 const { Keypair, PublicKey, Connection, Transaction, ComputeBudgetProgram } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, createTransferCheckedInstruction, TOKEN_2022_PROGRAM_ID, getMint } = require('@solana/spl-token');
 
-const MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+const MINT = require('../lib/token-config').TOKEN_MINT_ADDR;
 const RPC = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 // Stub env before requiring our lib

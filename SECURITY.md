@@ -8,7 +8,7 @@ DarkCity handles real user funds on Solana mainnet. Security reports are taken s
 
 Contact us privately:
 - DM [`@flobi69`](https://twitter.com/flobi69) on Twitter
-- Or via the repo's contact info on [github.com/fathom-lab](https://github.com/fathom-lab)
+- Or use GitHub private vulnerability reporting on [github.com/heyzoos123-blip/darkcity](https://github.com/heyzoos123-blip/darkcity)
 
 Please include:
 - A description of the issue
@@ -33,7 +33,7 @@ The following classes of bug are in scope:
 
 ## Out of scope
 
-- Social-engineering Fathom Lab team members
+- Social-engineering DarkCity operators
 - DoS via rate-limiting absent endpoints
 - Issues in third-party services (pump.fun, Phantom wallet, Solana RPC providers)
 - Missing best-practice headers that don't enable a concrete attack
@@ -54,6 +54,6 @@ DarkCity uses several defense-in-depth patterns worth knowing:
 - **Signed-message single-use** — `consumed_signed_messages` table hashes each message; replay returns 409
 - **±10 min timestamp window** — signed messages outside the window are rejected
 - **Auto-reconciler** — scheduled every 15 min, heals stuck mints via on-chain tx lookup
-- **Phantom-sponsor dilution** — owner phantom-stake is 100 `$STYXX`, not mint-fee-sized, so external sponsors aren't diluted to dust
+- **Phantom-sponsor dilution** — owner phantom-stake is 100 `$DARKCOIN`, not mint-fee-sized, so external sponsors aren't diluted to dust
 
 If you think you've found a way around any of these, we want to hear about it.

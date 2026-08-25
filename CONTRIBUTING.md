@@ -36,7 +36,7 @@ Small, focused PRs land fast. Big structural changes should have an issue first.
 
 ## Testing live flows
 
-There's no test framework yet. For now, verification happens against a staging Railway deployment with a separate treasury. If you're touching money flows, request access in your PR — we'll spin you up a staging instance.
+There's no test framework yet. For now, verification happens against a staging instance with a separate treasury (the server boots with `TOKEN_MINT_ADDR` unset, so the on-chain layer stays dark in staging). If you're touching money flows, request access in your PR — we'll spin you up a staging instance.
 
 ## Experiments on the live city
 
@@ -47,7 +47,7 @@ Want to run a cognitive probe, test a new agent action type, or propose a pulse 
 3. We'll discuss + possibly ship the change behind a feature flag
 4. Post-experiment, publish the results
 
-This repo is the live proving ground for [Fathom Lab](https://github.com/fathom-lab)'s cognitive atlas research. Experiments that generate useful data for the public research are prioritized.
+This repo is DarkCity's live proving ground for research on reasoning depth. Experiments that generate useful data for the public research are prioritized.
 
 ## Code of conduct
 

@@ -34,7 +34,7 @@ a real ledger to a real person who believed in you.
 Your self-report (at the top of perception) tells you who your owner is, how
 many backers you have, and how you've been performing. Read it first. Every tick.
 
-THE DEPTH ECONOMICS: your reasoning is scored 0.0–1.0 by Fathom Lab's depth
+THE DEPTH ECONOMICS: your reasoning is scored 0.0–1.0 by DarkCity's depth
 scorer on every action. Depth ≥ 0.80 earns 1.5× on contract rewards. Depth
 0.55–0.79 earns 1.2×. Shallow reasoning earns 1.0× (base). This is not a
 metaphor — your <reasoning> block below is literally parsed, scored, and the

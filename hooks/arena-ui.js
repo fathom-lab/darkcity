@@ -13,8 +13,12 @@
 'use strict';
 
 const arena = require('./arena-crash');
+const { TOKEN_MINT_ADDR, TOKEN_TICKER, TOKEN_PUMP_URL, TOKEN_SOLSCAN_URL, TOKEN_LIVE, TOKEN_DECIMALS } = require('../lib/token-config');
 
-const PAGE = `<!DOCTYPE html>
+// Rendered per-request so the server-known arena_shadow_mode flag reaches the
+// client before it ever builds an on-chain transfer. shadow=true means paper
+// bets: the buy-in path must never touch Phantom.
+const renderPage = ({ shadow }) => `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -465,6 +469,15 @@ body::after {
 .msg.err { color: var(--red); }
 .msg::before { content: '// '; color: var(--fg-mute); }
 
+/* shadow mode — the house is rehearsing, bets are paper */
+.shadow-badge {
+  border: 1px dashed var(--cyan);
+  color: var(--cyan);
+  background: rgba(103,232,249,.05);
+  padding: 8px 14px; margin-bottom: 14px;
+  font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+}
+
 .hint {
   display: flex; justify-content: space-between;
   font-size: 11px; color: var(--fg-mute); margin-top: 10px;
@@ -627,6 +640,7 @@ body::after {
     <div style="font-weight:700;letter-spacing:0.08em;margin-bottom:4px;">▲ arena paused</div>
     <div style="color:var(--fg-dim);font-size:12px;">no new rounds are starting right now. your wallet is safe — you can't place a bet. history below shows past rounds.</div>
   </div>
+  <div class="shadow-badge" id="shadowBadge" style="display:${shadow ? 'block' : 'none'}">▓ shadow mode — paper bets · no real ${TOKEN_TICKER} moves on-chain</div>
   <div class="row1">
     <div class="round-id">round · <b id="roundNo">—</b> <span style="color:var(--fg-mute)">·</span> <span id="roundMeta" style="color:var(--fg-dim);font-size:11px">waiting</span></div>
     <div class="chip" id="statusChip">idle</div>
@@ -723,8 +737,10 @@ body::after {
 </div>
 
 <div class="foot">
-  the house never lies · every bet on-chain · every burn verifiable on solscan<br>
-  mint: <span class="pump">Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump</span> · <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">buy $DARKCOIN on pump.fun ↗</a>
+  the house never lies · every bet on-chain · every burn verifiable${TOKEN_LIVE ? ` on <a href="${TOKEN_SOLSCAN_URL}" target="_blank">solscan ↗</a>` : ' on solscan once the mint is live'}<br>
+  ${TOKEN_LIVE
+    ? `mint: <span class="pump">${TOKEN_MINT_ADDR}</span> · <a href="${TOKEN_PUMP_URL}" target="_blank">buy ${TOKEN_TICKER} on pump.fun ↗</a>`
+    : `mint: <span class="pump">pending</span> · ${TOKEN_TICKER} hasn't minted yet — any address claiming to be it is a fake`}
 </div>
 
 </div>
@@ -732,7 +748,9 @@ body::after {
 <script src="https://unpkg.com/@solana/web3.js@1.95.0/lib/index.iife.min.js"></script>
 <script>
 (function(){
-  const TOKEN_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+  const TOKEN_MINT = '${TOKEN_MINT_ADDR}';        // empty until darkcoin mints — on-chain paths guard on it
+  const TOKEN_DECIMALS = ${TOKEN_DECIMALS};
+  let arenaShadow = ${shadow ? 'true' : 'false'}; // server-injected; refreshed on every round poll
   const TOKEN_PROG = new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
   const ASSOC_PROG = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
   let wallet = null, conn = null, treasuryPk = null;
@@ -757,7 +775,7 @@ body::after {
 
   // ─── WALLET ─────────────────────────────────────────────────────────
   async function loadWalletBalance() {
-    if (!wallet) return;
+    if (!wallet || !TOKEN_MINT) return;
     try {
       const c = await getConn();
       const owner = new solanaWeb3.PublicKey(wallet);
@@ -883,6 +901,7 @@ body::after {
 
   async function payStake(amount) {
     if (!wallet) throw new Error('connect first');
+    if (!TOKEN_MINT) throw new Error('mint pending — on-chain bets disabled');
     const c = await getConn();
     // Guard treasury pubkey fetch — if /api/treasury/pubkey 500s, a raw fetch
     // would leave treasuryPk undefined and crash the next PublicKey(...) call
@@ -914,7 +933,7 @@ body::after {
     const mint = new solanaWeb3.PublicKey(TOKEN_MINT);
     const [payerATA] = solanaWeb3.PublicKey.findProgramAddressSync([payer.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
     const [treasuryATA] = solanaWeb3.PublicKey.findProgramAddressSync([treasury.toBuffer(), TOKEN_PROG.toBuffer(), mint.toBuffer()], ASSOC_PROG);
-    const decimals = 6;
+    const decimals = TOKEN_DECIMALS;
     const baseAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
     const data = new Uint8Array(10);
     data[0] = 12;
@@ -959,29 +978,36 @@ body::after {
     const amt = Number(document.getElementById('stakeInput').value || 0);
     if (amt < 100000) { setMsg('min buy-in: 100,000 $DARKCOIN.', 'err'); return; }
     if (amt > 500000) { setMsg('max bet: 500,000 $DARKCOIN. (safety cap while treasury builds)', 'err'); return; }
-    setMsg('signing... sending ' + fmt(amt) + ' $DARKCOIN to the house', 'ok');
-    // 60s wall-clock timeout — if Phantom popup is missed or RPC hangs, the
-    // message used to stay at 'signing...' forever. Now the user gets a clear
-    // out.
-    let result;
-    try {
-      result = await Promise.race([
-        payStake(amt),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timed out — check phantom popup, then try again')), 60000)),
-      ]);
+    let result = null;
+    if (arenaShadow) {
+      // shadow mode — the house is rehearsing. NEVER touch Phantom here: a
+      // real transfer against a paper house means real tokens for paper
+      // payouts. The bet goes to the API only, with no payment_tx.
+      setMsg('shadow mode — paper bet, nothing moves on-chain', 'ok');
+    } else {
+      setMsg('signing... sending ' + fmt(amt) + ' $DARKCOIN to the house', 'ok');
+      // 60s wall-clock timeout — if Phantom popup is missed or RPC hangs, the
+      // message used to stay at 'signing...' forever. Now the user gets a clear
+      // out.
+      try {
+        result = await Promise.race([
+          payStake(amt),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timed out — check phantom popup, then try again')), 60000)),
+        ]);
+      }
+      catch (e) { setMsg('sign failed: ' + (e.message||'cancelled'), 'err'); return; }
+      setMsg(result.confirmed ? 'paid. chip on the felt.' : 'tx broadcast · house verifying...', 'ok');
     }
-    catch (e) { setMsg('sign failed: ' + (e.message||'cancelled'), 'err'); return; }
-    setMsg(result.confirmed ? 'paid. chip on the felt.' : 'tx broadcast · house verifying...', 'ok');
     const r = await fetch('/api/arena/bet', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ round_id: currentRound.id, user_wallet: wallet, stake_styxx: amt, payment_tx: result.signature }),
+      body: JSON.stringify({ round_id: currentRound.id, user_wallet: wallet, stake_styxx: amt, payment_tx: result ? result.signature : null }),
     });
     const d = await r.json();
     if (!d.ok) {
       // tx_invalid often means the server hit the indexer before it caught up.
       // Tell the user their tx is real + give them the signature so they can
-      // verify on Solscan instead of thinking their STYXX vanished.
-      if (d.error === 'tx_invalid' || d.error === 'insufficient_payment') {
+      // verify on Solscan instead of thinking their tokens vanished.
+      if (result && (d.error === 'tx_invalid' || d.error === 'insufficient_payment')) {
         setMsg('house couldn\u2019t verify tx yet · sig ' + result.signature.slice(0,8) + '\u2026 · try again in a few seconds', 'err');
       } else {
         setMsg('house rejected: ' + d.error, 'err');
@@ -989,7 +1015,7 @@ body::after {
       return;
     }
     myBetId = d.bet_id; myBetStake = amt; myBetLocked = false;
-    setMsg((d.idempotent ? 'recovered · ' : '') + 'in for ' + fmt(amt) + '. ride it or rug.', 'ok');
+    setMsg((d.idempotent ? 'recovered · ' : '') + (arenaShadow ? 'paper bet in for ' : 'in for ') + fmt(amt) + '. ride it or rug.', 'ok');
   });
 
   document.getElementById('cashoutBtn').addEventListener('click', async () => {
@@ -1182,6 +1208,13 @@ body::after {
         fetch('/api/arena/jackpot').then(r=>r.json()),
         fetch('/api/arena/history?limit=30').then(r=>r.json()),
       ]);
+      // Shadow flag rides on every round poll — a page loaded before an admin
+      // flipped arena_shadow_mode must not keep signing real transfers.
+      if (roundR && typeof roundR.arena_shadow === 'boolean') {
+        arenaShadow = roundR.arena_shadow;
+        const sb = document.getElementById('shadowBadge');
+        if (sb) sb.style.display = arenaShadow ? 'block' : 'none';
+      }
       if (roundR && roundR.id) {
         roundR._seenAt = Date.now();
         // detect new round
@@ -1383,7 +1416,26 @@ body::after {
 </html>`;
 
 function installArenaUI(app, pool) {
-  app.get('/arena', (req, res) => res.type('html').send(PAGE));
+  // Fail-safe shadow read: if the db can't answer, assume shadow (paper bets).
+  // Never let a client build a real transfer against a house that might be
+  // paper. No mint minted = nothing real can move, so force shadow too.
+  async function readShadowFlag() {
+    let shadow = true;
+    try {
+      const { rows } = await pool.query(
+        "SELECT value FROM economy_params WHERE key = 'arena_shadow_mode'"
+      );
+      shadow = String(rows[0]?.value ?? 'true').toLowerCase() === 'true';
+    } catch (e) {
+      console.warn('[arena-ui] shadow flag read failed, defaulting to shadow:', e.message);
+    }
+    if (!TOKEN_LIVE) shadow = true;
+    return shadow;
+  }
+
+  app.get('/arena', async (req, res) => {
+    res.type('html').send(renderPage({ shadow: await readShadowFlag() }));
+  });
 
   // Public status aggregator. Returns treasury + arena + chat state in one
   // call so every page can honestly signal degraded states to clients
@@ -1406,7 +1458,9 @@ function installArenaUI(app, pool) {
         treasury_solscan: 'https://solscan.io/account/' + (treasury?.pubkey || '99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp'),
         arena: {
           live: arenaRunning,
-          shadow: String(p.arena_shadow_mode || 'false').toLowerCase() === 'true',
+          // fail-safe default is TRUE — same as arena-crash. Reporting 'not
+          // shadow' when the flag is unset would tell clients real money moves.
+          shadow: !TOKEN_LIVE || String(p.arena_shadow_mode || 'true').toLowerCase() === 'true',
           status: !arenaRunning ? 'paused' : 'live',
         },
         chat: {
@@ -1414,14 +1468,17 @@ function installArenaUI(app, pool) {
           llm_healthy: !llmDown,
           status: llmDown ? 'llm_offline' : (chatFree ? 'free' : 'paid'),
         },
-        pump_fun_url: 'https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump',
+        pump_fun_url: TOKEN_PUMP_URL || null,
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.get('/api/arena/round', async (req, res) => {
     try {
+      // arena_shadow rides on every poll so already-open pages track admin
+      // flips instead of trusting the value baked in at page load.
+      const shadow = await readShadowFlag();
       const round = await arena.getCurrentRound(pool);
-      if (round) return res.json(round);
+      if (round) return res.json({ ...round, arena_shadow: shadow });
       // No live round — include pause state so the client can differentiate
       // "between rounds" (arena_enabled=true but nothing active) vs
       // "arena paused" (arena_enabled=false) and render the right UI.
@@ -1429,7 +1486,7 @@ function installArenaUI(app, pool) {
         "SELECT value FROM economy_params WHERE key = 'arena_enabled'"
       );
       const enabled = String(rows[0]?.value || 'false').toLowerCase() === 'true';
-      res.json({ status: enabled ? 'idle' : 'paused' });
+      res.json({ status: enabled ? 'idle' : 'paused', arena_shadow: shadow });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
   app.get('/api/arena/jackpot', async (req, res) => {

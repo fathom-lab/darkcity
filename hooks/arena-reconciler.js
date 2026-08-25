@@ -26,6 +26,7 @@
 const { PublicKey } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } = require('@solana/spl-token');
 const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_LIVE } = require('../lib/token-config');
 
 const SWEEP_INTERVAL_MS = 60_000;
 const SIG_LIMIT = 100;                     // wider lookback to catch orphans from busy periods
@@ -45,6 +46,9 @@ async function ensureTreasuryATA() {
 }
 
 async function reconcileOrphans(pool) {
+  // No mint minted → no treasury ATA to scan, no orphans possible. Bail
+  // before touching solana, otherwise every sweep throws on PublicKey('').
+  if (!TOKEN_LIVE) return { skipped: 'token_not_live' };
   if (sweepRunning) return { skipped: 'already_running' };
   sweepRunning = true;
   try {

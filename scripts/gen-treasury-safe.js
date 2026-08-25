@@ -47,7 +47,7 @@ console.log('    ' + pub);
 console.log('');
 console.log('  Send:');
 console.log('    • ~0.1 SOL     (tx fees for ~10k trades)');
-console.log('    • 5000 $DARKCOIN  (mint: Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump)');
+console.log('    • 5000 $DARKCOIN  (mint: <mint from lib/token-config>)');
 console.log('');
 console.log('  Verify: https://solscan.io/account/' + pub);
 console.log('────────────────────────────────────────────────────────────────────');

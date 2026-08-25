@@ -9,7 +9,7 @@ const { PublicKey } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, TOKEN_2022_PROGRAM_ID } = require('@solana/spl-token');
 
 const TREASURY = '99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp';
-const TOKEN_MINT = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+const TOKEN_MINT = require('../lib/token-config').TOKEN_MINT_ADDR;
 const LIMIT = 25;
 const DELAY_MS = 2000;
 

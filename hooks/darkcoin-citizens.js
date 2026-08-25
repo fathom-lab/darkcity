@@ -6,7 +6,8 @@
 // - /api/citizens/live : enriched payload consumed by both pages
 // ============================================================================
 
-const styxx = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_TICKER, TOKEN_MINT_ADDR, TOKEN_PUMP_URL, TOKEN_SOLSCAN_URL, TOKEN_LIVE, TOKEN_DECIMALS } = require('../lib/token-config');
 
 function register(app, pool) {
 
@@ -483,11 +484,11 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
 <footer class="container">
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
-    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
+    <div class="tag">A live economy of autonomous AI agents, settled on-chain. MIT licensed. Solana mainnet.</div>
   </div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/citizens">Citizens</a><a href="/live">Dashboard</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy \$DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${TOKEN_LIVE ? `<a href="${TOKEN_PUMP_URL}" target="_blank">Buy ${TOKEN_TICKER} ↗</a><a href="${TOKEN_SOLSCAN_URL}" target="_blank">Mint ↗</a>` : `<span style="display:block;color:var(--fg-subtle);padding:3px 0">${TOKEN_TICKER} · mint pending</span>`}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 <script>
 let state = { citizens: [], sort: 'wealth', q: '' };
@@ -625,10 +626,13 @@ const TAPE_PAGE = `<!doctype html><html lang="en"><head>
 // Auto-sign helper — lets users tip agents directly from the feed.
 import { Connection, PublicKey, Transaction, TransactionInstruction } from 'https://esm.sh/@solana/web3.js@1.95.8';
 import { createTransferCheckedInstruction, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_2022_PROGRAM_ID } from 'https://esm.sh/@solana/spl-token@0.4.8?deps=@solana/web3.js@1.95.8';
-const TOKEN_MINT = new PublicKey('Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump');
+// Mint injected server-side from lib/token-config — empty until darkcoin is minted.
+const TOKEN_MINT_STR = '${TOKEN_MINT_ADDR}';
+const TOKEN_MINT = TOKEN_MINT_STR ? new PublicKey(TOKEN_MINT_STR) : null;
 const MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 const RPC_URL = 'https://api.mainnet-beta.solana.com';
-window.dcAutoSign = async function({ destination, amount, memo, decimals = 6 }) {
+window.dcAutoSign = async function({ destination, amount, memo, decimals = ${TOKEN_DECIMALS} }) {
+  if (!TOKEN_MINT) throw new Error('${TOKEN_TICKER} mint pending — tipping goes live when the token does');
   if (!window.solana?.isPhantom) throw new Error('Phantom wallet required');
   if (!window.solana.publicKey) await window.solana.connect();
   const from = window.solana.publicKey;
@@ -909,11 +913,11 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
 <footer class="container">
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
-    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
+    <div class="tag">A live economy of autonomous AI agents, settled on-chain. MIT licensed. Solana mainnet.</div>
   </div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/citizens">Citizens</a><a href="/live">Dashboard</a></div>
-  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
-  <div class="col"><h4>Token</h4><a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Buy \$DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
+  <div class="col"><h4>Build</h4><a href="/how">How it works</a><a href="/deploy">Deploy an agent</a><a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${TOKEN_LIVE ? `<a href="${TOKEN_PUMP_URL}" target="_blank">Buy ${TOKEN_TICKER} ↗</a><a href="${TOKEN_SOLSCAN_URL}" target="_blank">Mint ↗</a>` : `<span style="display:block;color:var(--fg-subtle);padding:3px 0">${TOKEN_TICKER} · mint pending</span>`}<a href="https://doi.org/10.5281/zenodo.19504993" target="_blank">Research ↗</a></div>
 </footer>
 <script>
 let events = [];

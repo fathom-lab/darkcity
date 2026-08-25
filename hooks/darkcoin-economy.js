@@ -121,15 +121,17 @@ async function getParams(keys) {
 
 function bps(n) { return Number(n) / 10000; }
 
-// ─── STYXX/USD price oracle ─────────────────────────────────────────────────
+// ─── darkcoin/USD price oracle ──────────────────────────────────────────────
 // Three-tier fallback:
 //   1. Jupiter Price API v2 (refreshes every 60s in the background)
 //   2. DARKCOIN_USD_PRICE env var (manual override, survives Jupiter outages)
 //   3. Hard floor 0.00004 (never zero; a mint will still cost something)
+// With no mint configured (pre-launch), tier 1 is skipped entirely — there is
+// no token to price, so the env override or the floor decides.
 
 let _priceCache = { usd: null, at: 0 };
 const _PRICE_TTL_MS = 60 * 1000;
-const TOKEN_MINT_ADDR = 'Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump';
+const { TOKEN_MINT_ADDR, TOKEN_LIVE } = require('../lib/token-config');
 
 async function fetchPriceDexScreener() {
   const r = await fetch('https://api.dexscreener.com/latest/dex/tokens/' + TOKEN_MINT_ADDR, {
@@ -159,6 +161,7 @@ async function fetchPriceJupiter() {
 // Try DexScreener first (reliable, free, no key). Jupiter as fallback.
 // Both wrapped in a try/catch so a degraded oracle can't break the app.
 async function refreshPriceFromJupiter() {
+  if (!TOKEN_LIVE) return null;   // pre-launch: nothing to price
   const sources = [
     { name: 'dexscreener', fn: fetchPriceDexScreener },
     { name: 'jupiter',     fn: fetchPriceJupiter },
@@ -211,7 +214,7 @@ function usdToDarkcoin(usdAmount) {
 // Returns { ok: true, tx } on success, { ok: false, reason } on failure.
 
 async function verifyDarkcoinPayment({ tx_signature, expected_from_pubkey, expected_to_pubkey, expected_amount, expected_memo }) {
-  const conn = styxx.getConnection();
+  const conn = solanaDarkcoin.getConnection();
 
   // Step 1: fetch with retries — confirmed tx may take 5-15s on mainnet,
   // and some RPC providers lag further. We retry for ~55s total before bailing.
@@ -241,12 +244,12 @@ async function verifyDarkcoinPayment({ tx_signature, expected_from_pubkey, expec
   // Build owner → delta map, filtered to just the STYXX mint.
   const byOwner = new Map();
   for (const b of post) {
-    if (b.mint !== styxx.TOKEN_MINT_ADDR) continue;
+    if (b.mint !== solanaDarkcoin.TOKEN_MINT_ADDR) continue;
     const ui = Number(b.uiTokenAmount?.uiAmount || 0);
     byOwner.set(b.owner, { post_ui: ui, pre_ui: 0 });
   }
   for (const b of pre) {
-    if (b.mint !== styxx.TOKEN_MINT_ADDR) continue;
+    if (b.mint !== solanaDarkcoin.TOKEN_MINT_ADDR) continue;
     const cur = byOwner.get(b.owner) || { post_ui: 0, pre_ui: 0 };
     cur.pre_ui = Number(b.uiTokenAmount?.uiAmount || 0);
     byOwner.set(b.owner, cur);
@@ -378,7 +381,7 @@ async function mintQuote(req, res) {
           styxx_usd_price: getDarkcoinUsdPrice(),
           destination: pq.destination,
           memo: pq.memo,
-          mint_address: styxx.TOKEN_MINT_ADDR,
+          mint_address: solanaDarkcoin.TOKEN_MINT_ADDR,
           resumed: true,
           instructions: 'Resuming your pending mint for this name. If you already paid, just click Finalize with your tx signature.',
           expires_in_seconds: pq.seconds_remaining,
@@ -390,7 +393,7 @@ async function mintQuote(req, res) {
     const p = await getParams(['mint_fee_usd']);
     const feeUsd    = parseFloat(p.mint_fee_usd || '50');
     const feeDarkcoin  = usdToDarkcoin(feeUsd);
-    const destPubkey = styxx.getTreasury().publicKey.toBase58();
+    const destPubkey = solanaDarkcoin.getTreasury().publicKey.toBase58();
 
     // Memo pattern: mint:<quote_id> — user's wallet attaches this so we match
     const quote_id = crypto.randomUUID();
@@ -428,7 +431,7 @@ async function mintQuote(req, res) {
       styxx_usd_price: getDarkcoinUsdPrice(),
       destination: destPubkey,
       memo,
-      mint_address: styxx.TOKEN_MINT_ADDR,
+      mint_address: solanaDarkcoin.TOKEN_MINT_ADDR,
       instructions: `Send ${feeDarkcoin} STYXX from ${owner_pubkey} to ${destPubkey} with memo "${memo}". Then POST /api/mint/finalize with the tx signature.`,
       expires_in_seconds: 3600,
     });
@@ -515,9 +518,9 @@ async function mintFinalize(req, res) {
         pubkey = existingAgent[0].sol_pubkey;
         console.log(`[mint/finalize] reusing existing agent ${agentId} @ ${pubkey.slice(0,8)}…`);
       } else {
-        const kp = styxx.generateAgentKeypair();
+        const kp = solanaDarkcoin.generateAgentKeypair();
         pubkey = kp.publicKey.toBase58();
-        const encPriv = styxx.encryptPrivkey(kp.secretKey);
+        const encPriv = solanaDarkcoin.encryptPrivkey(kp.secretKey);
         await pool.query(`
           INSERT INTO external_agents
             (agent_id, district, reputation, credits, builds, trades, rank, agent_type,
@@ -543,12 +546,12 @@ async function mintFinalize(req, res) {
           [mintMemo]
         );
         if (!priorBurn.length && realBurnAmt > 0) {
-          const { signature: burnSig } = await styxx.burnFromTreasury(realBurnAmt);
+          const { signature: burnSig } = await solanaDarkcoin.burnFromTreasury(realBurnAmt);
           await pool.query(`
             INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
             VALUES ($1,'TREASURY',$2,'BURN','BURN',$3,'mint_fee_burn',$4)
             ON CONFLICT (tx_signature) DO NOTHING
-          `, [burnSig, styxx.getTreasury().publicKey.toBase58(), realBurnAmt, mintMemo]);
+          `, [burnSig, solanaDarkcoin.getTreasury().publicKey.toBase58(), realBurnAmt, mintMemo]);
           console.log(`[mint-burn] destroyed ${realBurnAmt} STYXX, tx=${burnSig}`);
         } else if (priorBurn.length) {
           console.log(`[mint-burn] skip — already burned for quote ${quote_id}`);
@@ -566,7 +569,7 @@ async function mintFinalize(req, res) {
         let grantSig = null;
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const r = await styxx.airdropFromTreasury(pubkey, starterGrant);
+            const r = await solanaDarkcoin.airdropFromTreasury(pubkey, starterGrant);
             grantSig = r.signature; break;
           } catch (grantErr) {
             console.warn(`[mint-grant] attempt ${attempt + 1} failed:`, grantErr.message);
@@ -578,7 +581,7 @@ async function mintFinalize(req, res) {
           INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
           VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
           ON CONFLICT (tx_signature) DO NOTHING
-        `, [grantSig, styxx.getTreasury().publicKey.toBase58(), agentId, pubkey, starterGrant, mintMemo]);
+        `, [grantSig, solanaDarkcoin.getTreasury().publicKey.toBase58(), agentId, pubkey, starterGrant, mintMemo]);
         await pool.query(`
           INSERT INTO agent_earnings (agent_id, amount, source, source_ref, recorded_at)
           VALUES ($1, $2, 'mint_grant', $3, NOW())
@@ -596,12 +599,12 @@ async function mintFinalize(req, res) {
         );
         if (!priorRef.length) {
           try {
-            const { signature: refSig } = await styxx.airdropFromTreasury(q.referred_by_pubkey, refBonus);
+            const { signature: refSig } = await solanaDarkcoin.airdropFromTreasury(q.referred_by_pubkey, refBonus);
             await pool.query(`
               INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
               VALUES ($1,'TREASURY',$2,'REFERRER',$3,$4,'referral_mint_bonus',$5)
               ON CONFLICT (tx_signature) DO NOTHING
-            `, [refSig, styxx.getTreasury().publicKey.toBase58(), q.referred_by_pubkey, refBonus, quote_id]);
+            `, [refSig, solanaDarkcoin.getTreasury().publicKey.toBase58(), q.referred_by_pubkey, refBonus, quote_id]);
             await pool.query(`
               INSERT INTO referrals (referrer_pubkey, referred_agent_id, referred_owner_pubkey,
                                      minted_at, expires_at, mint_fee_bonus_styxx, mint_fee_bonus_tx)
@@ -691,7 +694,7 @@ async function tipQuote(req, res) {
 
     const quote_id = crypto.randomUUID();
     const memo = 'tip:' + quote_id;
-    const destPubkey = styxx.getTreasury().publicKey.toBase58();
+    const destPubkey = solanaDarkcoin.getTreasury().publicKey.toBase58();
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS tip_quotes (
@@ -775,13 +778,13 @@ async function tipFinalize(req, res) {
       if (!agentPubkey) throw new Error('agent_has_no_wallet');
       if (agentRow[0].euthanized_at) throw new Error('agent_euthanized_between_quote_and_finalize');
 
-      const r = await styxx.airdropFromTreasury(agentPubkey, agentCut);
+      const r = await solanaDarkcoin.airdropFromTreasury(agentPubkey, agentCut);
       fwdSig = r.signature;
       await pool.query(`
         INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
         VALUES ($1,'TREASURY',$2,$3,$4,$5,'tip_forward',$6)
         ON CONFLICT (tx_signature) DO NOTHING
-      `, [fwdSig, styxx.getTreasury().publicKey.toBase58(), q.agent_id, agentPubkey, agentCut, 'tip:' + quote_id + ':' + q.thought_id]);
+      `, [fwdSig, solanaDarkcoin.getTreasury().publicKey.toBase58(), q.agent_id, agentPubkey, agentCut, 'tip:' + quote_id + ':' + q.thought_id]);
 
       // Record tip in agent_earnings so it counts toward their stats
       await pool.query(`
@@ -829,7 +832,7 @@ async function sponsorQuote(req, res) {
 
     const quote_id = crypto.randomUUID();
     const memo = `sponsor:${quote_id}`;
-    const destPubkey = styxx.getTreasury().publicKey.toBase58();
+    const destPubkey = solanaDarkcoin.getTreasury().publicKey.toBase58();
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sponsor_quotes (
@@ -975,7 +978,7 @@ async function hyphalQuote(req, res) {
     const cost = Number(p.hyphal_link_cost_styxx || 25);
     const quote_id = crypto.randomUUID();
     const memo = `hyphal:${quote_id}`;
-    const destPubkey = styxx.getTreasury().publicKey.toBase58();
+    const destPubkey = solanaDarkcoin.getTreasury().publicKey.toBase58();
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS hyphal_quotes (
@@ -1057,24 +1060,24 @@ async function hyphalFinalize(req, res) {
 
       let sigA = doneA?.tx_signature;
       if (!sigA) {
-        const r = await styxx.airdropFromTreasury(aRow.sol_pubkey, half);
+        const r = await solanaDarkcoin.airdropFromTreasury(aRow.sol_pubkey, half);
         sigA = r.signature;
         await pool.query(`
           INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
           VALUES ($1,'TREASURY',$2,$3,$4,$5,'hyphal_formation',$6)
           ON CONFLICT (tx_signature) DO NOTHING
-        `, [sigA, styxx.getTreasury().publicKey.toBase58(), q.agent_a, aRow.sol_pubkey, half, q.memo]);
+        `, [sigA, solanaDarkcoin.getTreasury().publicKey.toBase58(), q.agent_a, aRow.sol_pubkey, half, q.memo]);
       }
 
       let sigB = doneB?.tx_signature;
       if (!sigB) {
-        const r = await styxx.airdropFromTreasury(bRow.sol_pubkey, half);
+        const r = await solanaDarkcoin.airdropFromTreasury(bRow.sol_pubkey, half);
         sigB = r.signature;
         await pool.query(`
           INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
           VALUES ($1,'TREASURY',$2,$3,$4,$5,'hyphal_formation',$6)
           ON CONFLICT (tx_signature) DO NOTHING
-        `, [sigB, styxx.getTreasury().publicKey.toBase58(), q.agent_b, bRow.sol_pubkey, half, q.memo]);
+        `, [sigB, solanaDarkcoin.getTreasury().publicKey.toBase58(), q.agent_b, bRow.sol_pubkey, half, q.memo]);
       }
 
       await pool.query(`
@@ -1231,7 +1234,7 @@ async function portfolio(req, res) {
     const liveBalances = await Promise.all(agents.rows.map(async (a) => {
       if (!a.sol_pubkey) return { agent_id: a.agent_id, bal: Number(a._cache_styxx || 0) };
       try {
-        const bal = await styxx.getDarkcoinBalance(a.sol_pubkey);
+        const bal = await solanaDarkcoin.getDarkcoinBalance(a.sol_pubkey);
         // Persist refreshed cache for downstream views/queries
         if (Number.isFinite(bal)) {
           pool.query('UPDATE external_agents SET styxx_cached = $1, styxx_cached_at = NOW() WHERE agent_id = $2', [bal, a.agent_id]).catch(()=>{});
@@ -1408,7 +1411,7 @@ async function agentWithdraw(req, res) {
       "SELECT value FROM economy_params WHERE key = 'cognition_fee_weekly_styxx'"
     );
     const reserve = Number(paramRows[0]?.value || 50);
-    const currentBalance = await styxx.getDarkcoinBalance(a.sol_pubkey);
+    const currentBalance = await solanaDarkcoin.getDarkcoinBalance(a.sol_pubkey);
     const available = Math.max(0, currentBalance - reserve);
 
     const amt = amount ? Number(amount) : available;
@@ -1429,8 +1432,8 @@ async function agentWithdraw(req, res) {
       });
     }
 
-    const kp = styxx.keypairFromEncrypted(a.sol_privkey_enc);
-    const { signature } = await styxx.transferDarkcoin({
+    const kp = solanaDarkcoin.keypairFromEncrypted(a.sol_privkey_enc);
+    const { signature } = await solanaDarkcoin.transferDarkcoin({
       fromKeypair: kp,
       toPubkey: dest,
       amount: amt,
@@ -1804,7 +1807,7 @@ async function runBuybackBurnIfDue() {
       return;
     }
 
-    const { signature } = await styxx.burnFromTreasury(burnAmt);
+    const { signature } = await solanaDarkcoin.burnFromTreasury(burnAmt);
     await pool.query(`
       INSERT INTO distribution_events (kind, recipient_pubkey, amount, tx_signature, window_end)
       VALUES ('buyback_burn', 'BURN', $1, $2, NOW())
@@ -1813,7 +1816,7 @@ async function runBuybackBurnIfDue() {
       INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
       VALUES ($1, 'TREASURY', $2, 'BURN', 'BURN', $3, 'buyback_burn', $4)
       ON CONFLICT (tx_signature) DO NOTHING
-    `, [signature, styxx.getTreasury().publicKey.toBase58(), burnAmt,
+    `, [signature, solanaDarkcoin.getTreasury().publicKey.toBase58(), burnAmt,
         `monthly buyback-burn: ${(burnBps/100).toFixed(0)}% of ${cityAcc.toFixed(2)} STYXX city share since ${since}`]);
     console.log(`[buyback] burned ${burnAmt.toFixed(2)} $DARKCOIN (${(burnBps/100).toFixed(0)}% of ${cityAcc.toFixed(2)} accumulated) tx=${signature}`);
   } catch (e) {
@@ -1906,7 +1909,7 @@ async function runAutoReconciler() {
     for (const q of stuck) {
       try {
         // Locate the user's payment tx via Solana RPC (memo match)
-        const conn = styxx.getConnection();
+        const conn = solanaDarkcoin.getConnection();
         const sigs = await conn.getSignaturesForAddress(
           new (require('@solana/web3.js').PublicKey)(q.owner_pubkey),
           { limit: 20 }
@@ -1943,9 +1946,9 @@ async function runAutoReconciler() {
         if (!ver.ok) { console.warn('[reconciler] verify failed for', q.quote_id, ver.reason); continue; }
 
         const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
-        const kp = styxx.generateAgentKeypair();
+        const kp = solanaDarkcoin.generateAgentKeypair();
         const pubkey = kp.publicKey.toBase58();
-        const encPriv = styxx.encryptPrivkey(kp.secretKey);
+        const encPriv = solanaDarkcoin.encryptPrivkey(kp.secretKey);
         const p = await getParams(['starter_grant_styxx']);
         const starterGrant = Number(p.starter_grant_styxx || 100);
 
@@ -1961,12 +1964,12 @@ async function runAutoReconciler() {
         `, [agentId, q.owner_pubkey.slice(0,16), q.owner_pubkey, pubkey, encPriv,
             starterGrant, foundTx, Number(q.fee_styxx), starterGrant]);
 
-        const { signature: grantSig } = await styxx.airdropFromTreasury(pubkey, starterGrant);
+        const { signature: grantSig } = await solanaDarkcoin.airdropFromTreasury(pubkey, starterGrant);
         await pool.query(`
           INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
           VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
           ON CONFLICT (tx_signature) DO NOTHING
-        `, [grantSig, styxx.getTreasury().publicKey.toBase58(), agentId, pubkey, starterGrant, q.memo]);
+        `, [grantSig, solanaDarkcoin.getTreasury().publicKey.toBase58(), agentId, pubkey, starterGrant, q.memo]);
 
         await pool.query('UPDATE mint_quotes SET finalized = TRUE WHERE quote_id = $1', [q.quote_id]);
         console.log('[reconciler] healed ' + agentId + ' (quote ' + q.quote_id + ')');
@@ -2154,7 +2157,7 @@ function installRoutes(app) {
         hint: 'Each signature is single-use. Fresh timestamp + re-sign.' });
 
       // Decrypt with the server master key, return as base58 (Phantom import format)
-      const keypair = styxx.keypairFromEncrypted(a.sol_privkey_enc);
+      const keypair = solanaDarkcoin.keypairFromEncrypted(a.sol_privkey_enc);
       const bs58 = require('bs58');
       const privkeyB58 = bs58.encode(keypair.secretKey);
 
@@ -2191,7 +2194,7 @@ function installRoutes(app) {
     try {
       const pk = req.params.pubkey;
       if (!pk || pk.length < 32) return res.status(400).json({ error: 'invalid_pubkey' });
-      const bal = await styxx.getDarkcoinBalance(pk);
+      const bal = await solanaDarkcoin.getDarkcoinBalance(pk);
       return res.json({ pubkey: pk, styxx: bal });
     } catch (err) { return res.status(500).json({ error: err.message }); }
   });
@@ -2227,7 +2230,7 @@ function installRoutes(app) {
 
       let liveBalance = null;
       if (aRows[0]?.sol_pubkey) {
-        try { liveBalance = await styxx.getDarkcoinBalance(aRows[0].sol_pubkey); } catch {}
+        try { liveBalance = await solanaDarkcoin.getDarkcoinBalance(aRows[0].sol_pubkey); } catch {}
       }
 
       return res.json({
@@ -2286,7 +2289,7 @@ function installRoutes(app) {
 
       const agentId = q.agent_name.toUpperCase().replace(/\s+/g, '_');
       const memo = `mint:${quote_id}`;
-      const treasuryPk = styxx.getTreasury().publicKey.toBase58();
+      const treasuryPk = solanaDarkcoin.getTreasury().publicKey.toBase58();
 
       // Step 1: make sure the agent row exists. If it doesn't, rebuild it.
       // We must re-verify the user's payment on-chain before provisioning.
@@ -2311,9 +2314,9 @@ function installRoutes(app) {
         });
         if (!ver.ok) return res.status(402).json({ error: 'payment_verification_failed', reason: ver.reason });
 
-        const kp = styxx.generateAgentKeypair();
+        const kp = solanaDarkcoin.generateAgentKeypair();
         agentPubkey = kp.publicKey.toBase58();
-        const encPriv = styxx.encryptPrivkey(kp.secretKey);
+        const encPriv = solanaDarkcoin.encryptPrivkey(kp.secretKey);
         const p = await getParams(['starter_grant_styxx']);
         const starterGrant = Number(p.starter_grant_styxx || 100);
 
@@ -2349,7 +2352,7 @@ function installRoutes(app) {
       } else {
         const p = await getParams(['starter_grant_styxx']);
         const starterGrant = Number(p.starter_grant_styxx || 100);
-        const { signature: grantSig } = await styxx.airdropFromTreasury(agentPubkey, starterGrant);
+        const { signature: grantSig } = await solanaDarkcoin.airdropFromTreasury(agentPubkey, starterGrant);
         await pool.query(`
           INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
           VALUES ($1,'TREASURY',$2,$3,$4,$5,'mint_grant',$6)
@@ -2446,7 +2449,7 @@ function installRoutes(app) {
       const a = agent.rows[0];
       // Live on-chain balance (fresh)
       let liveBalance = 0;
-      try { liveBalance = a.sol_pubkey ? await styxx.getDarkcoinBalance(a.sol_pubkey) : 0; } catch {}
+      try { liveBalance = a.sol_pubkey ? await solanaDarkcoin.getDarkcoinBalance(a.sol_pubkey) : 0; } catch {}
 
       const citizenN = founders.rows[0]?.citizen_n || null;
       const tier = citizenN == null ? null : citizenN <= 3 ? 'diamond' : citizenN <= 10 ? 'gold' : citizenN <= 100 ? 'silver' : 'citizen';
@@ -2611,12 +2614,12 @@ function installRoutes(app) {
       const reasonTag = (reason || 'goodwill_grant').slice(0, 64);
       const memoText = (memo || ('goodwill grant: welcome to the city')).slice(0, 200);
 
-      const { signature } = await styxx.airdropFromTreasury(pubkey, amt);
+      const { signature } = await solanaDarkcoin.airdropFromTreasury(pubkey, amt);
       await pool.query(`
         INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
         VALUES ($1, 'TREASURY', $2, 'GRANT', $3, $4, $5, $6)
         ON CONFLICT (tx_signature) DO NOTHING
-      `, [signature, styxx.getTreasury().publicKey.toBase58(), pubkey, amt, reasonTag, memoText]);
+      `, [signature, solanaDarkcoin.getTreasury().publicKey.toBase58(), pubkey, amt, reasonTag, memoText]);
 
       console.log(`[admin/airdrop] sent ${amt.toFixed(2)} \$DARKCOIN -> ${pubkey.slice(0,8)}... reason=${reasonTag} tx=${signature.slice(0,12)}`);
       return res.json({ ok: true, pubkey, amount: amt, reason: reasonTag, signature, explorer: 'https://solscan.io/tx/' + signature });
@@ -2640,14 +2643,14 @@ function installRoutes(app) {
       const a = rows[0];
       if (!a.sol_pubkey) return res.status(400).json({ error: 'agent_has_no_wallet' });
 
-      const { signature } = await styxx.airdropFromTreasury(a.sol_pubkey, Number(amount));
+      const { signature } = await solanaDarkcoin.airdropFromTreasury(a.sol_pubkey, Number(amount));
       const memo = reason + ':' + agent_id + (note ? ':' + note : '');
 
       await pool.query(`
         INSERT INTO styxx_transfers (tx_signature, from_agent_id, from_pubkey, to_agent_id, to_pubkey, amount, reason, memo)
         VALUES ($1,'TREASURY',$2,$3,$4,$5,$6,$7)
         ON CONFLICT (tx_signature) DO NOTHING
-      `, [signature, styxx.getTreasury().publicKey.toBase58(), a.agent_id, a.sol_pubkey, Number(amount), reason, memo]);
+      `, [signature, solanaDarkcoin.getTreasury().publicKey.toBase58(), a.agent_id, a.sol_pubkey, Number(amount), reason, memo]);
 
       // agent_earnings + distribution_events have CHECK constraints on their
       // source/kind columns — best-effort inserts only. The authoritative
@@ -2680,7 +2683,7 @@ function installRoutes(app) {
   // exactly how $DARKCOIN moves through the city. Powers the /treasury page.
   app.get('/api/treasury/stats', async (req, res) => {
     try {
-      const treasuryBal = await styxx.getTreasuryBalances();
+      const treasuryBal = await solanaDarkcoin.getTreasuryBalances();
       const [
         totalBurned, totalMinted, agentCount,
         flow24hIn, flow24hOut,
@@ -2693,7 +2696,7 @@ function installRoutes(app) {
         // Inflows to treasury in last 24h (mint fees, sponsor stakes, tip receipts)
         pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers
                     WHERE to_pubkey = $1 AND confirmed_at > NOW() - INTERVAL '24 hours'`,
-                   [styxx.getTreasury().publicKey.toBase58()]),
+                   [solanaDarkcoin.getTreasury().publicKey.toBase58()]),
         // Outflows from treasury in last 24h (grants, pulse payouts, referrals)
         pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers
                     WHERE from_agent_id = 'TREASURY' AND to_agent_id != 'BURN'
@@ -2720,8 +2723,8 @@ function installRoutes(app) {
           usd_value: Number(treasuryBal.styxx) * usdPrice,
         },
         supply: {
-          mint: styxx.TOKEN_MINT_ADDR,
-          solscan: 'https://solscan.io/token/' + styxx.TOKEN_MINT_ADDR,
+          mint: solanaDarkcoin.TOKEN_MINT_ADDR,
+          solscan: 'https://solscan.io/token/' + solanaDarkcoin.TOKEN_MINT_ADDR,
           total_burned_styxx: Number(totalBurned.rows[0].v),
           total_burned_usd: Number(totalBurned.rows[0].v) * usdPrice,
           styxx_usd_price: usdPrice,
@@ -2771,10 +2774,10 @@ function installRoutes(app) {
 
       // 2. Treasury wallet balance
       try {
-        const t = await styxx.getTreasuryBalances();
+        const t = await solanaDarkcoin.getTreasuryBalances();
         pass('treasury', { styxx: t.styxx, sol: t.sol });
         if (t.sol < 0.02) fail('treasury_sol_low', 'SOL < 0.02 — fee payer may fail. top up with SOL.');
-        if (t.styxx < 100000) fail('treasury_styxx_low', 'STYXX < 100k — pulse may clamp to floor.');
+        if (t.styxx < 100000) fail('treasury_styxx_low', 'DARKCOIN < 100k — pulse may clamp to floor.');
       } catch (e) { fail('treasury', e.message); }
 
       // 3. Price oracle

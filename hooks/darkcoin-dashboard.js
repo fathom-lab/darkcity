@@ -13,6 +13,8 @@
 
 'use strict';
 
+const { TOKEN_TICKER, TOKEN_PUMP_URL, TOKEN_LIVE } = require('../lib/token-config');
+
 function register(app) {
   app.get('/me', (req, res) => res.type('html').send(PAGE));
   app.get('/dashboard', (req, res) => res.type('html').send(PAGE));
@@ -383,7 +385,7 @@ td.right.green { color: var(--accent); }
     <!-- Holder Rewards card — autonomous payouts, zero friction.
          A slice of every mint fee is automatically distributed to $DARKCOIN
          holders pro-rata at each 4h pulse. No claim button, no participation
-         gate. You hold — STYXX lands in your Phantom wallet. Card surfaces
+         gate. You hold — darkcoin lands in your Phantom wallet. Card surfaces
          lifetime earned + last auto-payout tx for transparency. -->
     <section class="section" id="sec-holder" style="padding-top:0;border-top:none">
       <div style="background:linear-gradient(135deg,rgba(182,241,255,.07) 0%,rgba(127,229,176,.03) 100%);border:1px solid rgba(182,241,255,.28);border-radius:10px;padding:24px 28px">
@@ -546,7 +548,7 @@ td.right.green { color: var(--accent); }
   </div>
 
   <footer class="footer">
-    <div>DarkCity · native <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" class="external">$DARKCOIN</a> economy · Solana mainnet</div>
+    <div>DarkCity · native ${TOKEN_LIVE ? `<a href="${TOKEN_PUMP_URL}" class="external">${TOKEN_TICKER}</a>` : TOKEN_TICKER} economy · Solana mainnet${TOKEN_LIVE ? '' : ' · mint pending'}</div>
     <div style="margin-top:8px">Every number above comes from on-chain transactions. Nothing is cached beyond 10 seconds.</div>
   </footer>
 
@@ -769,7 +771,7 @@ td.right.green { color: var(--accent); }
         const agoTxt = ago < 60 ? ago + 'm ago' : Math.floor(ago / 60) + 'h ago';
         document.getElementById('hp-last-paid').textContent = 'last autopay: ' + agoTxt;
       } else if (holding < 100) {
-        document.getElementById('hp-last-paid').innerHTML = 'hold \u2265 100 $DARKCOIN to start earning \u2014 <a href="https://pump.fun/coin/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank" style="color:#b6f1ff">top up \u2197</a>';
+        document.getElementById('hp-last-paid').innerHTML = 'hold \u2265 100 ${TOKEN_TICKER} to start earning${TOKEN_LIVE ? ` \u2014 <a href="${TOKEN_PUMP_URL}" target="_blank" style="color:#b6f1ff">top up \u2197</a>` : ' \u2014 mint pending'}';
       } else {
         document.getElementById('hp-last-paid').textContent = 'eligible \u2014 next pulse will pay you';
       }
@@ -823,7 +825,7 @@ td.right.green { color: var(--accent); }
     // Agent wallet balance. Portfolio API returns sol_pubkey (not wallet)
     // and already does an on-chain refresh into styxx_cached. Start from the
     // cached value so the card never reads 0 for an agent that actually holds
-    // STYXX; then try to refresh via /api/wallet/:pk/balance if we have the
+    // darkcoin; then try to refresh via /api/wallet/:pk/balance if we have the
     // address. Fall back silently on error: cached value is already correct.
     const agentPk = newest.sol_pubkey || newest.wallet;
     const cached  = Number(newest.styxx_cached || 0);
@@ -868,7 +870,7 @@ td.right.green { color: var(--accent); }
 
     // Share CTAs
     const refLink = location.origin + '/deploy?ref=' + wallet;
-    const tweetText = "just minted my own AI agent in @fathom_lab's DarkCity — " + newest.agent_id + ", earning real $DARKCOIN on solana mainnet. mint yours through my link and we both get paid:";
+    const tweetText = "just minted my own AI agent in DarkCity — " + newest.agent_id + ", earning real $DARKCOIN on solana mainnet. mint yours through my link and we both get paid:";
     document.getElementById('welcome-share').href =
       'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(refLink);
     document.getElementById('welcome-watch').href = '/flow?agent=' + encodeURIComponent(newest.agent_id);
@@ -1106,7 +1108,7 @@ td.right.green { color: var(--accent); }
           '<button class="btn ghost" onclick="window.dcCloseClaim()">Done</button>' +
         '</div></div>';
       // Pre-compose tweet
-      const tweetText = 'just claimed ' + Math.round(claimed) + ' $DARKCOIN from my AI agent ' + agentId + ' in @fathom_lab\\'s DarkCity. real on-chain on solana mainnet. mint yours:';
+      const tweetText = 'just claimed ' + Math.round(claimed) + ' $DARKCOIN from my AI agent ' + agentId + ' in DarkCity. real on-chain on solana mainnet. mint yours:';
       const refUrl = location.origin + '/deploy?ref=' + wallet;
       document.getElementById('cm-tweet').href =
         'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(refUrl);
@@ -1151,9 +1153,8 @@ td.right.green { color: var(--accent); }
     document.getElementById('wallet-addr').textContent = short(wallet);
     document.getElementById('wallet-solscan').href = 'https://solscan.io/account/' + wallet;
     document.getElementById('ref-link').value = location.origin + '/deploy?ref=' + wallet;
-    // Pre-compose tweet — specific, concrete, not corporate. Mentions @fathom_lab
-    // so shares amplify organically. Referral link at end.
-    const tweetText = "i'm earning real $DARKCOIN in @fathom_lab's DarkCity — autonomous AI agents on solana mainnet, settled every 4h. mint yours through my link and we both get paid:";
+    // Pre-compose tweet — specific, concrete, not corporate. Referral link at end.
+    const tweetText = "i'm earning real $DARKCOIN in DarkCity — autonomous AI agents on solana mainnet, settled every 4h. mint yours through my link and we both get paid:";
     const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(tweetText) + '&url=' + encodeURIComponent(location.origin + '/deploy?ref=' + wallet);
     const tw = document.getElementById('ref-tweet');
     if (tw) tw.href = tweetUrl;

@@ -15,6 +15,7 @@ const { handleConversation } = require('./conversation-wiring');
 const { scoreReasoning, writeDepthRow } = require('./depth-scorer');
 const { buildAgentContext, invalidateAgentContext } = require('./agent-context');
 const darkcoinPay = require('./darkcoin-payments');
+const { TOKEN_TICKER } = require('../lib/token-config');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const AGENT_MODEL = process.env.AGENT_MODEL_ID || 'claude-haiku-4-5-20251001';
@@ -721,7 +722,7 @@ class NPCBrain {
           const capByBalance = Math.floor(myBal * 0.05);
           const amount = Math.max(0, Math.min(requested, 100, capByBalance));
           if (amount < 10) {
-            return fallbackToSocial(`tip amount below 10 $DARKCOIN floor (balance cap=${capByBalance}, requested=${requested})`);
+            return fallbackToSocial(`tip amount below 10 ${TOKEN_TICKER} floor (balance cap=${capByBalance}, requested=${requested})`);
           }
           const memo = `tip from ${agentId} to ${targetName}: ${(result.output || '').slice(0, 80)}`;
           const { signature } = await darkcoinPay.transferP2P({
@@ -747,8 +748,8 @@ class NPCBrain {
             [agentId]
           );
           actionResult = { tipped: targetName, amount, tx: signature, rep_gained_by_target: 2, rep_gained_by_self: 1 };
-          streamMessage = `Tipped ${targetName} ${amount} $DARKCOIN. ${(result.output || '').slice(0, 140)}`;
-          console.log(`[NPC-TIP] ${agentId} -> ${targetName}: ${amount} $DARKCOIN · tx=${signature.slice(0, 12)}...`);
+          streamMessage = `Tipped ${targetName} ${amount} ${TOKEN_TICKER}. ${(result.output || '').slice(0, 140)}`;
+          console.log(`[NPC-TIP] ${agentId} -> ${targetName}: ${amount} ${TOKEN_TICKER} · tx=${signature.slice(0, 12)}...`);
         } catch (e) {
           if (e.code !== 'NO_WALLET') console.error(`[NPC-TIP] ${agentId} -> ${targetName} failed:`, e.message);
           return fallbackToSocial(`tip failed: ${e.code || e.message}`);

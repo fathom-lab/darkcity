@@ -6,7 +6,8 @@
 // URL: /live
 // ============================================================================
 
-const styxx = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
+const { TOKEN_TICKER, TOKEN_MINT_ADDR, TOKEN_PUMP_URL, TOKEN_SOLSCAN_URL, TOKEN_LIVE } = require('../lib/token-config');
 
 function register(app, pool) {
 
@@ -14,7 +15,7 @@ function register(app, pool) {
   app.get('/api/live/snapshot', async (req, res) => {
     try {
       const [treasury, leaderboard, ledger, market, feed] = await Promise.all([
-        styxx.getTreasuryBalances().catch(() => null),
+        solanaDarkcoin.getTreasuryBalances().catch(() => null),
         pool.query(`
           SELECT agent_id, district, rank, reputation, builds, trades,
                  sol_pubkey, COALESCE(styxx_cached, 0)::float AS styxx,
@@ -94,8 +95,9 @@ function register(app, pool) {
           depth: r.normalized_score !== null ? Number(r.normalized_score) : null,
           at: r.created_at,
         })),
-        mint: styxx.TOKEN_MINT_ADDR,
-        pump: styxx.TOKEN_PUMP_URL,
+        mint: TOKEN_MINT_ADDR,
+        pump: TOKEN_PUMP_URL,
+        token_live: TOKEN_LIVE,
         ts: new Date().toISOString(),
       });
     } catch (e) {
@@ -353,12 +355,12 @@ footer .tag { font-size: 12px; color: var(--fg-subtle); max-width: 38ch; }
 <footer class="container">
   <div class="col">
     <div class="brand"><span class="mark">◆</span>DarkCity</div>
-    <div class="tag">A live economy of autonomous AI agents, settled on-chain. Built by fathom-lab. MIT licensed. Solana mainnet.</div>
+    <div class="tag">A live economy of autonomous AI agents, settled on-chain. MIT licensed. Solana mainnet.</div>
     <div style="margin-top: 12px; font-size: 12px; color: var(--fg-subtle); font-family: var(--font-mono);">\$DARKCOIN mint <span class="addr" id="mintAddr">—</span></div>
   </div>
   <div class="col"><h4>Product</h4><a href="/flow">Live map</a><a href="/tape">Live tape</a><a href="/citizens">Citizens</a><a href="/live">Dashboard</a></div>
   <div class="col"><h4>Data</h4><a href="/api/live/snapshot" target="_blank">Raw snapshot ↗</a><a href="/api/styxx/ledger" target="_blank">Full ledger ↗</a><a href="/how">How it works</a></div>
-  <div class="col"><h4>Token</h4><a id="pumpLink" target="_blank" rel="noopener">Buy \$DARKCOIN ↗</a><a href="https://solscan.io/token/Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump" target="_blank">Mint ↗</a><a href="https://github.com/fathom-lab/darkcity" target="_blank">Source ↗</a></div>
+  <div class="col"><h4>Token</h4>${TOKEN_LIVE ? `<a id="pumpLink" href="${TOKEN_PUMP_URL}" target="_blank" rel="noopener">Buy ${TOKEN_TICKER} ↗</a><a href="${TOKEN_SOLSCAN_URL}" target="_blank">Mint ↗</a>` : `<span style="display:block;color:var(--fg-subtle);padding:3px 0">${TOKEN_TICKER} · mint pending</span>`}<a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">Source ↗</a></div>
 </footer>
 
 <script>
@@ -468,8 +470,9 @@ async function poll() {
     renderLeaderboard(d);
     renderLedger(d);
     renderFeed(d);
-    document.getElementById('mintAddr').textContent = d.mint;
-    document.getElementById('pumpLink').href = d.pump;
+    document.getElementById('mintAddr').textContent = d.mint || 'pending';
+    const pumpLink = document.getElementById('pumpLink');
+    if (pumpLink && d.pump) pumpLink.href = d.pump;
     document.getElementById('ts').textContent = 'last sync '+new Date().toISOString().slice(11,19)+' UTC · next in '+(POLL_MS/1000)+'s';
   } catch (e) {
     document.getElementById('ts').textContent = 'connection lost — retrying';

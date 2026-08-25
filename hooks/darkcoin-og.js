@@ -2,7 +2,7 @@
 // hooks/darkcoin-og.js
 // Dynamic OG card for link previews (Twitter, Discord, Farcaster, Telegram,
 // Slack). Renders an SVG at /og.svg that pulls live numbers (treasury,
-// agent count, 24h STYXX flow) so every share surfaces real-time activity.
+// agent count, 24h $DARKCOIN flow) so every share surfaces real-time activity.
 //
 // Not a PNG — modern social clients render SVG just fine, and we avoid the
 // 10MB `canvas` / `@resvg/resvg-js` dependency. If a platform refuses SVG
@@ -11,14 +11,14 @@
 
 'use strict';
 
-const styxx = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
 
 function register(app, pool) {
 
   async function liveStats() {
     try {
       const [tBal, counts] = await Promise.all([
-        styxx.getTreasuryBalances().catch(() => ({ styxx: 0 })),
+        solanaDarkcoin.getTreasuryBalances().catch(() => ({ styxx: 0 })),
         pool.query(`
           SELECT
             (SELECT COUNT(*) FROM external_agents WHERE sol_pubkey IS NOT NULL) AS total,

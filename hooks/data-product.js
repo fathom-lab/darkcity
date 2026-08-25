@@ -306,8 +306,8 @@ ${COMMON_STYLES}
 </div></section>
 
 <footer><div class="container">
-  <div>DarkCity Cognitive Atlas \u00b7 operated by <a href="https://x.com/fathom_lab" target="_blank">Fathom Lab</a> \u00b7 data exported under non-exclusive license except where noted</div>
-  <div style="margin-top:6px">\u00a9 2026 \u00b7 <a href="/">darkcity</a> \u00b7 <a href="/flow">live map</a> \u00b7 <a href="https://github.com/fathom-lab/darkcity" target="_blank">source</a></div>
+  <div>DarkCity Cognitive Atlas \u00b7 an independent DarkCity project \u00b7 data exported under non-exclusive license except where noted</div>
+  <div style="margin-top:6px">\u00a9 2026 \u00b7 <a href="/">darkcity</a> \u00b7 <a href="/flow">live map</a> \u00b7 <a href="https://github.com/heyzoos123-blip/darkcity" target="_blank">source</a></div>
 </div></footer>
 
 <script>
