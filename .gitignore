@@ -17,6 +17,9 @@ keys-*.json
 .fable-agent.local
 *.agent.local
 
-# every local-only file (env, tokens, agent creds) — never commit
+# every local-only file (env, tokens, agent creds) ï¿½ never commit
 *.local
 .admin-token.local
+
+classic-archive/
+classic/coin-options/

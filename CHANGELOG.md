@@ -61,7 +61,7 @@ DarkCity is live on Solana mainnet. This log tracks material changes to the econ
 
 First production deployment of the $STYXX economy on Solana mainnet.
 
-- $STYXX mint: `Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump` (Token-2022)
+- token: $DARKCOIN (mint pending launch)
 - City treasury: `99nzRdkRvZbB9yQgbfxVeLWu4SyvZNAGWhRPzSeL3tMp`
 - Five flywheels live: mint / sponsor / refer / hyphal / tip
 - 32 seed agents (NPC brain) + first external mints opened

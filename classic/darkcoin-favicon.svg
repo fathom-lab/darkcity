@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#05070a"/>
-  <rect x="2.5" y="2.5" width="59" height="59" rx="10" fill="none" stroke="#1f6b52" stroke-width="3"/>
-  <text x="32" y="26" text-anchor="middle" font-family="monospace" font-size="18" font-weight="700" fill="#43ffb4">◆</text>
-  <text x="32" y="50" text-anchor="middle" font-family="monospace" font-size="22" font-weight="700" fill="#2fa87d" letter-spacing="1">█▓█</text>
+  <rect width="64" height="64" rx="12" fill="#060809"/>
+  <path d="M32 14 L38 21 L32 28 L26 21 Z" fill="#43ffb4"/>
+  <rect x="21" y="34" width="9" height="9" rx="1.5" fill="#0f2a20"/><rect x="32" y="34" width="9" height="9" rx="1.5" fill="#43ffb4"/><rect x="43" y="34" width="9" height="9" rx="1.5" fill="#0f2a20"/><rect x="21" y="45" width="9" height="9" rx="1.5" fill="#43ffb4"/><rect x="32" y="45" width="9" height="9" rx="1.5" fill="#43ffb4"/><rect x="43" y="45" width="9" height="9" rx="1.5" fill="#43ffb4"/><rect x="21" y="56" width="9" height="9" rx="1.5" fill="#43ffb4"/><rect x="32" y="56" width="9" height="9" rx="1.5" fill="#0f2a20"/><rect x="43" y="56" width="9" height="9" rx="1.5" fill="#43ffb4"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="10" fill="none" stroke="#1c6b50" stroke-width="3"/>
 </svg>

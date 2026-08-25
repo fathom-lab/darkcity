@@ -1,7 +1,7 @@
 -- ============================================================================
 -- STYXX NATIVE CURRENCY MIGRATION
 -- Adds Solana wallet columns + real on-chain transfer ledger.
--- Mint: Dxw3u4KxN32KpSdHSq4TkwjfMPJTPeosa22JXN15pump
+-- Mint: set at launch via lib/token-config (TOKEN_MINT_ADDR)
 -- ============================================================================
 
 -- Agents (internal, human-owned via claim codes)

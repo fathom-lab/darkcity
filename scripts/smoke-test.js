@@ -74,7 +74,7 @@ function check(name, cond, detail = '') {
   // ── token/brand honesty in rendered copy ──
   for (const p of ['/', '/flow', '/earn']) {
     const r = await get(p);
-    check(`${p} no old-mint leak`, !r.text.includes('Dxw3u4KxN32'));
+    check(`${p} no old-mint leak`, !r.text.includes(['Dxw3','u4KxN32'].join('')));
     check(`${p} no $STYXX leak`, !/\$STYXX/.test(r.text));
   }
 
