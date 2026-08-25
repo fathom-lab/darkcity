@@ -16,3 +16,7 @@ keys-*.json
 # local agent credentials (dogfood)
 .fable-agent.local
 *.agent.local
+
+# every local-only file (env, tokens, agent creds) — never commit
+*.local
+.admin-token.local
