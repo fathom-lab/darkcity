@@ -41,6 +41,36 @@ function check(name, cond, detail = '') {
     check(`page ${p} 200`, r.status === 200, 'status=' + r.status);
   }
 
+  // ── one city, one host ──
+  // Every path on the historical hosts 301s to darkcity.wtf; the classic city
+  // (map, Living Agents, dossiers) serves canonically on the main host.
+  // node:http here because fetch() strips a spoofed Host header and follows
+  // redirects — raw requests do neither.
+  const http = require('node:http');
+  const rawGet = (pathname, hostname) => new Promise((resolve, reject) => {
+    const u = new URL(BASE);
+    http.get({ host: u.hostname, port: u.port, path: pathname, headers: hostname ? { Host: hostname } : {} },
+      (r) => { r.resume(); resolve({ status: r.statusCode, location: r.headers.location || '' }); }).on('error', reject);
+  });
+  for (const [p, host] of [['/', 'app.darkcity.wtf'], ['/map', 'app.darkcity.wtf'], ['/citizens', 'app.darkcity.wtf'], ['/', 'www.darkcity.wtf']]) {
+    const r = await rawGet(p, host);
+    check(`${host}${p} 301 -> canonical`, r.status === 301 && r.location === 'https://darkcity.wtf' + p, `status=${r.status} loc=${r.location}`);
+  }
+  const living = await get('/citizens');
+  check('/citizens is Living Agents', living.status === 200 && /LIVING AGENTS/i.test(living.text), 'status=' + living.status);
+  const cdoss = await get('/citizen/MORRIGAN');
+  check('/citizen/:name classic dossier', cdoss.status === 200 && /DOSSIER/i.test(cdoss.text), 'status=' + cdoss.status);
+  const adash = await get('/agent/MORRIGAN');
+  check('/agent/:name classic dashboard', adash.status === 200 && /AGENT DASHBOARD/i.test(adash.text), 'status=' + adash.status);
+  for (const asset of ['/lib/portraitEngine.js', '/public/mini-organism.js', '/public/profile-organism.js']) {
+    const r = await get(asset);
+    check(`asset ${asset} 200`, r.status === 200, 'status=' + r.status);
+  }
+  for (const [from, to] of [['/join', '/deploy'], ['/contracts', '/earn'], ['/scanner', '/map']]) {
+    const r = await rawGet(from, null);
+    check(`${from} redirects -> ${to}`, r.status === 302 && r.location === to, `status=${r.status} loc=${r.location}`);
+  }
+
   // ── pre-mint 500 regression class ──
   for (const p of ['/api/dispatch', '/api/treasury/stats']) {
     const r = await get(p);

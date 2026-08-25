@@ -593,33 +593,38 @@ app.use(cookieParser());
 // Trust the Railway/Cloudflare proxy so express-rate-limit sees real client IPs.
 app.set('trust proxy', 1);
 
-// ─── The classic city — app.darkcity.wtf ────────────────────────────────────
-// The March-era site ("DARKCITY — Mycelium Network", Living Agents, the
-// contract board) served at its historical home. Static pages live in
-// classic/; their /api/* calls fall through this middleware to the live
-// backend, bridged by the classic-compat routes in hooks/classic-compat.js.
-// Also reachable from the main site at /classic for side-by-side use.
+// ─── One city, one host ──────────────────────────────────────────────────────
+// darkcity.wtf is the canonical home of EVERYTHING: the flagship pages and the
+// classic city (the mycelium map, Living Agents, the dossiers) at the same
+// paths. The historical hosts — app.darkcity.wtf and www — permanently
+// redirect every path here, so any link ever shared lands on the same site.
 const CLASSIC_DIR = require('path').join(__dirname, 'classic');
 const classicStatic = express.static(CLASSIC_DIR, { extensions: ['html'] });
 app.use((req, res, next) => {
-  if (req.hostname !== 'app.darkcity.wtf') return next();
-  // app.darkcity.wtf IS the live mycelium map. Root and any retired classic
-  // path (scanner, token, landing, the old map experiments — all archived)
-  // land on the map, so an old link gets the real thing, never slop or a 404.
-  if (req.path === '/') return res.redirect(302, '/map');
-  if (/^\/(scanner|token|landing|join|leaderboard|contracts|map-[\w-]+|agent-pov|brand-preview|citizen-showcase|darkcity-[\w-]+)(\.html)?$/.test(req.path)) {
-    return res.redirect(302, '/map');
+  if (req.hostname === 'app.darkcity.wtf' || req.hostname === 'www.darkcity.wtf') {
+    const code = (req.method === 'GET' || req.method === 'HEAD') ? 301 : 308;
+    return res.redirect(code, 'https://darkcity.wtf' + req.originalUrl);
   }
-  return classicStatic(req, res, next);
+  return next();
 });
 app.use('/classic', classicStatic);
-// ONE map, the good one, everywhere. The beautiful mycelium map (classic/
-// map.html) is THE map of DarkCity — served at /map on every host, with the
-// old animated /flow redirecting to it so there is never a second, lesser map.
-// Its data (rest/v1 + depth) is bridged host-agnostically, so it renders the
-// live city on darkcity.wtf and app.darkcity.wtf alike.
-app.get('/map', (req, res) => res.sendFile(require('path').join(CLASSIC_DIR, 'map.html')));
+// The classic city's canonical paths. Registered before the flagship routes so
+// these pages — the ones the city is known by — win the paths. Their /api/*
+// fetches send x-classic:1, so the classic-compat bridge answers with the
+// shapes they expect on any host.
+const classicPage = (f) => (req, res) => res.sendFile(require('path').join(CLASSIC_DIR, f));
+app.get('/map', classicPage('map.html'));            // the mycelium map IS the map
 app.get('/flow', (req, res) => res.redirect(302, '/map'));
+app.get('/citizens', classicPage('citizens.html'));  // Living Agents
+app.get('/citizen/:name', classicPage('citizen.html'));
+app.get('/agent/:name', classicPage('agent.html'));
+// Root-relative assets the classic pages load.
+app.use('/lib', express.static(require('path').join(CLASSIC_DIR, 'lib')));
+app.use('/public', express.static(require('path').join(CLASSIC_DIR, 'public')));
+// Old classic links land somewhere real, never a 404.
+app.get('/join', (req, res) => res.redirect(302, '/deploy'));
+app.get('/contracts', (req, res) => res.redirect(302, '/earn'));
+app.get(/^\/(scanner|token|landing|leaderboard|map-[\w-]+|agent-pov|brand-preview|citizen-showcase|darkcity-[\w-]+)(\.html)?$/, (req, res) => res.redirect(302, '/map'));
 // Data bridge for the classic pages — registered BEFORE the main routes so
 // the classic shapes win on the classic host (and only there).
 require('./hooks/classic-compat').register(app, pool);

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -619,7 +619,7 @@ function initHeroPortrait(canvas, normalized) {
 // Main data load
 async function loadDossier() {
   try {
-    const res = await fetch('/api/citizens');
+    const res = await fetch('/api/citizens', { headers: { 'x-classic': '1' } });
     if (!res.ok) throw new Error('API returned ' + res.status);
     const data = await res.json();
     const citizens = data.citizens || data;

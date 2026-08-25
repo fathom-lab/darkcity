@@ -480,8 +480,8 @@ async function init() {
 
   try {
     const [citizenRes, streamRes] = await Promise.all([
-      fetch(`/api/citizens?name=${encodeURIComponent(name)}`),
-      fetch(`/api/stream?citizen=${encodeURIComponent(name)}&limit=30`)
+      fetch(`/api/citizens?name=${encodeURIComponent(name)}`, { headers: { 'x-classic': '1' } }),
+      fetch(`/api/stream?citizen=${encodeURIComponent(name)}&limit=30`, { headers: { 'x-classic': '1' } })
     ]);
 
     if (!citizenRes.ok) throw new Error('Citizen not found');

@@ -1081,7 +1081,7 @@
             try {
                 const [_, citizenRes] = await Promise.all([
                     loadDepthData(),
-                    fetch('/api/citizens')
+                    fetch('/api/citizens', { headers: { 'x-classic': '1' } })
                 ]);
                 const json = await citizenRes.json();
                 allCitizens = json.citizens || [];
