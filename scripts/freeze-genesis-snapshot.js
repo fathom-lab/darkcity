@@ -36,7 +36,7 @@ const HOLDER_THRESHOLD = 1000;
 const HOLDER_EXPIRY_DAYS = 60;
 
 async function main() {
-  const dbUrl = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
+  const dbUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
   if (!dbUrl) throw new Error('DATABASE_URL required');
   const pool = new Pool({
     connectionString: dbUrl,

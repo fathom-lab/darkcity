@@ -27,20 +27,8 @@ CREATE TABLE IF NOT EXISTS genesis_snapshot (
 CREATE INDEX IF NOT EXISTS idx_genesis_wallet ON genesis_snapshot (wallet_pubkey);
 CREATE INDEX IF NOT EXISTS idx_genesis_category ON genesis_snapshot (category);
 
--- Helper view: per-wallet total stacked multiplier (for fast lookup at payout time)
-CREATE OR REPLACE VIEW v_genesis_multiplier AS
-SELECT
-  wallet_pubkey,
-  COALESCE(PRODUCT(CASE
-    WHEN expires_at IS NULL OR expires_at > NOW() THEN multiplier
-    ELSE 1.0
-  END), 1.0) AS effective_multiplier,
-  ARRAY_AGG(category ORDER BY category) AS categories
-FROM genesis_snapshot
-GROUP BY wallet_pubkey;
-
--- Postgres doesn't have PRODUCT() natively; substitute with EXP(SUM(LN(x)))
-DROP VIEW IF EXISTS v_genesis_multiplier;
+-- Helper view: per-wallet stacked multiplier. Postgres has no PRODUCT() so
+-- we use EXP(SUM(LN(x))) as the mathematical equivalent.
 CREATE OR REPLACE VIEW v_genesis_multiplier AS
 SELECT
   wallet_pubkey,
