@@ -3,15 +3,15 @@
 // The Flywheel Monster — V1
 //
 // Endpoint handlers for:
-//   ① /mint       — pay $50 STYXX, get an agent in the city (Flywheel ①)
-//   ② /sponsor    — stake STYXX on an agent, earn 85% of their net (Flywheel ②)
+//   ① /mint       — pay $50 of $DARKCOIN, get an agent in the city (Flywheel ①)
+//   ② /sponsor    — stake $DARKCOIN on an agent, earn 85% of their net (Flywheel ②)
 //   ③ /hyphal     — opt-in mycelium link between two agents (Flywheel ③)
 //   ④ portfolio   — owner-level dashboard (see-your-money-grow UX)
 //
-// Everything happens IN the city: STYXX goes in, STYXX comes out, every flow
+// Everything happens IN the city: $DARKCOIN goes in, $DARKCOIN comes out, every flow
 // is logged to styxx_transfers (on-chain) + agent_earnings (accounting).
 //
-// Philosophy: low friction. User sends STYXX to the city's treasury wallet
+// Philosophy: low friction. User sends $DARKCOIN to the city's treasury wallet
 // with a memo → backend verifies the on-chain tx → creates the record → user
 // sees their position in /portfolio immediately.
 // ============================================================================
@@ -20,7 +20,7 @@
 
 const crypto = require('crypto');
 const bs58 = require('bs58');
-const styxx  = require('../lib/solana-darkcoin');
+const solanaDarkcoin = require('../lib/solana-darkcoin');
 const payments = require('./darkcoin-payments');
 
 // ─── Ed25519 ownership-signature verification ──────────────────────────────
@@ -236,7 +236,7 @@ async function verifyDarkcoinPayment({ tx_signature, expected_from_pubkey, expec
   if (tx.meta?.err) return { ok: false, reason: 'tx_failed_on_chain', err: tx.meta.err };
 
   // Step 2: validate transfer via token-balance deltas (most reliable for Token-2022)
-  // The post/pre balances tell us EXACTLY how STYXX moved, independent of
+  // The post/pre balances tell us EXACTLY how $DARKCOIN moved, independent of
   // whether instructions were outer or inner.
   const pre  = tx.meta?.preTokenBalances  || [];
   const post = tx.meta?.postTokenBalances || [];
@@ -320,6 +320,13 @@ function checkRate(key, limit, windowMs) {
 
 async function mintQuote(req, res) {
   try {
+    // Honest pre-launch refusal — the chain layer is dark until the mint
+    // exists, so a quote would touch a null treasury. Refuse clearly instead
+    // of 500ing or, worse, handing out a payable quote against no token.
+    if (!solanaDarkcoin.isChainReady()) {
+      return res.status(503).json({ status: 'pending_launch',
+        error: 'Minting opens when the $DARKCOIN token launches. No mint address exists yet.' });
+    }
     const { owner_pubkey, agent_name, framework, referred_by_pubkey, one_liner } = req.body || {};
     if (!owner_pubkey || !agent_name) {
       return res.status(400).json({ error: 'owner_pubkey and agent_name required' });
@@ -2572,7 +2579,7 @@ function installRoutes(app) {
 
   // Admin: list open support requests
   app.get('/api/admin/support', async (req, res) => {
-    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+    if ((!process.env.ADMIN_TOKEN || req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN)) return res.status(401).json({ error: 'unauthorized' });
     try {
       const status = req.query.status || 'open';
       const { rows } = await pool.query(`
@@ -2587,7 +2594,7 @@ function installRoutes(app) {
 
   // Admin: mark resolved with optional note
   app.post('/api/admin/support/:id/resolve', async (req, res) => {
-    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: 'unauthorized' });
+    if ((!process.env.ADMIN_TOKEN || req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN)) return res.status(401).json({ error: 'unauthorized' });
     try {
       const { note } = req.body || {};
       await pool.query(
@@ -2690,7 +2697,17 @@ function installRoutes(app) {
   // exactly how $DARKCOIN moves through the city. Powers the /treasury page.
   app.get('/api/treasury/stats', async (req, res) => {
     try {
-      const treasuryBal = await solanaDarkcoin.getTreasuryBalances();
+      // Pre-mint there is no on-chain treasury; report nulls for the chain
+      // figures rather than 500ing. DB-side aggregates below still compute.
+      const chainReady = solanaDarkcoin.isChainReady();
+      const treasuryBal = chainReady
+        ? await solanaDarkcoin.getTreasuryBalances()
+        : { pubkey: null, sol: 0, styxx: 0 };
+      // Sentinel pubkey pre-mint so the treasury-scoped inflow sum reads zero
+      // (matches no ledger row) instead of dereferencing a null keypair.
+      const treasuryPk = chainReady
+        ? solanaDarkcoin.getTreasury().publicKey.toBase58()
+        : '__no_treasury_pre_mint__';
       const [
         totalBurned, totalMinted, agentCount,
         flow24hIn, flow24hOut,
@@ -2703,7 +2720,7 @@ function installRoutes(app) {
         // Inflows to treasury in last 24h (mint fees, sponsor stakes, tip receipts)
         pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers
                     WHERE to_pubkey = $1 AND confirmed_at > NOW() - INTERVAL '24 hours'`,
-                   [solanaDarkcoin.getTreasury().publicKey.toBase58()]),
+                   [treasuryPk]),
         // Outflows from treasury in last 24h (grants, pulse payouts, referrals)
         pool.query(`SELECT COALESCE(SUM(amount),0)::float AS v FROM styxx_transfers
                     WHERE from_agent_id = 'TREASURY' AND to_agent_id != 'BURN'

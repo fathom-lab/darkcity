@@ -839,6 +839,7 @@ async function getRoundHistory(pool, limit = 30) {
 
 module.exports = {
   start,
+  sentenceDepth,   // text-based depth heuristic, reused by the /api/depth/score DaaS endpoint
   placeBet,
   cashOut,
   getCurrentRound,

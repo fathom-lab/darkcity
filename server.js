@@ -568,24 +568,22 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// The allowlist ALWAYS applies. Previously non-prod used `origin: true`, which
+// with `credentials: true` reflects any caller's Origin back with
+// Allow-Credentials — a real leak the QA fleet flagged. localhost is added in
+// non-prod for local development; the darkcity.wtf family is always allowed.
+const CORS_ALLOW = [
+  "https://darkcity.wtf", "https://www.darkcity.wtf",
+  "https://app.darkcity.wtf", "https://api.darkcity.wtf",
+];
 app.use(cors({
-  origin: isProd
-    ? function (origin, callback) {
-        const allowed = [
-          "https://darkcity.wtf",
-          "https://www.darkcity.wtf",
-          "https://app.darkcity.wtf",
-          "https://api.darkcity.wtf",
-          "https://darkcity-frontend.vercel.app",
-          "https://darkcity-wtf.vercel.app",
-        ];
-        if (!origin || allowed.includes(origin) || (origin && (origin.endsWith(".vercel.app") || origin.endsWith(".darkcity.wtf") || origin.endsWith(".netlify.app") || origin.endsWith(".railway.app") || origin.endsWith(".up.railway.app")))) {
-          callback(null, true);
-        } else {
-          callback(new Error("CORS: origin not allowed · " + origin));
-        }
-      }
-    : true,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);   // same-origin / curl / server-to-server
+    const ok = CORS_ALLOW.includes(origin)
+      || origin.endsWith(".darkcity.wtf")
+      || (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    return ok ? callback(null, true) : callback(new Error("CORS: origin not allowed · " + origin));
+  },
   credentials: true,
 }));
 
@@ -1561,8 +1559,10 @@ app.post('/api/gateway/register', async (req, res) => {
     });
   }
   const { agent_name, owner_name, owner_email, bot_framework, description } = req.body;
-  if (!agent_name) {
-    return res.status(400).json({ error: 'agent_name is required' });
+  // Type-check before use: a numeric or object agent_name used to reach
+  // .toUpperCase() and 500 (found by the QA fleet's fuzzing).
+  if (!agent_name || typeof agent_name !== 'string') {
+    return res.status(400).json({ error: 'agent_name is required (string, 2-24 chars)' });
   }
   const cleanName = agent_name.toUpperCase().replace(/[^A-Z0-9_-]/g, '').substring(0, 24);
   if (cleanName.length < 2) {
@@ -2163,18 +2163,33 @@ app.get('/api/public/citizen/:name', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 // depthRoutes already registered at line 1117 — duplicate removed.
 
-// Proxy /api/depth/score â†’ depth scorer on Alienware (via Cloudflare tunnel)
-app.post('/api/depth/score', async (req, res) => {
-  if (!DEPTH_SCORER_URL) return res.status(503).json({ error: 'Depth scorer offline' });
-  try {
-    const upstream = await fetch(`${DEPTH_SCORER_URL}/score`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body), signal: AbortSignal.timeout(60000)
-    });
-    const data = await upstream.json();
-    res.status(upstream.status).json(data);
-  } catch(e) { res.status(503).json({ error: 'Depth scorer unreachable: ' + e.message }); }
-});
+// /api/depth/score — the public DaaS endpoint. Prefers the GPU scorer when a
+// DEPTH_SCORER_URL tunnel is configured, and otherwise scores locally with the
+// same text heuristic the arena uses, so the endpoint is never dead (QA fleet
+// found it 503ing while the internal pipeline scored fine). GET ?text= and
+// POST {text} both work.
+const { sentenceDepth } = require('./hooks/arena-crash');
+function localTierOf(s) {
+  return s >= 0.8 ? 'exceptional' : s >= 0.6 ? 'deep' : s >= 0.3 ? 'moderate' : 'shallow';
+}
+async function depthScoreHandler(req, res) {
+  const text = String((req.body && req.body.text) || req.query.text || '').slice(0, 4000);
+  if (!text.trim()) return res.status(400).json({ error: 'text is required (?text= or {"text":...})' });
+  if (DEPTH_SCORER_URL) {
+    try {
+      const upstream = await fetch(`${DEPTH_SCORER_URL}/score`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }), signal: AbortSignal.timeout(60000),
+      });
+      if (upstream.ok) return res.status(200).json(await upstream.json());
+    } catch (e) { /* fall through to local */ }
+  }
+  const score = Math.max(0, Math.min(1, Number(sentenceDepth(text)) || 0));
+  res.json({ score, normalized_score: score, depth_score: score, tier: localTierOf(score),
+    scorer: 'local-heuristic', note: DEPTH_SCORER_URL ? 'gpu scorer unreachable — local fallback' : 'local heuristic (no gpu tunnel configured)' });
+}
+app.post('/api/depth/score', depthScoreHandler);
+app.get('/api/depth/score', depthScoreHandler);
 
 // ═══════════════════════════════════════════════════════════════
 // DATA PIPELINE — DaaS + Export

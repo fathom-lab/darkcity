@@ -1587,7 +1587,7 @@ function installArenaUI(app, pool) {
   // flip to shadow mode (arena_shadow_mode=true), or disable chat payment
   // enforcement (chat_enforce_payment=false) without SSHing into the db.
   app.post('/api/admin/flag', async (req, res) => {
-    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
+    if ((!process.env.ADMIN_TOKEN || req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN)) {
       return res.status(401).json({ error: 'unauthorized' });
     }
     const { key, value } = req.body || {};
@@ -1617,7 +1617,7 @@ function installArenaUI(app, pool) {
     }
   });
   app.get('/api/admin/status', async (req, res) => {
-    if (req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) {
+    if ((!process.env.ADMIN_TOKEN || req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN)) {
       return res.status(401).json({ error: 'unauthorized' });
     }
     try {

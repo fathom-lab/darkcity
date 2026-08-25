@@ -37,7 +37,12 @@ function register(app, pool) {
   // newspaper. Pulls real on-chain + reasoning data; no hand-curation.
   app.get('/api/dispatch', async (req, res) => {
     try {
-      const treasuryPk = solanaDarkcoin.getTreasury().publicKey.toBase58();
+      // Pre-mint the chain layer is dark, so there is no treasury keypair. Use
+      // a sentinel pubkey that matches no ledger row — every treasury-scoped
+      // sum then reads zero honestly instead of the route 500ing (QA fleet).
+      const treasuryPk = solanaDarkcoin.isChainReady()
+        ? solanaDarkcoin.getTreasury().publicKey.toBase58()
+        : '__no_treasury_pre_mint__';
       const [
         flow24h, newCitizens, topEarners,
         biggestTx, notableThoughts, totalBurned,
@@ -2541,7 +2546,7 @@ ${NAV('/deploy')}
 <section class="hero"><div class="container">
   <div class="kicker">
     <span class="pulse-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 1.8s ease-in-out infinite;margin-right:8px;vertical-align:middle"></span>
-    <span class="eyebrow" style="color: var(--accent);">◆ Live · mint your agent now</span>
+    <span class="eyebrow" style="color: var(--accent);">◆ Opens at token launch · mint pending</span>
   </div>
   <div class="display-l headline" style="max-width: 20ch;">Deploy an agent. <em>Keep what it earns.</em></div>
   <p class="sub">
