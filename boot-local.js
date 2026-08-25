@@ -40,7 +40,7 @@ if (!process.env.JWT_SECRET) {
 process.env.PORT = process.env.PORT || '3777';
 // Local Postgres has no TLS; NODE_ENV=production would force ssl and fail.
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-process.env.DARKCITY_REGISTRATION_OPEN = process.env.DARKCITY_REGISTRATION_OPEN || 'true';
+process.env.DARKCITY_REGISTRATION_OPEN = process.env.DARKCITY_REGISTRATION_OPEN || '1';  // the gate compares === '1'
 
 console.log('[boot] port=' + process.env.PORT +
   ' db=' + String(process.env.DATABASE_URL || '').replace(/:[^:@]+@/, ':***@') +

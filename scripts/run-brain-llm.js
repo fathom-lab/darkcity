@@ -7,7 +7,8 @@ const EXE = process.env.LLAMA_EXE || 'C:\\Users\\heyzo\\llama-glimmer\\llama-ser
 const MODEL = process.env.LLAMA_MODEL || 'C:\\Users\\heyzo\\models\\darkflobi-fast\\Qwen2.5-7B-Instruct-Q4_K_M.gguf';
 const PORT = process.env.LLAMA_PORT || '8600';
 
-const child = spawn(EXE, ['-m', MODEL, '--port', PORT, '--host', '127.0.0.1', '-c', '8192'],
+const CTX = process.env.LLAMA_CTX || '16384';   // NPC city-context prompts overflow 8k
+const child = spawn(EXE, ['-m', MODEL, '--port', PORT, '--host', '127.0.0.1', '-c', CTX],
   { stdio: 'inherit' });
 child.on('exit', (code, signal) => {
   console.error(`[brain-llm] llama-server exited code=${code} signal=${signal}`);

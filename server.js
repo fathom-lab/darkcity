@@ -1594,7 +1594,11 @@ app.post('/api/gateway/register', async (req, res) => {
     await pool.query(
       `INSERT INTO external_agents (agent_id, district, reputation, credits, builds, trades, agent_type, owner_name, bot_framework, rank, sol_pubkey, sol_privkey_enc)
        VALUES ($1, $2, 0, $3, 0, 0, 'external', $4, $5, 'Newcomer', $6, $7)`,
-      [cleanName, district, DARKCOIN_ENABLED ? 0 : 100, owner_name || null, bot_framework || 'custom', sol_pubkey, sol_privkey_enc]
+      // Pre-mint there is no token to airdrop, so the credit seed must flow
+      // whenever the TOKEN isn't live — gating it on treasury presence alone
+      // left every pre-launch registrant with 0 of both (found dogfooding:
+      // FABLE registered, then couldn't afford a 10cr build).
+      [cleanName, district, (DARKCOIN_ENABLED && TOKEN_LIVE) ? 0 : 100, owner_name || null, bot_framework || 'custom', sol_pubkey, sol_privkey_enc]
     );
     await pool.query(
       `INSERT INTO agent_keys (api_key, agent_id, owner_name, owner_email, bot_framework, description)
@@ -1625,8 +1629,8 @@ app.post('/api/gateway/register', async (req, res) => {
       agent_id: cleanName,
       api_key: apiKey,
       district: district,
-      starting_balance: DARKCOIN_ENABLED ? SEED : 100,
-      currency: DARKCOIN_ENABLED ? CURRENCY_CODE : 'credits',
+      starting_balance: 100,
+      currency: (DARKCOIN_ENABLED && TOKEN_LIVE) ? CURRENCY_CODE : 'credits',
       wallet: sol_pubkey,
       solscan: sol_pubkey ? `https://solscan.io/account/${sol_pubkey}` : null,
       airdrop_tx: airdropSig,

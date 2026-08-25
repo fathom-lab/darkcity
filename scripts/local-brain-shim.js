@@ -40,14 +40,22 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     const body = JSON.parse(await readBody(req) || '{}');
+    // Defensive truncation: the local model's context is finite and a caller
+    // prompt that overflows it should degrade (middle elided) rather than 500.
+    const CAP = parseInt(process.env.SHIM_CHAR_CAP || '36000', 10);
+    const clip = (s) => {
+      s = String(s);
+      if (s.length <= CAP) return s;
+      return s.slice(0, CAP * 0.6) + '\n\n[... context elided to fit the local model ...]\n\n' + s.slice(-CAP * 0.35);
+    };
     const messages = [];
-    if (body.system) messages.push({ role: 'system', content: String(body.system) });
+    if (body.system) messages.push({ role: 'system', content: clip(body.system) });
     for (const m of body.messages || []) {
       messages.push({
         role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: typeof m.content === 'string'
+        content: clip(typeof m.content === 'string'
           ? m.content
-          : (m.content || []).map((b) => b.text || '').join('\n'),
+          : (m.content || []).map((b) => b.text || '').join('\n')),
       });
     }
 

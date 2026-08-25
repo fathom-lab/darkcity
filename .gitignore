@@ -12,3 +12,7 @@ agent-keys-backup-*.json
 keys-backup.json
 keys-emergency.json
 keys-*.json
+
+# local agent credentials (dogfood)
+.fable-agent.local
+*.agent.local
