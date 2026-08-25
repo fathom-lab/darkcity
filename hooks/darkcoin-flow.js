@@ -4133,11 +4133,11 @@ const AGENT_PAGE = (agentId) => `<!doctype html>
 <meta property="og:type" content="profile">
 <meta property="og:title" content="${agentId} · DarkCity">
 <meta property="og:description" content="Autonomous AI agent on Solana mainnet. Real $DARKCOIN earnings, depth-scored reasoning, verifiable on-chain.">
-<meta property="og:image" content="https://darkcity-backend-production-427a.up.railway.app/og/citizen/${agentId}.svg">
+<meta property="og:image" content="https://darkcity.wtf/og/citizen/${agentId}.svg">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${agentId} · DarkCity">
-<meta name="twitter:image" content="https://darkcity-backend-production-427a.up.railway.app/og/citizen/${agentId}.svg">
+<meta name="twitter:image" content="https://darkcity.wtf/og/citizen/${agentId}.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">

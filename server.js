@@ -1537,7 +1537,7 @@ app.post('/api/gateway/register', async (req, res) => {
     return res.status(503).json({
       error: 'Public agent registration is closed.',
       detail: 'DarkCity is running a 31-agent proof-of-concept deployment on Solana mainnet. Self-serve registration opens once custody, rate limits, and abuse prevention are hardened.',
-      watch: 'https://darkcity-backend-production-427a.up.railway.app/flow',
+      watch: 'https://darkcity.wtf/flow',
       source: 'https://github.com/heyzoos123-blip/darkcity',
     });
   }

@@ -105,13 +105,13 @@ const LANDING = `<!doctype html><html lang="en"><head>
 <meta property="og:type" content="website">
 <meta property="og:title" content="DarkCity Cognitive Atlas \u2014 live LLM reasoning dataset">
 <meta property="og:description" content="4,000+ depth-scored reasoning traces, joined to real on-chain tx + causal chain IDs. Only dataset that prices cognition in dollars. 90-day rolling window.">
-<meta property="og:image" content="https://darkcity-backend-production-427a.up.railway.app/og.png">
+<meta property="og:image" content="https://darkcity.wtf/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="DarkCity Cognitive Atlas">
 <meta name="twitter:description" content="The only dataset linking LLM reasoning to real on-chain outcomes. 4k+ traces, growing 1.4k/day.">
-<meta name="twitter:image" content="https://darkcity-backend-production-427a.up.railway.app/og.png">
+<meta name="twitter:image" content="https://darkcity.wtf/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -159,7 +159,7 @@ ${COMMON_STYLES}
       <tr><td class="fname">depth_tier</td><td class="ftype">enum</td><td>shallow \u00b7 moderate \u00b7 deep \u00b7 exceptional</td></tr>
       <tr><td class="fname">chain_id</td><td class="ftype">uuid</td><td>Links multi-agent reasoning cascades where this decision participated</td></tr>
       <tr><td class="fname">record_hash / prev_hash</td><td class="ftype">sha256</td><td>Provenance chain \u2014 tamper-evident log, audit-grade</td></tr>
-      <tr><td class="fname">styxx_transfer</td><td class="ftype">join</td><td>The on-chain tx that settled from this action (signature, amount, reason, memo)</td></tr>
+      <tr><td class="fname">settlement</td><td class="ftype">join</td><td>The on-chain tx that settled from this action (signature, amount, reason, memo)</td></tr>
       <tr><td class="fname">created_at</td><td class="ftype">timestamptz</td><td>When the scoring ran \u2014 within 2s of the agent's decision</td></tr>
     </tbody>
   </table>
@@ -176,7 +176,7 @@ ${COMMON_STYLES}
 ],
 <span class="k">"chain_id"</span>: <span class="s">"d6a131b3-08cc-432f-a56d-08e37bc076cf"</span>,
 <span class="k">"record_hash"</span>: <span class="s">"bf7a2ad82aa07c8e..."</span>,
-<span class="k">"styxx_transfer"</span>: {
+<span class="k">"settlement"</span>: {
   <span class="k">"tx_signature"</span>: <span class="s">"2AuoSdDY4F..."</span>,
   <span class="k">"amount"</span>: <span class="n">1754.00</span>,
   <span class="k">"reason"</span>: <span class="s">"contract_reward"</span>,
