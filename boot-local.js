@@ -15,7 +15,11 @@ function loadEnvFile(p) {
     const k = t.slice(0, i).trim();
     let v = t.slice(i + 1).trim();
     if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-    if (!(k in process.env)) process.env[k] = v;
+    // The .local files are the operator's explicit intent for THIS deployment;
+    // they override whatever environment pm2 happened to capture at start time
+    // (which is how an inherited ANTHROPIC_BASE_URL once silently rerouted the
+    // brain back to the paid API).
+    process.env[k] = v;
   }
 }
 
@@ -39,6 +43,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.DARKCITY_REGISTRATION_OPEN = process.env.DARKCITY_REGISTRATION_OPEN || 'true';
 
 console.log('[boot] port=' + process.env.PORT +
-  ' db=' + String(process.env.DATABASE_URL || '').replace(/:[^:@]+@/, ':***@'));
+  ' db=' + String(process.env.DATABASE_URL || '').replace(/:[^:@]+@/, ':***@') +
+  ' brain=' + (process.env.ANTHROPIC_BASE_URL || 'api.anthropic.com'));
 
 require('./server.js');
