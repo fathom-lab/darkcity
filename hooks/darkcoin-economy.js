@@ -1681,6 +1681,10 @@ async function runMigration(pgPool) {
   // Apply all migrations in order. Each file is idempotent (IF NOT EXISTS /
   // ON CONFLICT DO NOTHING), so repeated applies are safe.
   const files = [
+    // First: the tables that used to exist only because someone pasted them
+    // into a database console by hand. Without it a fresh DB has no contracts
+    // table and no depth_evaluations, and the city throws on every tick.
+    'bootstrap-v1.sql',
     'darkcoin-economy-v1.sql',
     'holder-pool-v1.sql',
     'known-wallets-v1.sql',
@@ -1688,6 +1692,9 @@ async function runMigration(pgPool) {
     'chat-v1.sql',
     'genesis-snapshot-v1.sql',
     'arena-v1.sql',
+    'rank-progression-v1.sql',
+    'buyback-burn-kind-v1.sql',
+    'add-styxx-wallets.sql',
   ];
   for (const name of files) {
     const sqlPath = path.join(__dirname, '..', 'migrations', name);

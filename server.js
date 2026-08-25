@@ -3282,8 +3282,15 @@ initDB().then(async () => {
       require('./hooks/dc-auto-sign').installRoutes(app);
       darkcoinDashboard.register(app);
       darkcoinOg.register(app, pool);
-      const bals = await darkcoinChain.getTreasuryBalances();
-      console.log(`[DARKCOIN] treasury ${bals.pubkey}  SOL=${bals.sol.toFixed(4)}  $DARKCOIN=${bals.styxx.toFixed(2)}`);
+      // Startup banner only. Pre-mint the chain layer is deliberately off, so
+      // reading the treasury throws — that is not an init failure and must not
+      // be logged as one.
+      if (darkcoinChain.isChainReady()) {
+        const bals = await darkcoinChain.getTreasuryBalances();
+        console.log(`[DARKCOIN] treasury ${bals.pubkey}  SOL=${bals.sol.toFixed(4)}  $DARKCOIN=${bals.styxx.toFixed(2)}`);
+      } else {
+        console.log('[DARKCOIN] economy up in DB-only mode — mint pending, no on-chain transfers');
+      }
       console.log(`[DARKCOIN] live trial: /darkcoin-trial?agent=DARKFLOBI`);
     } catch (e) {
       console.error('[DARKCOIN] Init failed (running without native currency):', e.message);
