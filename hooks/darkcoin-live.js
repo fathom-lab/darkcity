@@ -16,13 +16,18 @@ function register(app, pool) {
     try {
       const [treasury, leaderboard, ledger, market, feed] = await Promise.all([
         solanaDarkcoin.getTreasuryBalances().catch(() => null),
+        // Pre-mint there are no wallets, and gating the roster on one made the
+        // whole city read as empty — 30 living agents rendered as zeros. The
+        // city's life (rank, reputation, builds, trades) is real before the
+        // token is, so it is shown; balances stay null until TOKEN_LIVE.
         pool.query(`
           SELECT agent_id, district, rank, reputation, builds, trades,
                  sol_pubkey, COALESCE(styxx_cached, 0)::float AS styxx,
                  styxx_cached_at, last_active
           FROM external_agents
-          WHERE sol_pubkey IS NOT NULL
-          ORDER BY COALESCE(styxx_cached, 0) DESC, reputation DESC
+          ${TOKEN_LIVE ? 'WHERE sol_pubkey IS NOT NULL' : ''}
+          ORDER BY ${TOKEN_LIVE ? 'COALESCE(styxx_cached, 0) DESC,' : ''}
+                   reputation DESC NULLS LAST, builds DESC NULLS LAST
           LIMIT 50
         `),
         pool.query(`
@@ -70,7 +75,9 @@ function register(app, pool) {
           trades: r.trades,
           styxx: Number(r.styxx || 0),
           wallet: r.sol_pubkey,
-          solscan: `https://solscan.io/account/${r.sol_pubkey}`,
+          // null, not a link to /account/null — a wallet-less agent has no
+          // explorer page, and a dead link is worse than an absent one.
+          solscan: r.sol_pubkey ? `https://solscan.io/account/${r.sol_pubkey}` : null,
         })),
         ledger: ledger.rows.map(r => ({
           tx: r.tx_signature,

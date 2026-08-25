@@ -134,7 +134,7 @@ function register(app, pool) {
           reputation: r.reputation || 0, wallet: r.sol_pubkey,
           last_active: r.last_active,
           online: r.last_active && (Date.now() - new Date(r.last_active).getTime()) < 15 * 60 * 1000,
-          solscan: `https://solscan.io/account/${r.sol_pubkey}`,
+          solscan: r.sol_pubkey ? `https://solscan.io/account/${r.sol_pubkey}` : null,
           mean_depth: r.mean_depth !== null ? Number(r.mean_depth) : null,
           depth_tier: r.dominant_tier || null,
           evals_24h: Number(r.evals_24h || 0),

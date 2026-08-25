@@ -55,7 +55,7 @@ function register(app, pool) {
           builds: a.builds,
           trades: a.trades,
           pubkey: a.sol_pubkey,
-          solscan: `https://solscan.io/account/${a.sol_pubkey}`,
+          solscan: a.sol_pubkey ? `https://solscan.io/account/${a.sol_pubkey}` : null,
         },
         trial: {
           starting_balance: startingBalance,

@@ -2397,7 +2397,7 @@ const darkcoinLeaderboardHandler = async (req, res) => {
       styxx: Number(r.styxx_cached || 0),   // legacy field name (schema compat)
       darkcoin: Number(r.styxx_cached || 0),
       cached_at: r.styxx_cached_at,
-      solscan: `https://solscan.io/account/${r.sol_pubkey}`,
+      solscan: r.sol_pubkey ? `https://solscan.io/account/${r.sol_pubkey}` : null,
     })));
   } catch (e) {
     res.status(500).json({ error: e.message });
