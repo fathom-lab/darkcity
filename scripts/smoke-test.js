@@ -77,7 +77,8 @@ function check(name, cond, detail = '') {
     check(`${p} not 500`, r.status !== 500, 'status=' + r.status);
   }
   const mq = await fetch(BASE + '/api/mint/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"owner_pubkey":"x","agent_name":"SMOKE"}' });
-  check('/api/mint/quote honest pre-mint', mq.status === 503 || mq.status === 201, 'status=' + mq.status);
+  // 503 pre-mint (honest refusal), 200/201 once the token is live and quoting.
+  check('/api/mint/quote honest', [200, 201, 503].includes(mq.status), 'status=' + mq.status);
 
   // ── depth DaaS never dead ──
   const score = await get('/api/depth/score?text=leverage the asymmetry because the edge compounds over 3 rounds');
